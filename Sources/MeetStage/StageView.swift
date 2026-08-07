@@ -16,22 +16,28 @@ struct StageView: View {
                 .ignoresSafeArea()
 
             if !manager.isLive {
-                VStack(spacing: 14) {
-                    if manager.state == .switching {
-                        ProgressView()
-                            .controlSize(.large)
-                    } else {
-                        Image(systemName: "rectangle.on.rectangle.slash")
-                            .font(.system(size: 48, weight: .light))
+                ZStack {
+                    Color.black
+                        .ignoresSafeArea()
+
+                    VStack(spacing: 14) {
+                        if manager.state == .switching {
+                            ProgressView()
+                                .controlSize(.large)
+                        } else {
+                            Image(systemName: "rectangle.on.rectangle.slash")
+                                .font(.system(size: 48, weight: .light))
+                                .foregroundStyle(.secondary)
+                        }
+                        Text(manager.state == .switching ? "Preparing the stage" : "Nothing is on stage")
+                            .font(.title2.weight(.medium))
+                        Text(stageGuidance)
                             .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal, 24)
                     }
-                    Text(manager.state == .switching ? "Preparing the stage" : "Nothing is on stage")
-                        .font(.title2.weight(.medium))
-                    Text(stageGuidance)
-                        .foregroundStyle(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 24)
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .allowsHitTesting(false)
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel(stageAccessibilityLabel)
@@ -76,6 +82,6 @@ private struct StageVideoRepresentable: NSViewRepresentable {
     }
 
     static func dismantleNSView(_ nsView: StageVideoView, coordinator: Void) {
-        nsView.clear()
+        nsView.clearForDismantle()
     }
 }

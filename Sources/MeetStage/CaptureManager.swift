@@ -411,13 +411,13 @@ final class CaptureManager: ObservableObject {
         let configuration = makeStreamConfiguration(for: format)
 
         if let stream {
-            renderer.prepareForSourceSwitch()
+            let renderGeneration = renderer.prepareForSourceSwitch()
             do {
                 try await stream.updateConfiguration(configuration)
                 try await stream.updateContentFilter(filter)
-                renderer.commitSourceSwitch()
+                renderer.commitSourceSwitch(generation: renderGeneration)
             } catch {
-                renderer.cancelSourceSwitch()
+                renderer.cancelSourceSwitch(generation: renderGeneration)
                 throw error
             }
             stageAspectRatio = format.aspectRatio
@@ -434,6 +434,7 @@ final class CaptureManager: ObservableObject {
             type: .screen,
             sampleHandlerQueue: sampleQueue
         )
+        renderer.beginCapture()
         stream = newStream
 
         do {
@@ -441,6 +442,7 @@ final class CaptureManager: ObservableObject {
         } catch {
             if stream === newStream {
                 stream = nil
+                renderer.clear()
             }
             try? newStream.removeStreamOutput(streamOutput, type: .screen)
             throw error

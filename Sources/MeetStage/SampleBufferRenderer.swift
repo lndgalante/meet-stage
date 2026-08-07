@@ -18,11 +18,14 @@ final class SampleBufferRenderer: @unchecked Sendable {
     private weak var view: StageVideoView?
     private var isSuppressingFrames = false
     private var transitionsNextFrame = false
+    private var renderGeneration: UInt64 = 0
 
     func attach(_ view: StageVideoView) {
         lock.lock()
         self.view = view
+        let generation = renderGeneration
         lock.unlock()
+        view.synchronizeRenderGeneration(generation)
     }
 
     func detach(_ view: StageVideoView) {
@@ -33,22 +36,39 @@ final class SampleBufferRenderer: @unchecked Sendable {
         lock.unlock()
     }
 
-    func prepareForSourceSwitch() {
+    func beginCapture() {
         lock.lock()
-        isSuppressingFrames = true
+        isSuppressingFrames = false
         transitionsNextFrame = false
         lock.unlock()
     }
 
-    func commitSourceSwitch() {
+    func prepareForSourceSwitch() -> UInt64 {
         lock.lock()
+        isSuppressingFrames = true
+        transitionsNextFrame = false
+        let generation = renderGeneration
+        lock.unlock()
+        return generation
+    }
+
+    func commitSourceSwitch(generation: UInt64) {
+        lock.lock()
+        guard generation == renderGeneration else {
+            lock.unlock()
+            return
+        }
         isSuppressingFrames = false
         transitionsNextFrame = true
         lock.unlock()
     }
 
-    func cancelSourceSwitch() {
+    func cancelSourceSwitch(generation: UInt64) {
         lock.lock()
+        guard generation == renderGeneration else {
+            lock.unlock()
+            return
+        }
         isSuppressingFrames = false
         transitionsNextFrame = false
         lock.unlock()
@@ -92,12 +112,14 @@ final class SampleBufferRenderer: @unchecked Sendable {
         }
         let startsTransition = transitionsNextFrame
         transitionsNextFrame = false
+        let generation = renderGeneration
         let currentView = view
         lock.unlock()
         currentView?.enqueue(
             sampleBuffer,
             geometry: geometry,
-            startsTransition: startsTransition
+            startsTransition: startsTransition,
+            renderGeneration: generation
         )
         return geometry
     }
@@ -119,11 +141,13 @@ final class SampleBufferRenderer: @unchecked Sendable {
 
     func clear() {
         lock.lock()
-        isSuppressingFrames = false
+        renderGeneration &+= 1
+        let generation = renderGeneration
+        isSuppressingFrames = true
         transitionsNextFrame = false
         let currentView = view
         lock.unlock()
-        currentView?.clear()
+        currentView?.clear(renderGeneration: generation)
     }
 }
 
@@ -132,6 +156,7 @@ final class StageVideoView: NSView {
     private var activeFrameGeometry: CaptureFrameGeometry?
     private var retiringDisplayLayer: AVSampleBufferDisplayLayer?
     private var retiringFrameGeometry: CaptureFrameGeometry?
+    private var renderGeneration: UInt64 = 0
     var reducesMotion = false
 
     override init(frame frameRect: NSRect) {
@@ -163,10 +188,11 @@ final class StageVideoView: NSView {
     func enqueue(
         _ sampleBuffer: CMSampleBuffer,
         geometry: CaptureFrameGeometry,
-        startsTransition: Bool
+        startsTransition: Bool,
+        renderGeneration: UInt64
     ) {
         DispatchQueue.main.async { [weak self] in
-            guard let self else { return }
+            guard let self, renderGeneration == self.renderGeneration else { return }
             if startsTransition, activeFrameGeometry != nil {
                 transition(to: sampleBuffer, geometry: geometry)
             } else {
@@ -177,13 +203,41 @@ final class StageVideoView: NSView {
         }
     }
 
-    func clear() {
+    func synchronizeRenderGeneration(_ generation: UInt64) {
+        let synchronize = { [weak self] in
+            guard let self, generation >= renderGeneration else { return }
+            renderGeneration = generation
+        }
+        if Thread.isMainThread {
+            synchronize()
+        } else {
+            DispatchQueue.main.async(execute: synchronize)
+        }
+    }
+
+    func clear(renderGeneration generation: UInt64) {
+        let clearLayers = { [weak self] in
+            guard let self, generation >= renderGeneration else { return }
+            renderGeneration = generation
+            removeRetiringLayer()
+            activeFrameGeometry = nil
+            activeDisplayLayer.removeAllAnimations()
+            activeDisplayLayer.opacity = 1
+            activeDisplayLayer.flushAndRemoveImage()
+        }
+        if Thread.isMainThread {
+            clearLayers()
+        } else {
+            DispatchQueue.main.async(execute: clearLayers)
+        }
+    }
+
+    func clearForDismantle() {
         let clearLayers = { [weak self] in
             guard let self else { return }
             removeRetiringLayer()
             activeFrameGeometry = nil
             activeDisplayLayer.removeAllAnimations()
-            activeDisplayLayer.opacity = 1
             activeDisplayLayer.flushAndRemoveImage()
         }
         if Thread.isMainThread {
