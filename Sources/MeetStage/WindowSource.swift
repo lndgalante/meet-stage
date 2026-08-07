@@ -26,11 +26,40 @@ struct WindowSource: Identifiable {
     }
 }
 
+struct PinnedWindow: Codable, Equatable {
+    let bundleIdentifier: String
+    let applicationName: String
+    let title: String
+
+    init(source: WindowSource) {
+        bundleIdentifier = source.bundleIdentifier
+        applicationName = source.applicationName
+        title = source.title
+    }
+
+    func matches(_ source: WindowSource) -> Bool {
+        let sameApplication = bundleIdentifier.isEmpty
+            ? applicationName == source.applicationName
+            : bundleIdentifier == source.bundleIdentifier
+        return sameApplication && title == source.title
+    }
+
+    var description: String {
+        "\(applicationName) — \(title)"
+    }
+}
+
+struct ShortcutPin: Codable, Equatable {
+    let slot: Int
+    let window: PinnedWindow
+}
+
 enum CaptureState: Equatable {
     case idle
     case loading
     case switching
     case capturing
+    case permissionRequired
     case failed(String)
 
     var label: String {
@@ -43,6 +72,8 @@ enum CaptureState: Equatable {
             return "Switching…"
         case .capturing:
             return "Live"
+        case .permissionRequired:
+            return "Permission needed"
         case .failed:
             return "Needs attention"
         }

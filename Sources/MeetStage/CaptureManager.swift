@@ -5,44 +5,146 @@ import ScreenCaptureKit
 @MainActor
 final class CaptureManager: ObservableObject {
     // SCStreamConfiguration.backgroundColor is an unretained CGColorRef. Keep
-    // this object alive for the lifetime of the process; assigning a temporary
-    // NSColor.cgColor leaves ScreenCaptureKit with a dangling pointer when it
-    // copies the configuration asynchronously.
+    // this object alive while ScreenCaptureKit copies stream configurations.
     private static let blackBackground = CGColor(gray: 0, alpha: 1)
+    // Keep this legacy key stable so rebranding never discards user-pinned shortcuts.
+    private static let shortcutDefaultsKey = "MeetStage.shortcutPins.v1"
 
     @Published private(set) var windows: [WindowSource] = []
     @Published private(set) var selectedWindowID: CGWindowID?
+    @Published private(set) var pendingWindowID: CGWindowID?
     @Published private(set) var selectedWindowDescription = "Nothing selected"
     @Published private(set) var state: CaptureState = .idle
+    @Published private(set) var errorMessage: String?
+    @Published private(set) var isRefreshing = false
+    @Published private(set) var shortcutWindowIDs: [Int: CGWindowID] = [:]
+    @Published private(set) var unavailableShortcutSlots: Set<Int> = []
+    @Published private(set) var stageAspectRatio: CGFloat
+    @Published private var shortcutPins: [Int: PinnedWindow] = [:]
 
     let renderer = SampleBufferRenderer()
 
+    private let defaults: UserDefaults
     private let sampleQueue = DispatchQueue(
         label: "dev.poc.meetstage.screen-frames",
         qos: .userInteractive
     )
-    private lazy var streamOutput = CaptureStreamOutput(renderer: renderer) { [weak self] message in
-        Task { @MainActor in
-            self?.state = .failed(message)
+    private lazy var streamOutput = CaptureStreamOutput(
+        renderer: renderer,
+        onFrame: { [weak self] sourceStream, geometry in
+            Task { @MainActor in
+                self?.handleFrame(from: sourceStream, geometry: geometry)
+            }
+        },
+        onFailure: { [weak self] sourceStream, error in
+            Task { @MainActor in
+                self?.handleStreamStopped(sourceStream, error: error)
+            }
         }
+    )
+    private lazy var hotKeyManager = GlobalHotKeyManager { [weak self] slot in
+        self?.activateShortcut(slot)
     }
 
     private var stream: SCStream?
+    private var awaitingLiveSelection: WindowSource?
     private var pendingSelection: WindowSource?
     private var selectionTask: Task<Void, Never>?
+    private var selectionGeneration = 0
+    private var requestedPermissionThisLaunch = false
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+        stageAspectRatio = StageWindowSizing.currentScreenAspectRatio()
+        shortcutPins = Self.loadShortcutPins(from: defaults)
+    }
 
     var isCapturing: Bool {
         stream != nil
     }
 
-    var errorMessage: String? {
-        guard case let .failed(message) = state else { return nil }
-        return message
+    var isLive: Bool {
+        stream != nil && selectedWindowID != nil
+    }
+
+    var needsScreenRecordingPermission: Bool {
+        state == .permissionRequired
+    }
+
+    var displayedWindows: [WindowSource] {
+        let slotByWindowID = Dictionary(
+            uniqueKeysWithValues: shortcutWindowIDs.map { ($0.value, $0.key) }
+        )
+        return windows.enumerated()
+            .sorted { first, second in
+                let firstSlot = slotByWindowID[first.element.id]
+                let secondSlot = slotByWindowID[second.element.id]
+
+                switch (firstSlot, secondSlot) {
+                case let (left?, right?):
+                    return left == right ? first.offset < second.offset : left < right
+                case (_?, nil):
+                    return true
+                case (nil, _?):
+                    return false
+                case (nil, nil):
+                    return first.offset < second.offset
+                }
+            }
+            .map(\.element)
+    }
+
+    var pinnedShortcuts: [ShortcutPin] {
+        shortcutPins
+            .map { ShortcutPin(slot: $0.key, window: $0.value) }
+            .sorted { $0.slot < $1.slot }
+    }
+
+    var controllerNotice: String? {
+        var details: [String] = []
+        if let errorMessage, !errorMessage.isEmpty {
+            details.append(errorMessage)
+        }
+
+        let unresolvedSlots = Set(shortcutPins.keys).subtracting(shortcutWindowIDs.keys)
+        if !unresolvedSlots.isEmpty {
+            details.append("Pinned \(shortcutList(unresolvedSlots)) unavailable")
+        }
+        if !unavailableShortcutSlots.isEmpty {
+            details.append("Could not register \(shortcutList(unavailableShortcutSlots))")
+        }
+        return details.isEmpty ? nil : details.joined(separator: " · ")
+    }
+
+    var statusDescription: String {
+        [state.label, controllerNotice]
+            .compactMap { $0 }
+            .joined(separator: " · ")
     }
 
     func refreshWindows() {
-        guard state != .loading else { return }
-        state = .loading
+        guard !isRefreshing else { return }
+
+        guard CGPreflightScreenCaptureAccess() else {
+            windows = []
+            reconcileShortcuts(with: [])
+            state = .permissionRequired
+            errorMessage = nil
+
+            if !requestedPermissionThisLaunch {
+                requestedPermissionThisLaunch = true
+                if CGRequestScreenCaptureAccess() {
+                    refreshWindows()
+                }
+            }
+            return
+        }
+
+        isRefreshing = true
+        errorMessage = nil
+        if stream == nil && selectionTask == nil {
+            state = .loading
+        }
 
         Task {
             do {
@@ -50,7 +152,6 @@ final class CaptureManager: ObservableObject {
                     false,
                     onScreenWindowsOnly: true
                 )
-
                 let ownBundleIdentifier = Bundle.main.bundleIdentifier
                 let candidates = content.windows
                     .filter { window in
@@ -73,48 +174,133 @@ final class CaptureManager: ObservableObject {
                     }
 
                 windows = candidates
-                state = stream == nil ? .idle : .capturing
+                reconcileShortcuts(with: candidates)
+                if stream == nil {
+                    state = selectionTask == nil ? .idle : .switching
+                } else if pendingWindowID == nil, selectedWindowID != nil {
+                    state = .capturing
+                }
+
                 await loadThumbnails(for: candidates)
             } catch {
-                state = .failed(Self.friendlyMessage(for: error))
+                let message = Self.friendlyMessage(for: error)
+                errorMessage = message
+                if stream == nil {
+                    state = .failed(message)
+                }
             }
+            isRefreshing = false
         }
     }
 
     func select(_ source: WindowSource) {
+        guard windows.contains(where: { $0.id == source.id }) else {
+            errorMessage = "That window is no longer available. Refresh the window list."
+            NSSound.beep()
+            return
+        }
+        guard source.id != selectedWindowID || state != .capturing else { return }
+
         pendingSelection = source
-        selectedWindowID = source.id
-        selectedWindowDescription = "\(source.applicationName) — \(source.title)"
+        pendingWindowID = source.id
+        errorMessage = nil
+        state = .switching
 
         guard selectionTask == nil else { return }
-        selectionTask = Task { [weak self] in
-            await self?.processPendingSelections()
-        }
+        startSelectionTask()
     }
 
     func stopCapture() {
         pendingSelection = nil
+        awaitingLiveSelection = nil
+        pendingWindowID = nil
+        selectionGeneration += 1
         selectionTask?.cancel()
         selectionTask = nil
 
-        guard let stream else {
-            state = .idle
-            selectedWindowID = nil
-            selectedWindowDescription = "Nothing selected"
-            return
-        }
+        let streamToStop = stream
+        stream = nil
+        selectedWindowID = nil
+        selectedWindowDescription = "Nothing selected"
+        errorMessage = nil
+        state = .idle
+        renderer.clear()
 
-        self.stream = nil
+        guard let streamToStop else { return }
         Task {
             do {
-                try await stream.stopCapture()
-                state = .idle
-                selectedWindowID = nil
-                selectedWindowDescription = "Nothing selected"
+                try await streamToStop.stopCapture()
+            } catch where stream == nil && state == .idle {
+                let message = Self.friendlyMessage(for: error)
+                errorMessage = message
+                state = .failed(message)
             } catch {
-                state = .failed(Self.friendlyMessage(for: error))
+                // A newer stream owns the UI; an old stream's stop error is stale.
             }
         }
+    }
+
+    func shortcut(for source: WindowSource) -> Int? {
+        shortcutWindowIDs.first(where: { $0.value == source.id })?.key
+    }
+
+    func shortcutOwnerDescription(for slot: Int) -> String? {
+        shortcutPins[slot]?.description
+    }
+
+    func pin(_ source: WindowSource, to slot: Int) {
+        guard (1...9).contains(slot) else { return }
+
+        let identity = PinnedWindow(source: source)
+        let duplicateSlots = shortcutPins.compactMap { entry -> Int? in
+            let resolvesToSource = shortcutWindowIDs[entry.key] == source.id
+            return resolvesToSource || entry.value == identity ? entry.key : nil
+        }
+        for duplicateSlot in duplicateSlots where duplicateSlot != slot {
+            shortcutPins.removeValue(forKey: duplicateSlot)
+            shortcutWindowIDs.removeValue(forKey: duplicateSlot)
+        }
+
+        shortcutPins[slot] = identity
+        shortcutWindowIDs[slot] = source.id
+        persistShortcutPins()
+        refreshHotKeyRegistrations()
+    }
+
+    func unpin(_ source: WindowSource) {
+        let slots = shortcutPins.compactMap { entry -> Int? in
+            shortcutWindowIDs[entry.key] == source.id ? entry.key : nil
+        }
+        for slot in slots {
+            shortcutPins.removeValue(forKey: slot)
+            shortcutWindowIDs.removeValue(forKey: slot)
+        }
+        persistShortcutPins()
+        refreshHotKeyRegistrations()
+    }
+
+    func clearShortcut(_ slot: Int) {
+        shortcutPins.removeValue(forKey: slot)
+        shortcutWindowIDs.removeValue(forKey: slot)
+        persistShortcutPins()
+        refreshHotKeyRegistrations()
+    }
+
+    func activateShortcut(_ slot: Int) {
+        guard !unavailableShortcutSlots.contains(slot) else {
+            errorMessage = "Option+\(slot) is already reserved by another application."
+            NSSound.beep()
+            return
+        }
+        guard let windowID = shortcutWindowIDs[slot],
+              let source = windows.first(where: { $0.id == windowID }) else {
+            if let pin = shortcutPins[slot] {
+                errorMessage = "Option+\(slot) stays pinned to \(pin.description), but that window is unavailable."
+                NSSound.beep()
+            }
+            return
+        }
+        select(source)
     }
 
     func openScreenRecordingSettings() {
@@ -124,44 +310,78 @@ final class CaptureManager: ObservableObject {
         NSWorkspace.shared.open(url)
     }
 
-    private func processPendingSelections() async {
-        while !Task.isCancelled, let nextSelection = pendingSelection {
+    func restartApplication() {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = [
+            "-c",
+            "sleep 1; /usr/bin/open -n \"$1\"",
+            "betterdemos-restart",
+            Bundle.main.bundleURL.path
+        ]
+
+        do {
+            try process.run()
+            NSApp.terminate(nil)
+        } catch {
+            let message = "Could not restart BetterDemos: \(error.localizedDescription)"
+            errorMessage = message
+            state = .failed(message)
+        }
+    }
+
+    private func startSelectionTask() {
+        selectionGeneration += 1
+        let generation = selectionGeneration
+        selectionTask = Task { [weak self] in
+            await self?.processPendingSelections(generation: generation)
+        }
+    }
+
+    private func processPendingSelections(generation: Int) async {
+        while !Task.isCancelled,
+              generation == selectionGeneration,
+              let nextSelection = pendingSelection {
             pendingSelection = nil
             state = .switching
 
             do {
                 try await switchCapture(to: nextSelection)
-                state = .capturing
+                guard !Task.isCancelled, generation == selectionGeneration else { break }
+                // A successful ScreenCaptureKit call confirms the filter, but
+                // only the next complete buffer confirms visible output.
+                awaitingLiveSelection = nextSelection
             } catch {
-                state = .failed(Self.friendlyMessage(for: error))
+                guard !Task.isCancelled, generation == selectionGeneration else { break }
+
+                if awaitingLiveSelection?.id == nextSelection.id {
+                    awaitingLiveSelection = nil
+                }
+                let message = Self.friendlyMessage(for: error)
+                errorMessage = message
+
+                if pendingSelection == nil {
+                    pendingWindowID = nil
+                    state = isLive ? .capturing : .failed(message)
+                }
             }
         }
 
+        guard generation == selectionGeneration else { return }
         selectionTask = nil
     }
 
     private func switchCapture(to source: WindowSource) async throws {
         let filter = SCContentFilter(desktopIndependentWindow: source.window)
+        let format = StageWindowSizing.captureFormat(for: filter)
+        let configuration = makeStreamConfiguration(for: format)
 
         if let stream {
+            try await stream.updateConfiguration(configuration)
             try await stream.updateContentFilter(filter)
+            stageAspectRatio = format.aspectRatio
             return
         }
-
-        let configuration = SCStreamConfiguration()
-        configuration.width = 1920
-        configuration.height = 1080
-        configuration.minimumFrameInterval = CMTime(value: 1, timescale: 30)
-        configuration.queueDepth = 3
-        configuration.pixelFormat = kCVPixelFormatType_32BGRA
-        configuration.showsCursor = true
-        configuration.scalesToFit = true
-        configuration.preservesAspectRatio = true
-        configuration.backgroundColor = Self.blackBackground
-        configuration.capturesAudio = false
-        configuration.ignoreShadowsSingleWindow = true
-        configuration.ignoreGlobalClipSingleWindow = true
-        configuration.streamName = "Meet Presenter Stage"
 
         let newStream = SCStream(
             filter: filter,
@@ -173,8 +393,85 @@ final class CaptureManager: ObservableObject {
             type: .screen,
             sampleHandlerQueue: sampleQueue
         )
-        try await newStream.startCapture()
         stream = newStream
+
+        do {
+            try await newStream.startCapture()
+        } catch {
+            if stream === newStream {
+                stream = nil
+            }
+            try? newStream.removeStreamOutput(streamOutput, type: .screen)
+            throw error
+        }
+
+        guard stream === newStream else {
+            throw CaptureLifecycleError.stoppedBeforeFirstFrame
+        }
+        stageAspectRatio = format.aspectRatio
+    }
+
+    private func makeStreamConfiguration(for format: StageCaptureFormat) -> SCStreamConfiguration {
+        let configuration = SCStreamConfiguration()
+        configuration.width = format.width
+        configuration.height = format.height
+        configuration.minimumFrameInterval = CMTime(value: 1, timescale: 30)
+        configuration.queueDepth = 3
+        configuration.pixelFormat = kCVPixelFormatType_32BGRA
+        configuration.captureResolution = .best
+        configuration.showsCursor = true
+        configuration.scalesToFit = true
+        configuration.preservesAspectRatio = true
+        configuration.backgroundColor = Self.blackBackground
+        configuration.capturesAudio = false
+        configuration.ignoreShadowsSingleWindow = true
+        configuration.ignoreGlobalClipSingleWindow = true
+        configuration.streamName = "BetterDemos — Demo Stage"
+        return configuration
+    }
+
+    private func handleFrame(from sourceStream: SCStream, geometry: CaptureFrameGeometry) {
+        guard stream === sourceStream else { return }
+
+        let contentAspectRatio = geometry.contentAspectRatio
+        if abs(stageAspectRatio - contentAspectRatio) > 0.001 {
+            stageAspectRatio = contentAspectRatio
+        }
+
+        if let liveSelection = awaitingLiveSelection {
+            selectedWindowID = liveSelection.id
+            selectedWindowDescription = "\(liveSelection.applicationName) — \(liveSelection.title)"
+            awaitingLiveSelection = nil
+            if pendingWindowID == liveSelection.id {
+                pendingWindowID = nil
+            }
+        }
+
+        if selectedWindowID != nil {
+            state = pendingWindowID == nil ? .capturing : .switching
+            if state == .capturing {
+                errorMessage = nil
+            }
+        }
+    }
+
+    private func handleStreamStopped(_ stoppedStream: SCStream, error: Error) {
+        guard stream === stoppedStream else { return }
+
+        stream = nil
+        awaitingLiveSelection = nil
+        pendingSelection = nil
+        pendingWindowID = nil
+        selectedWindowID = nil
+        selectedWindowDescription = "Nothing selected"
+        selectionGeneration += 1
+        selectionTask?.cancel()
+        selectionTask = nil
+        renderer.clear()
+
+        let message = Self.friendlyMessage(for: error)
+        errorMessage = message
+        state = .failed(message)
     }
 
     private func loadThumbnails(for sources: [WindowSource]) async {
@@ -202,27 +499,113 @@ final class CaptureManager: ObservableObject {
                     size: NSSize(width: image.width, height: image.height)
                 )
             } catch {
-                // A window can close while its thumbnail is loading. Keep the card
-                // with an app-icon fallback and allow refresh to remove it.
+                // A window can close during refresh. Its fallback remains useful
+                // until the next source-list refresh removes it.
             }
         }
     }
 
+    private func reconcileShortcuts(with sources: [WindowSource]) {
+        let oldResolvedIDs = shortcutWindowIDs
+        let sourcesByID = Dictionary(uniqueKeysWithValues: sources.map { ($0.id, $0) })
+        var newResolvedIDs: [Int: CGWindowID] = [:]
+        var usedWindowIDs: Set<CGWindowID> = []
+        var didUpdatePersistedIdentity = false
+
+        for slot in shortcutPins.keys.sorted() {
+            guard let pin = shortcutPins[slot] else { continue }
+
+            var resolvedSource: WindowSource?
+            if let oldWindowID = oldResolvedIDs[slot],
+               let existingSource = sourcesByID[oldWindowID],
+               !usedWindowIDs.contains(oldWindowID) {
+                resolvedSource = existingSource
+            } else {
+                let matches = sources.filter {
+                    !usedWindowIDs.contains($0.id) && pin.matches($0)
+                }
+                if matches.count == 1 {
+                    resolvedSource = matches[0]
+                }
+            }
+
+            guard let resolvedSource else { continue }
+            newResolvedIDs[slot] = resolvedSource.id
+            usedWindowIDs.insert(resolvedSource.id)
+
+            let currentIdentity = PinnedWindow(source: resolvedSource)
+            if currentIdentity != pin {
+                shortcutPins[slot] = currentIdentity
+                didUpdatePersistedIdentity = true
+            }
+        }
+
+        shortcutWindowIDs = newResolvedIDs
+        if didUpdatePersistedIdentity {
+            persistShortcutPins()
+        }
+        refreshHotKeyRegistrations()
+    }
+
+    private func refreshHotKeyRegistrations() {
+        unavailableShortcutSlots = hotKeyManager.updateRegisteredSlots(
+            Set(shortcutWindowIDs.keys)
+        )
+    }
+
+    private func persistShortcutPins() {
+        let pins = shortcutPins
+            .map { ShortcutPin(slot: $0.key, window: $0.value) }
+            .sorted { $0.slot < $1.slot }
+        guard let data = try? JSONEncoder().encode(pins) else { return }
+        defaults.set(data, forKey: Self.shortcutDefaultsKey)
+    }
+
+    private static func loadShortcutPins(from defaults: UserDefaults) -> [Int: PinnedWindow] {
+        guard let data = defaults.data(forKey: shortcutDefaultsKey),
+              let pins = try? JSONDecoder().decode([ShortcutPin].self, from: data) else {
+            return [:]
+        }
+        return Dictionary(
+            pins.filter { (1...9).contains($0.slot) }.map { ($0.slot, $0.window) },
+            uniquingKeysWith: { _, newest in newest }
+        )
+    }
+
+    private func shortcutList(_ slots: Set<Int>) -> String {
+        slots.sorted().map { "⌥\($0)" }.joined(separator: ", ")
+    }
+
     private static func friendlyMessage(for error: Error) -> String {
         let nsError = error as NSError
-        if nsError.domain == SCStreamErrorDomain || nsError.domain == "com.apple.ScreenCaptureKit.SCStreamErrorDomain" {
-            return "Screen capture is unavailable. Grant Meet Stage access in System Settings → Privacy & Security → Screen & System Audio Recording, then quit and reopen the app."
+        if nsError.domain == SCStreamErrorDomain
+            || nsError.domain == "com.apple.ScreenCaptureKit.SCStreamErrorDomain" {
+            return "Screen capture stopped (\(nsError.code)): \(nsError.localizedDescription)"
         }
         return error.localizedDescription
     }
 }
 
+private enum CaptureLifecycleError: LocalizedError {
+    case stoppedBeforeFirstFrame
+
+    var errorDescription: String? {
+        "Screen capture stopped before it produced a frame."
+    }
+}
+
 private final class CaptureStreamOutput: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Sendable {
     private let renderer: SampleBufferRenderer
-    private let onFailure: @Sendable (String) -> Void
+    private let onFrame: @Sendable (SCStream, CaptureFrameGeometry) -> Void
+    private let onFailure: @Sendable (SCStream, Error) -> Void
 
-    init(renderer: SampleBufferRenderer, onFailure: @escaping @Sendable (String) -> Void) {
+    init(
+        renderer: SampleBufferRenderer,
+        onFrame: @escaping @Sendable (SCStream, CaptureFrameGeometry) -> Void,
+        onFailure: @escaping @Sendable (SCStream, Error) -> Void
+    ) {
         self.renderer = renderer
+        self.onFrame = onFrame
         self.onFailure = onFailure
     }
 
@@ -231,11 +614,25 @@ private final class CaptureStreamOutput: NSObject, SCStreamOutput, SCStreamDeleg
         didOutputSampleBuffer sampleBuffer: CMSampleBuffer,
         of outputType: SCStreamOutputType
     ) {
-        guard outputType == .screen else { return }
-        renderer.enqueue(sampleBuffer)
+        guard outputType == .screen, Self.isCompleteFrame(sampleBuffer) else { return }
+        guard let geometry = renderer.enqueue(sampleBuffer) else { return }
+        onFrame(stream, geometry)
     }
 
     func stream(_ stream: SCStream, didStopWithError error: Error) {
-        onFailure(error.localizedDescription)
+        onFailure(stream, error)
+    }
+
+    private static func isCompleteFrame(_ sampleBuffer: CMSampleBuffer) -> Bool {
+        guard sampleBuffer.isValid, sampleBuffer.dataReadiness == .ready else { return false }
+        guard let attachments = CMSampleBufferGetSampleAttachmentsArray(
+            sampleBuffer,
+            createIfNecessary: false
+        ) as? [[SCStreamFrameInfo: Any]],
+              let statusValue = attachments.first?[.status] as? Int,
+              let frameStatus = SCFrameStatus(rawValue: statusValue) else {
+            return false
+        }
+        return frameStatus == .complete
     }
 }

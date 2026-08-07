@@ -9,20 +9,49 @@ struct StageView: View {
                 .ignoresSafeArea()
 
             StageVideoRepresentable(renderer: manager.renderer)
+                .ignoresSafeArea()
 
-            if !manager.isCapturing {
+            if !manager.isLive {
                 VStack(spacing: 14) {
-                    Image(systemName: "rectangle.on.rectangle.slash")
-                        .font(.system(size: 48, weight: .light))
-                        .foregroundStyle(.secondary)
-                    Text("Nothing is on stage")
+                    if manager.state == .switching {
+                        ProgressView()
+                            .controlSize(.large)
+                    } else {
+                        Image(systemName: "rectangle.on.rectangle.slash")
+                            .font(.system(size: 48, weight: .light))
+                            .foregroundStyle(.secondary)
+                    }
+                    Text(manager.state == .switching ? "Preparing the stage" : "Nothing is on stage")
                         .font(.title2.weight(.medium))
-                    Text("Choose a window in the Meet Stage controller.")
+                    Text(stageGuidance)
                         .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
                 }
+                .allowsHitTesting(false)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(stageAccessibilityLabel)
             }
         }
-        .background(WindowConfigurator(kind: .stage))
+        .background(WindowConfigurator(kind: .stage(aspectRatio: manager.stageAspectRatio)))
+    }
+
+    private var stageGuidance: String {
+        switch manager.state {
+        case .switching:
+            return "Waiting for the first video frame."
+        case .permissionRequired:
+            return "Allow screen recording in BetterDemos."
+        case .failed:
+            return "Capture stopped. Choose a window to try again."
+        default:
+            return "Choose a window in BetterDemos."
+        }
+    }
+
+    private var stageAccessibilityLabel: String {
+        let title = manager.state == .switching ? "Preparing the stage" : "Nothing is on stage"
+        return "\(title). \(stageGuidance)"
     }
 }
 

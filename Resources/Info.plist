@@ -5,27 +5,29 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>en</string>
     <key>CFBundleDisplayName</key>
-    <string>Meet Stage</string>
+    <string>BetterDemos</string>
     <key>CFBundleExecutable</key>
     <string>MeetStage</string>
     <key>CFBundleIdentifier</key>
-    <string>dev.poc.meetstage</string>
+    <string>dev.poc.meetstage.v2</string>
+    <key>CFBundleIconFile</key>
+    <string>BetterDemos.icns</string>
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>Meet Stage</string>
+    <string>BetterDemos</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
-    <string>0.1.1</string>
+    <string>0.4.0</string>
     <key>CFBundleVersion</key>
-    <string>2</string>
+    <string>5</string>
     <key>LSMinimumSystemVersion</key>
     <string>14.0</string>
     <key>NSHighResolutionCapable</key>
     <true/>
     <key>NSScreenCaptureUsageDescription</key>
-    <string>Meet Stage needs screen recording access to show the window you choose inside the presenter stage.</string>
+    <string>BetterDemos needs screen recording access to show the window you choose in the Demo Stage.</string>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
 </dict>

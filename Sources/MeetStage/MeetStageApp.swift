@@ -1,21 +1,34 @@
+import AppKit
 import SwiftUI
 
 @main
 struct MeetStageApp: App {
     @StateObject private var captureManager = CaptureManager()
 
-    var body: some Scene {
-        Window("Meet Stage", id: "control") {
-            ControlView(manager: captureManager)
-                .frame(minWidth: 760, minHeight: 560)
-        }
-        .defaultSize(width: 980, height: 720)
+    init() {
+        guard let iconURL = Bundle.main.url(forResource: "BetterDemos", withExtension: "icns"),
+              let icon = NSImage(contentsOf: iconURL) else { return }
+        NSApplication.shared.applicationIconImage = icon
+    }
 
-        Window("Meet Presenter Stage", id: "stage") {
-            StageView(manager: captureManager)
-                .frame(minWidth: 640, minHeight: 360)
+    private var initialStageSize: NSSize {
+        StageWindowSizing.defaultWindowContentSize()
+    }
+
+    var body: some Scene {
+        Window("BetterDemos", id: "control") {
+            ControlView(manager: captureManager)
+                .frame(width: ControlWindowSizing.size.width, height: ControlWindowSizing.size.height)
         }
-        .defaultSize(width: 1280, height: 720)
+        .defaultSize(width: ControlWindowSizing.size.width, height: ControlWindowSizing.size.height)
+        .windowResizability(.contentSize)
+
+        Window("BetterDemos — Demo Stage", id: "stage") {
+            StageView(manager: captureManager)
+                .frame(minWidth: 480, minHeight: 270)
+        }
+        .defaultSize(width: initialStageSize.width, height: initialStageSize.height)
+        .windowStyle(.hiddenTitleBar)
 
         .commands {
             CommandMenu("Capture") {
@@ -23,6 +36,7 @@ struct MeetStageApp: App {
                     captureManager.refreshWindows()
                 }
                 .keyboardShortcut("r", modifiers: [.command])
+                .disabled(captureManager.isRefreshing)
 
                 Button("Stop Capture") {
                     captureManager.stopCapture()
