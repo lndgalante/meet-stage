@@ -411,8 +411,15 @@ final class CaptureManager: ObservableObject {
         let configuration = makeStreamConfiguration(for: format)
 
         if let stream {
-            try await stream.updateConfiguration(configuration)
-            try await stream.updateContentFilter(filter)
+            renderer.prepareForSourceSwitch()
+            do {
+                try await stream.updateConfiguration(configuration)
+                try await stream.updateContentFilter(filter)
+                renderer.commitSourceSwitch()
+            } catch {
+                renderer.cancelSourceSwitch()
+                throw error
+            }
             stageAspectRatio = format.aspectRatio
             return
         }

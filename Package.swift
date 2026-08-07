@@ -22,6 +22,7 @@ let package = Package(
                 .linkedFramework("AVFoundation"),
                 .linkedFramework("Carbon"),
                 .linkedFramework("CoreMedia"),
+                .linkedFramework("QuartzCore"),
                 .linkedFramework("ScreenCaptureKit")
             ]
         )

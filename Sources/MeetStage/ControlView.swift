@@ -8,6 +8,7 @@ enum ControlWindowSizing {
 struct ControlView: View {
     @ObservedObject var manager: CaptureManager
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Group {
@@ -97,7 +98,13 @@ struct ControlView: View {
 
     private func scrollToFocusedSource(using proxy: ScrollViewProxy) {
         guard let focusedID = manager.pendingWindowID ?? manager.selectedWindowID else { return }
-        proxy.scrollTo(focusedID, anchor: .center)
+        if reduceMotion {
+            proxy.scrollTo(focusedID, anchor: .center)
+        } else {
+            withAnimation(.spring(response: 0.28, dampingFraction: 1)) {
+                proxy.scrollTo(focusedID, anchor: .center)
+            }
+        }
     }
 
     private var currentWindowLabel: some View {
@@ -113,6 +120,11 @@ struct ControlView: View {
                 .frame(width: ControlWindowSizing.sourceAreaWidth, alignment: .leading)
                 .help("Current window: \(manager.currentWindowDescription)")
                 .accessibilityLabel("Current window: \(manager.currentWindowDescription)")
+                .contentTransition(.opacity)
+                .animation(
+                    reduceMotion ? nil : .easeOut(duration: 0.14),
+                    value: manager.currentWindowDescription
+                )
 
             Spacer(minLength: 0)
         }
@@ -249,6 +261,7 @@ private struct CompactWindowButton: View {
 
     @State private var showPreview = false
     @State private var hoverTask: Task<Void, Never>?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Button(action: action) {
@@ -288,11 +301,13 @@ private struct CompactWindowButton: View {
                             ProgressView()
                                 .controlSize(.mini)
                                 .tint(.orange)
+                                .transition(.opacity.combined(with: .scale(scale: 0.75)))
                         } else if isSelected {
                             Image(systemName: "checkmark.circle.fill")
                                 .symbolRenderingMode(.palette)
                                 .foregroundStyle(.white, .blue)
                                 .font(.system(size: 14))
+                                .transition(.opacity.combined(with: .scale(scale: 0.75)))
                         }
                     }
                     Spacer()
@@ -320,6 +335,10 @@ private struct CompactWindowButton: View {
                 color: isSelected ? Color.blue.opacity(0.35) : .clear,
                 radius: 4,
                 y: 2
+            )
+            .animation(
+                reduceMotion ? nil : .easeOut(duration: 0.14),
+                value: visualState
             )
         }
         .buttonStyle(.plain)
@@ -376,6 +395,10 @@ private struct CompactWindowButton: View {
 
     private var borderWidth: CGFloat {
         isPending ? 2 : isSelected ? 3 : 1
+    }
+
+    private var visualState: Int {
+        isPending ? 2 : isSelected ? 1 : 0
     }
 
     private var accessibilityLabel: String {

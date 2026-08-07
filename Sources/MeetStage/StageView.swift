@@ -2,13 +2,17 @@ import SwiftUI
 
 struct StageView: View {
     @ObservedObject var manager: CaptureManager
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         ZStack {
             Color.black
                 .ignoresSafeArea()
 
-            StageVideoRepresentable(renderer: manager.renderer)
+            StageVideoRepresentable(
+                renderer: manager.renderer,
+                reducesMotion: reduceMotion
+            )
                 .ignoresSafeArea()
 
             if !manager.isLive {
@@ -57,14 +61,17 @@ struct StageView: View {
 
 private struct StageVideoRepresentable: NSViewRepresentable {
     let renderer: SampleBufferRenderer
+    let reducesMotion: Bool
 
     func makeNSView(context: Context) -> StageVideoView {
         let view = StageVideoView()
+        view.reducesMotion = reducesMotion
         renderer.attach(view)
         return view
     }
 
     func updateNSView(_ nsView: StageVideoView, context: Context) {
+        nsView.reducesMotion = reducesMotion
         renderer.attach(nsView)
     }
 
