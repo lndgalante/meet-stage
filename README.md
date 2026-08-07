@@ -10,19 +10,26 @@ reopening the share picker or exposing your desktop.
 
 BetterDemos has two windows:
 
-- **BetterDemos** is a compact floating controller with up to three window
-  previews, an overflow menu, and global shortcuts.
+- **BetterDemos** is a compact floating controller with three visible previews
+  in a horizontally scrolling window strip, plus global shortcuts.
 - **BetterDemos — Demo Stage** is the clean, high-resolution output window. This
   is the only window you share in Google Meet or another meeting app.
 
 The Demo Stage follows the selected window's aspect ratio and capture dimensions
 to avoid unnecessary black padding. A source appears as **Live** only after
-ScreenCaptureKit delivers a complete video frame.
+ScreenCaptureKit delivers a complete video frame. The controller keeps the name
+of the current live window visible below the source strip.
 
-Right-click a source to pin it to **Option+1** through **Option+9**. Pins remain
-stable across refreshes and app launches. If the exact window is unavailable or
-ambiguous, BetterDemos keeps the shortcut reserved instead of silently pointing
-it somewhere else.
+BetterDemos automatically assigns **Option+1** through **Option+9** to the first
+nine available windows. Right-click a source to move it to a specific shortcut
+or unpin it. Manual pins remain stable across refreshes and app launches, and an
+explicitly unpinned window stays unassigned until you pin it again. If the exact
+window for a manual pin is unavailable or ambiguous, BetterDemos keeps the
+shortcut reserved instead of silently pointing it somewhere else.
+
+Swipe or scroll horizontally over the window strip to browse every available
+source. When you switch with a global shortcut, BetterDemos brings that source
+into view automatically.
 
 ## Requirements
 
@@ -142,9 +149,9 @@ the app and grant access again:
 tccutil reset ScreenCapture dev.poc.meetstage.v2
 ```
 
-Pinned shortcuts use the legacy `MeetStage.shortcutPins.v1` defaults key. Keep
-that key stable so local development and future rebrands do not discard user
-preferences.
+Pinned shortcuts use the legacy `MeetStage.shortcutPins.v1` defaults key, and
+explicit unpins use `MeetStage.shortcutExclusions.v1`. Keep both keys stable so
+local development and future rebrands do not discard user preferences.
 
 ## Debugging and verification
 

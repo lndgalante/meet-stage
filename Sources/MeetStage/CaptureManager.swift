@@ -9,6 +9,7 @@ final class CaptureManager: ObservableObject {
     private static let blackBackground = CGColor(gray: 0, alpha: 1)
     // Keep this legacy key stable so rebranding never discards user-pinned shortcuts.
     private static let shortcutDefaultsKey = "MeetStage.shortcutPins.v1"
+    private static let shortcutExclusionsDefaultsKey = "MeetStage.shortcutExclusions.v1"
 
     @Published private(set) var windows: [WindowSource] = []
     @Published private(set) var selectedWindowID: CGWindowID?
@@ -21,6 +22,7 @@ final class CaptureManager: ObservableObject {
     @Published private(set) var unavailableShortcutSlots: Set<Int> = []
     @Published private(set) var stageAspectRatio: CGFloat
     @Published private var shortcutPins: [Int: PinnedWindow] = [:]
+    @Published private var shortcutExclusions: Set<PinnedWindow> = []
 
     let renderer = SampleBufferRenderer()
 
@@ -52,11 +54,13 @@ final class CaptureManager: ObservableObject {
     private var selectionTask: Task<Void, Never>?
     private var selectionGeneration = 0
     private var requestedPermissionThisLaunch = false
+    private var resolvedPinnedWindowIDs: [Int: CGWindowID] = [:]
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         stageAspectRatio = StageWindowSizing.currentScreenAspectRatio()
         shortcutPins = Self.loadShortcutPins(from: defaults)
+        shortcutExclusions = Self.loadShortcutExclusions(from: defaults)
     }
 
     var isCapturing: Bool {
@@ -120,6 +124,17 @@ final class CaptureManager: ObservableObject {
         [state.label, controllerNotice]
             .compactMap { $0 }
             .joined(separator: " · ")
+    }
+
+    var currentWindowDescription: String {
+        if selectedWindowID != nil {
+            return selectedWindowDescription
+        }
+        if let pendingWindowID,
+           let pendingSource = windows.first(where: { $0.id == pendingWindowID }) {
+            return "Preparing \(pendingSource.applicationName) — \(pendingSource.title)"
+        }
+        return "No window selected"
     }
 
     func refreshWindows() {
@@ -245,45 +260,64 @@ final class CaptureManager: ObservableObject {
     }
 
     func shortcutOwnerDescription(for slot: Int) -> String? {
-        shortcutPins[slot]?.description
+        if let pin = shortcutPins[slot] {
+            return pin.description
+        }
+        guard let windowID = shortcutWindowIDs[slot],
+              let source = windows.first(where: { $0.id == windowID }) else {
+            return nil
+        }
+        return "\(source.applicationName) — \(source.title)"
     }
 
     func pin(_ source: WindowSource, to slot: Int) {
         guard (1...9).contains(slot) else { return }
 
         let identity = PinnedWindow(source: source)
+        shortcutExclusions.remove(identity)
         let duplicateSlots = shortcutPins.compactMap { entry -> Int? in
             let resolvesToSource = shortcutWindowIDs[entry.key] == source.id
             return resolvesToSource || entry.value == identity ? entry.key : nil
         }
         for duplicateSlot in duplicateSlots where duplicateSlot != slot {
             shortcutPins.removeValue(forKey: duplicateSlot)
-            shortcutWindowIDs.removeValue(forKey: duplicateSlot)
+            resolvedPinnedWindowIDs.removeValue(forKey: duplicateSlot)
         }
 
         shortcutPins[slot] = identity
-        shortcutWindowIDs[slot] = source.id
+        resolvedPinnedWindowIDs.removeValue(forKey: slot)
         persistShortcutPins()
-        refreshHotKeyRegistrations()
+        persistShortcutExclusions()
+        reconcileShortcuts(with: windows)
     }
 
     func unpin(_ source: WindowSource) {
+        let identity = PinnedWindow(source: source)
         let slots = shortcutPins.compactMap { entry -> Int? in
-            shortcutWindowIDs[entry.key] == source.id ? entry.key : nil
+            shortcutWindowIDs[entry.key] == source.id || entry.value == identity ? entry.key : nil
         }
         for slot in slots {
             shortcutPins.removeValue(forKey: slot)
-            shortcutWindowIDs.removeValue(forKey: slot)
+            resolvedPinnedWindowIDs.removeValue(forKey: slot)
         }
+        shortcutExclusions.insert(identity)
         persistShortcutPins()
-        refreshHotKeyRegistrations()
+        persistShortcutExclusions()
+        reconcileShortcuts(with: windows)
     }
 
     func clearShortcut(_ slot: Int) {
+        if let windowID = shortcutWindowIDs[slot],
+           let source = windows.first(where: { $0.id == windowID }) {
+            shortcutExclusions.insert(PinnedWindow(source: source))
+        } else if let pin = shortcutPins[slot] {
+            shortcutExclusions.insert(pin)
+        }
         shortcutPins.removeValue(forKey: slot)
-        shortcutWindowIDs.removeValue(forKey: slot)
+        resolvedPinnedWindowIDs.removeValue(forKey: slot)
         persistShortcutPins()
-        refreshHotKeyRegistrations()
+        persistShortcutExclusions()
+        reconcileShortcuts(with: windows)
     }
 
     func activateShortcut(_ slot: Int) {
@@ -507,8 +541,10 @@ final class CaptureManager: ObservableObject {
 
     private func reconcileShortcuts(with sources: [WindowSource]) {
         let oldResolvedIDs = shortcutWindowIDs
+        let oldPinnedWindowIDs = resolvedPinnedWindowIDs
         let sourcesByID = Dictionary(uniqueKeysWithValues: sources.map { ($0.id, $0) })
         var newResolvedIDs: [Int: CGWindowID] = [:]
+        var newPinnedWindowIDs: [Int: CGWindowID] = [:]
         var usedWindowIDs: Set<CGWindowID> = []
         var didUpdatePersistedIdentity = false
 
@@ -516,7 +552,7 @@ final class CaptureManager: ObservableObject {
             guard let pin = shortcutPins[slot] else { continue }
 
             var resolvedSource: WindowSource?
-            if let oldWindowID = oldResolvedIDs[slot],
+            if let oldWindowID = oldPinnedWindowIDs[slot],
                let existingSource = sourcesByID[oldWindowID],
                !usedWindowIDs.contains(oldWindowID) {
                 resolvedSource = existingSource
@@ -531,6 +567,7 @@ final class CaptureManager: ObservableObject {
 
             guard let resolvedSource else { continue }
             newResolvedIDs[slot] = resolvedSource.id
+            newPinnedWindowIDs[slot] = resolvedSource.id
             usedWindowIDs.insert(resolvedSource.id)
 
             let currentIdentity = PinnedWindow(source: resolvedSource)
@@ -540,7 +577,34 @@ final class CaptureManager: ObservableObject {
             }
         }
 
+        let reservedSlots = Set(shortcutPins.keys)
+        let automaticSlots = (1...9).filter { !reservedSlots.contains($0) }
+
+        // Keep automatic assignments stable while their windows remain available.
+        for slot in automaticSlots {
+            guard let oldWindowID = oldResolvedIDs[slot],
+                  let existingSource = sourcesByID[oldWindowID],
+                  !usedWindowIDs.contains(oldWindowID),
+                  !shortcutExclusions.contains(PinnedWindow(source: existingSource)) else {
+                continue
+            }
+            newResolvedIDs[slot] = oldWindowID
+            usedWindowIDs.insert(oldWindowID)
+        }
+
+        var remainingSources = sources.filter {
+            !usedWindowIDs.contains($0.id)
+                && !shortcutExclusions.contains(PinnedWindow(source: $0))
+        }.makeIterator()
+
+        for slot in automaticSlots where newResolvedIDs[slot] == nil {
+            guard let source = remainingSources.next() else { break }
+            newResolvedIDs[slot] = source.id
+            usedWindowIDs.insert(source.id)
+        }
+
         shortcutWindowIDs = newResolvedIDs
+        resolvedPinnedWindowIDs = newPinnedWindowIDs
         if didUpdatePersistedIdentity {
             persistShortcutPins()
         }
@@ -561,6 +625,14 @@ final class CaptureManager: ObservableObject {
         defaults.set(data, forKey: Self.shortcutDefaultsKey)
     }
 
+    private func persistShortcutExclusions() {
+        let exclusions = shortcutExclusions.sorted {
+            $0.description.localizedCaseInsensitiveCompare($1.description) == .orderedAscending
+        }
+        guard let data = try? JSONEncoder().encode(exclusions) else { return }
+        defaults.set(data, forKey: Self.shortcutExclusionsDefaultsKey)
+    }
+
     private static func loadShortcutPins(from defaults: UserDefaults) -> [Int: PinnedWindow] {
         guard let data = defaults.data(forKey: shortcutDefaultsKey),
               let pins = try? JSONDecoder().decode([ShortcutPin].self, from: data) else {
@@ -570,6 +642,14 @@ final class CaptureManager: ObservableObject {
             pins.filter { (1...9).contains($0.slot) }.map { ($0.slot, $0.window) },
             uniquingKeysWith: { _, newest in newest }
         )
+    }
+
+    private static func loadShortcutExclusions(from defaults: UserDefaults) -> Set<PinnedWindow> {
+        guard let data = defaults.data(forKey: shortcutExclusionsDefaultsKey),
+              let exclusions = try? JSONDecoder().decode([PinnedWindow].self, from: data) else {
+            return []
+        }
+        return Set(exclusions)
     }
 
     private func shortcutList(_ slots: Set<Int>) -> String {

@@ -26,7 +26,7 @@ struct WindowSource: Identifiable {
     }
 }
 
-struct PinnedWindow: Codable, Equatable {
+struct PinnedWindow: Codable, Hashable {
     let bundleIdentifier: String
     let applicationName: String
     let title: String

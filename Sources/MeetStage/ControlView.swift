@@ -1,9 +1,8 @@
 import SwiftUI
 
 enum ControlWindowSizing {
-    static let size = NSSize(width: 340, height: 80)
-    static let maximumVisibleSources = 3
-    static let sourceAreaWidth: CGFloat = 186
+    static let size = NSSize(width: 318, height: 92)
+    static let sourceAreaWidth: CGFloat = 190
 }
 
 struct ControlView: View {
@@ -17,7 +16,7 @@ struct ControlView: View {
             } else if manager.windows.isEmpty {
                 emptyStrip
             } else {
-                sourceStrip
+                sourcePanel
             }
         }
         .padding(8)
@@ -35,30 +34,18 @@ struct ControlView: View {
         }
     }
 
+    private var sourcePanel: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            sourceStrip
+            currentWindowLabel
+        }
+    }
+
     private var sourceStrip: some View {
         HStack(spacing: 7) {
             captureStatusButton
 
-            HStack(spacing: 6) {
-                ForEach(visibleSources) { source in
-                    CompactWindowButton(
-                        source: source,
-                        shortcut: manager.shortcut(for: source),
-                        isShortcutAvailable: manager.shortcut(for: source).map {
-                            !manager.unavailableShortcutSlots.contains($0)
-                        } ?? true,
-                        isSelected: source.id == manager.selectedWindowID,
-                        isPending: source.id == manager.pendingWindowID,
-                        shortcutOwner: manager.shortcutOwnerDescription(for:),
-                        action: { manager.select(source) },
-                        pin: { manager.pin(source, to: $0) },
-                        unpin: { manager.unpin(source) }
-                    )
-                }
-            }
-            .frame(width: ControlWindowSizing.sourceAreaWidth, alignment: .leading)
-
-            overflowMenu
+            sourceScroller
 
             Divider()
                 .frame(height: 38)
@@ -68,25 +55,68 @@ struct ControlView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var visibleSources: [WindowSource] {
-        let sources = manager.displayedWindows
-        var visible = Array(sources.prefix(ControlWindowSizing.maximumVisibleSources))
-        let focusedID = manager.pendingWindowID ?? manager.selectedWindowID
-
-        guard
-            let focusedID,
-            let focusedSource = sources.first(where: { $0.id == focusedID }),
-            !visible.contains(where: { $0.id == focusedID })
-        else {
-            return visible
+    private var sourceScroller: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 6) {
+                    ForEach(manager.displayedWindows) { source in
+                        CompactWindowButton(
+                            source: source,
+                            shortcut: manager.shortcut(for: source),
+                            isShortcutAvailable: manager.shortcut(for: source).map {
+                                !manager.unavailableShortcutSlots.contains($0)
+                            } ?? true,
+                            isSelected: source.id == manager.selectedWindowID,
+                            isPending: source.id == manager.pendingWindowID,
+                            shortcutOwner: manager.shortcutOwnerDescription(for:),
+                            action: { manager.select(source) },
+                            pin: { manager.pin(source, to: $0) },
+                            unpin: { manager.unpin(source) }
+                        )
+                        .id(source.id)
+                    }
+                }
+            }
+            .frame(width: ControlWindowSizing.sourceAreaWidth)
+            .accessibilityLabel("Available windows")
+            .accessibilityHint("Scroll horizontally to browse windows")
+            .onAppear {
+                scrollToFocusedSource(using: proxy)
+            }
+            .onChange(of: manager.pendingWindowID) { _, _ in
+                scrollToFocusedSource(using: proxy)
+            }
+            .onChange(of: manager.selectedWindowID) { _, _ in
+                scrollToFocusedSource(using: proxy)
+            }
+            .onChange(of: manager.displayedWindows.map(\.id)) { _, _ in
+                scrollToFocusedSource(using: proxy)
+            }
         }
+    }
 
-        if visible.count == ControlWindowSizing.maximumVisibleSources {
-            visible[visible.count - 1] = focusedSource
-        } else {
-            visible.append(focusedSource)
+    private func scrollToFocusedSource(using proxy: ScrollViewProxy) {
+        guard let focusedID = manager.pendingWindowID ?? manager.selectedWindowID else { return }
+        proxy.scrollTo(focusedID, anchor: .center)
+    }
+
+    private var currentWindowLabel: some View {
+        HStack(spacing: 7) {
+            Color.clear
+                .frame(width: 24, height: 1)
+
+            Text(manager.currentWindowDescription)
+                .font(.system(size: 10.5, weight: .medium))
+                .foregroundStyle(manager.isLive ? Color.primary : Color.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(width: ControlWindowSizing.sourceAreaWidth, alignment: .leading)
+                .help("Current window: \(manager.currentWindowDescription)")
+                .accessibilityLabel("Current window: \(manager.currentWindowDescription)")
+
+            Spacer(minLength: 0)
         }
-        return visible
+        .frame(height: 14)
     }
 
     private var captureStatusButton: some View {
@@ -116,67 +146,6 @@ struct ControlView: View {
             }
 
         }
-    }
-
-    private var overflowMenu: some View {
-        Menu {
-            ForEach(manager.displayedWindows) { source in
-                Button {
-                    manager.select(source)
-                } label: {
-                    Label {
-                        Text(overflowMenuTitle(for: source))
-                    } icon: {
-                        ApplicationMenuIcon(image: source.applicationIcon)
-                    }
-                }
-            }
-
-            if !manager.pinnedShortcuts.isEmpty {
-                Divider()
-                Menu("Manage Pinned Shortcuts") {
-                    ForEach(manager.pinnedShortcuts, id: \.slot) { pin in
-                        Button("Clear ⌥\(pin.slot) — \(pin.window.description)") {
-                            manager.clearShortcut(pin.slot)
-                        }
-                    }
-                }
-            }
-
-            if let notice = manager.controllerNotice {
-                Divider()
-                Button {} label: {
-                    Label(notice, systemImage: "exclamationmark.triangle.fill")
-                }
-                .disabled(true)
-            }
-        } label: {
-            Image(systemName: "ellipsis")
-                .frame(width: 24, height: 40)
-                .contentShape(Rectangle())
-        }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
-        .fixedSize()
-        .help("All windows and pinned shortcuts")
-        .accessibilityLabel("All windows and pinned shortcuts")
-    }
-
-    private func overflowMenuTitle(for source: WindowSource) -> String {
-        let windowDescription = "\(source.applicationName) — \(source.title)"
-        var prefixes: [String] = []
-
-        if let shortcut = manager.shortcut(for: source) {
-            prefixes.append("⌥\(shortcut)")
-        }
-        if source.id == manager.pendingWindowID {
-            prefixes.append("Switching")
-        } else if source.id == manager.selectedWindowID, manager.isLive {
-            prefixes.append("Live")
-        }
-
-        guard !prefixes.isEmpty else { return windowDescription }
-        return "\(prefixes.joined(separator: " · "))  \(windowDescription)"
     }
 
     private var permissionStrip: some View {
@@ -265,24 +234,6 @@ struct ControlView: View {
         manager.errorMessage ?? "Open an app window, then refresh."
     }
 
-}
-
-private struct ApplicationMenuIcon: View {
-    let image: NSImage?
-
-    @ViewBuilder
-    var body: some View {
-        if let image {
-            Image(nsImage: image)
-                .resizable()
-                .renderingMode(.original)
-                .scaledToFit()
-                .frame(width: 16, height: 16)
-        } else {
-            Image(systemName: "macwindow")
-                .frame(width: 16, height: 16)
-        }
-    }
 }
 
 private struct CompactWindowButton: View {
