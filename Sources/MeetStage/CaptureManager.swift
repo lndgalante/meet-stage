@@ -49,6 +49,13 @@ final class CaptureManager: ObservableObject {
     }
 
     private var stream: SCStream?
+    private var activeCaptureSource: WindowSource?
+    private var activeCaptureFormat: StageCaptureFormat?
+    private var capturesCursor = false
+    private var desiredCursorVisibility = false
+    private var isSwitchingStream = false
+    private var cursorVisibilityUpdateTask: Task<Void, Never>?
+    private var workspaceObservers: [NSObjectProtocol] = []
     private var awaitingLiveSelection: WindowSource?
     private var pendingSelection: WindowSource?
     private var selectionTask: Task<Void, Never>?
@@ -61,6 +68,39 @@ final class CaptureManager: ObservableObject {
         stageAspectRatio = StageWindowSizing.currentScreenAspectRatio()
         shortcutPins = Self.loadShortcutPins(from: defaults)
         shortcutExclusions = Self.loadShortcutExclusions(from: defaults)
+
+        let workspaceCenter = NSWorkspace.shared.notificationCenter
+        workspaceObservers = [
+            workspaceCenter.addObserver(
+                forName: NSWorkspace.didActivateApplicationNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] notification in
+                guard let application = notification.userInfo?[NSWorkspace.applicationUserInfoKey]
+                    as? NSRunningApplication else { return }
+                Task { @MainActor [weak self] in
+                    self?.handleApplicationActivation(application)
+                }
+            },
+            workspaceCenter.addObserver(
+                forName: NSWorkspace.didDeactivateApplicationNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] notification in
+                guard let application = notification.userInfo?[NSWorkspace.applicationUserInfoKey]
+                    as? NSRunningApplication else { return }
+                Task { @MainActor [weak self] in
+                    self?.handleApplicationDeactivation(application)
+                }
+            }
+        ]
+    }
+
+    deinit {
+        cursorVisibilityUpdateTask?.cancel()
+        for observer in workspaceObservers {
+            NSWorkspace.shared.notificationCenter.removeObserver(observer)
+        }
     }
 
     var isCapturing: Bool {
@@ -235,6 +275,7 @@ final class CaptureManager: ObservableObject {
 
         let streamToStop = stream
         stream = nil
+        resetCursorTracking()
         selectedWindowID = nil
         selectedWindowDescription = "Nothing selected"
         errorMessage = nil
@@ -406,20 +447,43 @@ final class CaptureManager: ObservableObject {
     }
 
     private func switchCapture(to source: WindowSource) async throws {
+        isSwitchingStream = true
+        defer {
+            isSwitchingStream = false
+            synchronizeDesiredCursorVisibility()
+        }
+        if let cursorVisibilityUpdateTask {
+            cursorVisibilityUpdateTask.cancel()
+            await cursorVisibilityUpdateTask.value
+            self.cursorVisibilityUpdateTask = nil
+        }
+        try Task.checkCancellation()
+
         let filter = SCContentFilter(desktopIndependentWindow: source.window)
         let format = StageWindowSizing.captureFormat(for: filter)
-        let configuration = makeStreamConfiguration(for: format)
+        let showsCursor = shouldCaptureCursor(for: source)
+        let configuration = makeStreamConfiguration(
+            for: format,
+            showsCursor: showsCursor
+        )
 
         if let stream {
             let renderGeneration = renderer.prepareForSourceSwitch()
             do {
                 try await stream.updateConfiguration(configuration)
                 try await stream.updateContentFilter(filter)
+                try Task.checkCancellation()
+                guard self.stream === stream else {
+                    throw CaptureLifecycleError.stoppedBeforeFirstFrame
+                }
                 renderer.commitSourceSwitch(generation: renderGeneration)
             } catch {
                 renderer.cancelSourceSwitch(generation: renderGeneration)
                 throw error
             }
+            activeCaptureSource = source
+            activeCaptureFormat = format
+            capturesCursor = showsCursor
             stageAspectRatio = format.aspectRatio
             return
         }
@@ -451,10 +515,16 @@ final class CaptureManager: ObservableObject {
         guard stream === newStream else {
             throw CaptureLifecycleError.stoppedBeforeFirstFrame
         }
+        activeCaptureSource = source
+        activeCaptureFormat = format
+        capturesCursor = showsCursor
         stageAspectRatio = format.aspectRatio
     }
 
-    private func makeStreamConfiguration(for format: StageCaptureFormat) -> SCStreamConfiguration {
+    private func makeStreamConfiguration(
+        for format: StageCaptureFormat,
+        showsCursor: Bool
+    ) -> SCStreamConfiguration {
         let configuration = SCStreamConfiguration()
         configuration.width = format.width
         configuration.height = format.height
@@ -462,7 +532,7 @@ final class CaptureManager: ObservableObject {
         configuration.queueDepth = 3
         configuration.pixelFormat = kCVPixelFormatType_32BGRA
         configuration.captureResolution = .best
-        configuration.showsCursor = true
+        configuration.showsCursor = showsCursor
         configuration.scalesToFit = true
         configuration.preservesAspectRatio = true
         configuration.backgroundColor = Self.blackBackground
@@ -471,6 +541,89 @@ final class CaptureManager: ObservableObject {
         configuration.ignoreGlobalClipSingleWindow = true
         configuration.streamName = "BetterDemos — Demo Stage"
         return configuration
+    }
+
+    private func shouldCaptureCursor(for source: WindowSource) -> Bool {
+        guard source.processIdentifier != 0,
+              let frontmostApplication = NSWorkspace.shared.frontmostApplication else {
+            return false
+        }
+        return frontmostApplication.processIdentifier == source.processIdentifier
+    }
+
+    private func handleApplicationActivation(_ application: NSRunningApplication) {
+        guard let source = activeCaptureSource else { return }
+        desiredCursorVisibility = application.processIdentifier == source.processIdentifier
+            && shouldCaptureCursor(for: source)
+        scheduleCursorVisibilityUpdateIfNeeded()
+    }
+
+    private func handleApplicationDeactivation(_ application: NSRunningApplication) {
+        guard let source = activeCaptureSource,
+              application.processIdentifier == source.processIdentifier else { return }
+        desiredCursorVisibility = false
+        scheduleCursorVisibilityUpdateIfNeeded()
+    }
+
+    private func synchronizeDesiredCursorVisibility() {
+        desiredCursorVisibility = activeCaptureSource.map(shouldCaptureCursor(for:)) ?? false
+        scheduleCursorVisibilityUpdateIfNeeded()
+    }
+
+    private func scheduleCursorVisibilityUpdateIfNeeded() {
+        guard !isSwitchingStream,
+              stream != nil,
+              activeCaptureSource != nil,
+              activeCaptureFormat != nil,
+              capturesCursor != desiredCursorVisibility,
+              cursorVisibilityUpdateTask == nil else { return }
+
+        cursorVisibilityUpdateTask = Task { [weak self] in
+            await self?.applyCursorVisibilityUpdate()
+        }
+    }
+
+    private func applyCursorVisibilityUpdate() async {
+        guard !Task.isCancelled,
+              let targetStream = stream,
+              let source = activeCaptureSource,
+              let format = activeCaptureFormat else {
+            cursorVisibilityUpdateTask = nil
+            return
+        }
+
+        let requestedVisibility = desiredCursorVisibility
+        let configuration = makeStreamConfiguration(
+            for: format,
+            showsCursor: requestedVisibility
+        )
+
+        do {
+            try await targetStream.updateConfiguration(configuration)
+            guard stream === targetStream,
+                  activeCaptureSource?.id == source.id else {
+                cursorVisibilityUpdateTask = nil
+                return
+            }
+
+            capturesCursor = requestedVisibility
+            cursorVisibilityUpdateTask = nil
+            scheduleCursorVisibilityUpdateIfNeeded()
+        } catch {
+            cursorVisibilityUpdateTask = nil
+            guard !Task.isCancelled, stream === targetStream else { return }
+            errorMessage = "Could not update cursor visibility: \(Self.friendlyMessage(for: error))"
+        }
+    }
+
+    private func resetCursorTracking() {
+        cursorVisibilityUpdateTask?.cancel()
+        cursorVisibilityUpdateTask = nil
+        activeCaptureSource = nil
+        activeCaptureFormat = nil
+        capturesCursor = false
+        desiredCursorVisibility = false
+        isSwitchingStream = false
     }
 
     private func handleFrame(from sourceStream: SCStream, geometry: CaptureFrameGeometry) {
@@ -502,6 +655,7 @@ final class CaptureManager: ObservableObject {
         guard stream === stoppedStream else { return }
 
         stream = nil
+        resetCursorTracking()
         awaitingLiveSelection = nil
         pendingSelection = nil
         pendingWindowID = nil
@@ -527,6 +681,7 @@ final class CaptureManager: ObservableObject {
                 configuration.width = 480
                 configuration.height = 270
                 configuration.pixelFormat = kCVPixelFormatType_32BGRA
+                configuration.showsCursor = false
                 configuration.scalesToFit = true
                 configuration.preservesAspectRatio = true
                 configuration.backgroundColor = Self.blackBackground

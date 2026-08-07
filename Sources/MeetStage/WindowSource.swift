@@ -7,6 +7,7 @@ struct WindowSource: Identifiable {
     let title: String
     let applicationName: String
     let bundleIdentifier: String
+    let processIdentifier: pid_t
     var thumbnail: NSImage?
     var applicationIcon: NSImage?
 
@@ -16,6 +17,7 @@ struct WindowSource: Identifiable {
         title = window.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "Untitled Window"
         applicationName = window.owningApplication?.applicationName ?? "Unknown Application"
         bundleIdentifier = window.owningApplication?.bundleIdentifier ?? ""
+        processIdentifier = window.owningApplication?.processID ?? 0
 
         if !bundleIdentifier.isEmpty,
            let applicationURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) {

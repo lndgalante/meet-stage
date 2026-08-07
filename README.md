@@ -18,7 +18,9 @@ BetterDemos has two windows:
 The Demo Stage follows the selected window's aspect ratio and capture dimensions
 to avoid unnecessary black padding. A source appears as **Live** only after
 ScreenCaptureKit delivers a complete video frame. The controller keeps the name
-of the current live window visible below the source strip.
+of the current live window visible below the source strip. The pointer appears
+on the Demo Stage only while the selected source application is active, so
+moving through a different app does not leak its cursor position into the demo.
 
 BetterDemos automatically assigns **Option+1** through **Option+9** to the first
 nine available windows. Right-click a source to move it to a specific shortcut
