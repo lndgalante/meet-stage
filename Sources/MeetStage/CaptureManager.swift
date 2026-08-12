@@ -56,6 +56,9 @@ final class CaptureManager: ObservableObject {
     private var isSwitchingStream = false
     private var cursorVisibilityUpdateTask: Task<Void, Never>?
     private var workspaceObservers: [NSObjectProtocol] = []
+    private var windowMonitoringTask: Task<Void, Never>?
+    private var windowRefreshTask: Task<Void, Never>?
+    private var queuedManualRefresh = false
     private var awaitingLiveSelection: WindowSource?
     private var pendingSelection: WindowSource?
     private var selectionTask: Task<Void, Never>?
@@ -92,12 +95,50 @@ final class CaptureManager: ObservableObject {
                 Task { @MainActor [weak self] in
                     self?.handleApplicationDeactivation(application)
                 }
+            },
+            workspaceCenter.addObserver(
+                forName: NSWorkspace.didLaunchApplicationNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.refreshWindowsAutomatically()
+                }
+            },
+            workspaceCenter.addObserver(
+                forName: NSWorkspace.didTerminateApplicationNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.refreshWindowsAutomatically()
+                }
+            },
+            workspaceCenter.addObserver(
+                forName: NSWorkspace.didHideApplicationNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.refreshWindowsAutomatically()
+                }
+            },
+            workspaceCenter.addObserver(
+                forName: NSWorkspace.didUnhideApplicationNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.refreshWindowsAutomatically()
+                }
             }
         ]
     }
 
     deinit {
         cursorVisibilityUpdateTask?.cancel()
+        windowMonitoringTask?.cancel()
+        windowRefreshTask?.cancel()
         for observer in workspaceObservers {
             NSWorkspace.shared.notificationCenter.removeObserver(observer)
         }
@@ -177,16 +218,38 @@ final class CaptureManager: ObservableObject {
         return "No window selected"
     }
 
-    func refreshWindows() {
-        guard !isRefreshing else { return }
+    func startWindowMonitoring() {
+        guard windowMonitoringTask == nil else { return }
 
+        windowMonitoringTask = Task { [weak self] in
+            while !Task.isCancelled {
+                do {
+                    try await Task.sleep(for: .seconds(1))
+                } catch {
+                    return
+                }
+                guard !Task.isCancelled else { return }
+                self?.refreshWindowsAutomatically()
+            }
+        }
+    }
+
+    func refreshWindows() {
+        requestWindowRefresh(isManual: true)
+    }
+
+    private func refreshWindowsAutomatically() {
+        requestWindowRefresh(isManual: false)
+    }
+
+    private func requestWindowRefresh(isManual: Bool) {
         guard CGPreflightScreenCaptureAccess() else {
             windows = []
             reconcileShortcuts(with: [])
             state = .permissionRequired
             errorMessage = nil
 
-            if !requestedPermissionThisLaunch {
+            if isManual, !requestedPermissionThisLaunch {
                 requestedPermissionThisLaunch = true
                 if CGRequestScreenCaptureAccess() {
                     refreshWindows()
@@ -195,56 +258,88 @@ final class CaptureManager: ObservableObject {
             return
         }
 
-        isRefreshing = true
-        errorMessage = nil
-        if stream == nil && selectionTask == nil {
-            state = .loading
+        guard windowRefreshTask == nil else {
+            if isManual {
+                queuedManualRefresh = true
+                isRefreshing = true
+            }
+            return
         }
 
-        Task {
-            do {
-                let content = try await SCShareableContent.excludingDesktopWindows(
-                    false,
-                    onScreenWindowsOnly: true
-                )
-                let ownBundleIdentifier = Bundle.main.bundleIdentifier
-                let candidates = content.windows
-                    .filter { window in
-                        let frame = window.frame
-                        let title = window.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                        let bundleIdentifier = window.owningApplication?.bundleIdentifier
-
-                        return window.windowLayer == 0
-                            && frame.width >= 160
-                            && frame.height >= 100
-                            && !title.isEmpty
-                            && window.owningApplication != nil
-                            && bundleIdentifier != ownBundleIdentifier
-                    }
-                    .map(WindowSource.init(window:))
-                    .sorted {
-                        let first = "\($0.applicationName) \($0.title)"
-                        let second = "\($1.applicationName) \($1.title)"
-                        return first.localizedCaseInsensitiveCompare(second) == .orderedAscending
-                    }
-
-                windows = candidates
-                reconcileShortcuts(with: candidates)
-                if stream == nil {
-                    state = selectionTask == nil ? .idle : .switching
-                } else if pendingWindowID == nil, selectedWindowID != nil {
-                    state = .capturing
-                }
-
-                await loadThumbnails(for: candidates)
-            } catch {
-                let message = Self.friendlyMessage(for: error)
-                errorMessage = message
-                if stream == nil {
-                    state = .failed(message)
-                }
+        if isManual {
+            isRefreshing = true
+            errorMessage = nil
+            if stream == nil && selectionTask == nil {
+                state = .loading
             }
-            isRefreshing = false
+        }
+
+        windowRefreshTask = Task { [weak self] in
+            await self?.performWindowRefresh(isManual: isManual)
+        }
+    }
+
+    private func performWindowRefresh(isManual: Bool) async {
+        defer {
+            windowRefreshTask = nil
+            if isManual {
+                isRefreshing = false
+            }
+
+            if queuedManualRefresh {
+                queuedManualRefresh = false
+                refreshWindows()
+            }
+        }
+
+        do {
+            let content = try await SCShareableContent.excludingDesktopWindows(
+                false,
+                onScreenWindowsOnly: true
+            )
+            let existingWindows = Dictionary(uniqueKeysWithValues: windows.map { ($0.id, $0) })
+            let ownBundleIdentifier = Bundle.main.bundleIdentifier
+            let candidates = content.windows
+                .filter { window in
+                    let frame = window.frame
+                    let title = window.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                    let bundleIdentifier = window.owningApplication?.bundleIdentifier
+
+                    return window.windowLayer == 0
+                        && frame.width >= 160
+                        && frame.height >= 100
+                        && !title.isEmpty
+                        && window.owningApplication != nil
+                        && bundleIdentifier != ownBundleIdentifier
+                }
+                .map { window in
+                    WindowSource(window: window, reusing: existingWindows[window.windowID])
+                }
+                .sorted {
+                    let first = "\($0.applicationName) \($0.title)"
+                    let second = "\($1.applicationName) \($1.title)"
+                    return first.localizedCaseInsensitiveCompare(second) == .orderedAscending
+                }
+
+            windows = candidates
+            reconcileShortcuts(with: candidates)
+            if stream == nil {
+                state = selectionTask == nil ? .idle : .switching
+            } else if pendingWindowID == nil, selectedWindowID != nil {
+                state = .capturing
+            }
+
+            let sourcesNeedingThumbnails = isManual
+                ? candidates
+                : candidates.filter { $0.thumbnail == nil }
+            await loadThumbnails(for: sourcesNeedingThumbnails)
+        } catch {
+            guard isManual else { return }
+            let message = Self.friendlyMessage(for: error)
+            errorMessage = message
+            if stream == nil {
+                state = .failed(message)
+            }
         }
     }
 
@@ -552,6 +647,7 @@ final class CaptureManager: ObservableObject {
     }
 
     private func handleApplicationActivation(_ application: NSRunningApplication) {
+        refreshWindowsAutomatically()
         guard let source = activeCaptureSource else { return }
         desiredCursorVisibility = application.processIdentifier == source.processIdentifier
             && shouldCaptureCursor(for: source)
@@ -559,6 +655,7 @@ final class CaptureManager: ObservableObject {
     }
 
     private func handleApplicationDeactivation(_ application: NSRunningApplication) {
+        refreshWindowsAutomatically()
         guard let source = activeCaptureSource,
               application.processIdentifier == source.processIdentifier else { return }
         desiredCursorVisibility = false

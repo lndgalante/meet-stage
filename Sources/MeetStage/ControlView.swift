@@ -31,6 +31,7 @@ struct ControlView: View {
         .background(WindowConfigurator(kind: .control))
         .task {
             openWindow(id: "stage")
+            manager.startWindowMonitoring()
             manager.refreshWindows()
         }
     }
@@ -243,7 +244,7 @@ struct ControlView: View {
     }
 
     private var emptyDetail: String {
-        manager.errorMessage ?? "Open an app window, then refresh."
+        manager.errorMessage ?? "Open an app window. It will appear automatically."
     }
 
 }

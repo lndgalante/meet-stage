@@ -30,8 +30,9 @@ window for a manual pin is unavailable or ambiguous, BetterDemos keeps the
 shortcut reserved instead of silently pointing it somewhere else.
 
 Swipe or scroll horizontally over the window strip to browse every available
-source. When you switch with a global shortcut, BetterDemos brings that source
-into view automatically.
+source. Newly opened windows appear automatically, and closed windows are
+removed automatically. When you switch with a global shortcut, BetterDemos
+brings that source into view automatically.
 
 ## Requirements
 
@@ -193,7 +194,6 @@ not notarized for public distribution.
 ## Known limitations
 
 - Video only; source audio is intentionally not captured.
-- Closed or newly opened windows require **Refresh available windows**.
 - macOS may block protected video surfaces, causing them to appear black.
 - Keep the Demo Stage open while it is being shared.
 - If an app restores two windows with the same title, its pinned shortcut stays
