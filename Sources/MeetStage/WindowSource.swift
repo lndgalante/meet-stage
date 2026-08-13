@@ -1,6 +1,7 @@
 import AppKit
 import ScreenCaptureKit
 
+/// A shareable ScreenCaptureKit window plus presentation data for the picker.
 struct WindowSource: Identifiable {
     let id: CGWindowID
     let window: SCWindow
@@ -19,16 +20,19 @@ struct WindowSource: Identifiable {
         bundleIdentifier = window.owningApplication?.bundleIdentifier ?? ""
         processIdentifier = window.owningApplication?.processID ?? 0
 
-        let matchesExistingWindow = presentation?.id == id
+        let matchesExistingWindow =
+            presentation?.id == id
             && presentation?.title == title
             && presentation?.bundleIdentifier == bundleIdentifier
         thumbnail = matchesExistingWindow ? presentation?.thumbnail : nil
 
         if presentation?.bundleIdentifier == bundleIdentifier,
-           presentation?.applicationName == applicationName {
+            presentation?.applicationName == applicationName
+        {
             applicationIcon = presentation?.applicationIcon
         } else if !bundleIdentifier.isEmpty,
-           let applicationURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier) {
+            let applicationURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleIdentifier)
+        {
             applicationIcon = NSWorkspace.shared.icon(forFile: applicationURL.path)
         } else {
             applicationIcon = nil
@@ -36,22 +40,36 @@ struct WindowSource: Identifiable {
     }
 }
 
+/// A persisted window identity that deliberately excludes transient window IDs.
 struct PinnedWindow: Codable, Hashable {
     let bundleIdentifier: String
     let applicationName: String
     let title: String
 
+    init(bundleIdentifier: String, applicationName: String, title: String) {
+        self.bundleIdentifier = bundleIdentifier
+        self.applicationName = applicationName
+        self.title = title
+    }
+
     init(source: WindowSource) {
-        bundleIdentifier = source.bundleIdentifier
-        applicationName = source.applicationName
-        title = source.title
+        self.init(
+            bundleIdentifier: source.bundleIdentifier,
+            applicationName: source.applicationName,
+            title: source.title
+        )
     }
 
     func matches(_ source: WindowSource) -> Bool {
-        let sameApplication = bundleIdentifier.isEmpty
-            ? applicationName == source.applicationName
-            : bundleIdentifier == source.bundleIdentifier
-        return sameApplication && title == source.title
+        matches(PinnedWindow(source: source))
+    }
+
+    func matches(_ candidate: PinnedWindow) -> Bool {
+        let sameApplication =
+            bundleIdentifier.isEmpty
+            ? applicationName == candidate.applicationName
+            : bundleIdentifier == candidate.bundleIdentifier
+        return sameApplication && title == candidate.title
     }
 
     var description: String {

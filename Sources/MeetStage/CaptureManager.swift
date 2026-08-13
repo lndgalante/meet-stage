@@ -2,14 +2,12 @@ import AppKit
 import CoreMedia
 import ScreenCaptureKit
 
+/// Coordinates source discovery, ScreenCaptureKit lifecycle, and UI-facing state.
 @MainActor
 final class CaptureManager: ObservableObject {
     // SCStreamConfiguration.backgroundColor is an unretained CGColorRef. Keep
     // this object alive while ScreenCaptureKit copies stream configurations.
     private static let blackBackground = CGColor(gray: 0, alpha: 1)
-    // Keep this legacy key stable so rebranding never discards user-pinned shortcuts.
-    private static let shortcutDefaultsKey = "MeetStage.shortcutPins.v1"
-    private static let shortcutExclusionsDefaultsKey = "MeetStage.shortcutExclusions.v1"
 
     @Published private(set) var windows: [WindowSource] = []
     @Published private(set) var selectedWindowID: CGWindowID?
@@ -26,21 +24,21 @@ final class CaptureManager: ObservableObject {
 
     let renderer = SampleBufferRenderer()
 
-    private let defaults: UserDefaults
+    private let shortcutStore: ShortcutPreferencesStore
     private let sampleQueue = DispatchQueue(
         label: "dev.poc.meetstage.screen-frames",
         qos: .userInteractive
     )
     private lazy var streamOutput = CaptureStreamOutput(
         renderer: renderer,
-        onFrame: { [weak self] sourceStream, geometry in
+        onFrame: { [weak self] sourceStreamID, geometry in
             Task { @MainActor in
-                self?.handleFrame(from: sourceStream, geometry: geometry)
+                self?.handleFrame(from: sourceStreamID, geometry: geometry)
             }
         },
-        onFailure: { [weak self] sourceStream, error in
+        onFailure: { [weak self] sourceStreamID, error in
             Task { @MainActor in
-                self?.handleStreamStopped(sourceStream, error: error)
+                self?.handleStreamStopped(sourceStreamID, error: error)
             }
         }
     )
@@ -55,7 +53,7 @@ final class CaptureManager: ObservableObject {
     private var desiredCursorVisibility = false
     private var isSwitchingStream = false
     private var cursorVisibilityUpdateTask: Task<Void, Never>?
-    private var workspaceObservers: [NSObjectProtocol] = []
+    private let workspaceObservationBag: WorkspaceObservationBag
     private var windowMonitoringTask: Task<Void, Never>?
     private var windowRefreshTask: Task<Void, Never>?
     private var queuedManualRefresh = false
@@ -67,20 +65,24 @@ final class CaptureManager: ObservableObject {
     private var resolvedPinnedWindowIDs: [Int: CGWindowID] = [:]
 
     init(defaults: UserDefaults = .standard) {
-        self.defaults = defaults
+        let shortcutStore = ShortcutPreferencesStore(defaults: defaults)
+        self.shortcutStore = shortcutStore
         stageAspectRatio = StageWindowSizing.currentScreenAspectRatio()
-        shortcutPins = Self.loadShortcutPins(from: defaults)
-        shortcutExclusions = Self.loadShortcutExclusions(from: defaults)
+        shortcutPins = shortcutStore.loadPins()
+        shortcutExclusions = shortcutStore.loadExclusions()
 
         let workspaceCenter = NSWorkspace.shared.notificationCenter
-        workspaceObservers = [
+        workspaceObservationBag = WorkspaceObservationBag(center: workspaceCenter)
+        workspaceObservationBag.store([
             workspaceCenter.addObserver(
                 forName: NSWorkspace.didActivateApplicationNotification,
                 object: nil,
                 queue: .main
             ) { [weak self] notification in
-                guard let application = notification.userInfo?[NSWorkspace.applicationUserInfoKey]
-                    as? NSRunningApplication else { return }
+                guard
+                    let application = notification.userInfo?[NSWorkspace.applicationUserInfoKey]
+                        as? NSRunningApplication
+                else { return }
                 Task { @MainActor [weak self] in
                     self?.handleApplicationActivation(application)
                 }
@@ -90,8 +92,10 @@ final class CaptureManager: ObservableObject {
                 object: nil,
                 queue: .main
             ) { [weak self] notification in
-                guard let application = notification.userInfo?[NSWorkspace.applicationUserInfoKey]
-                    as? NSRunningApplication else { return }
+                guard
+                    let application = notification.userInfo?[NSWorkspace.applicationUserInfoKey]
+                        as? NSRunningApplication
+                else { return }
                 Task { @MainActor [weak self] in
                     self?.handleApplicationDeactivation(application)
                 }
@@ -132,16 +136,13 @@ final class CaptureManager: ObservableObject {
                     self?.refreshWindowsAutomatically()
                 }
             }
-        ]
+        ])
     }
 
     deinit {
         cursorVisibilityUpdateTask?.cancel()
         windowMonitoringTask?.cancel()
         windowRefreshTask?.cancel()
-        for observer in workspaceObservers {
-            NSWorkspace.shared.notificationCenter.removeObserver(observer)
-        }
     }
 
     var isCapturing: Bool {
@@ -212,7 +213,8 @@ final class CaptureManager: ObservableObject {
             return selectedWindowDescription
         }
         if let pendingWindowID,
-           let pendingSource = windows.first(where: { $0.id == pendingWindowID }) {
+            let pendingSource = windows.first(where: { $0.id == pendingWindowID })
+        {
             return "Preparing \(pendingSource.applicationName) — \(pendingSource.title)"
         }
         return "No window selected"
@@ -329,7 +331,8 @@ final class CaptureManager: ObservableObject {
                 state = .capturing
             }
 
-            let sourcesNeedingThumbnails = isManual
+            let sourcesNeedingThumbnails =
+                isManual
                 ? candidates
                 : candidates.filter { $0.thumbnail == nil }
             await loadThumbnails(for: sourcesNeedingThumbnails)
@@ -369,7 +372,7 @@ final class CaptureManager: ObservableObject {
         selectionTask = nil
 
         let streamToStop = stream
-        stream = nil
+        self.stream = nil
         resetCursorTracking()
         selectedWindowID = nil
         selectedWindowDescription = "Nothing selected"
@@ -381,7 +384,7 @@ final class CaptureManager: ObservableObject {
         Task {
             do {
                 try await streamToStop.stopCapture()
-            } catch where stream == nil && state == .idle {
+            } catch  where stream == nil && state == .idle {
                 let message = Self.friendlyMessage(for: error)
                 errorMessage = message
                 state = .failed(message)
@@ -400,14 +403,15 @@ final class CaptureManager: ObservableObject {
             return pin.description
         }
         guard let windowID = shortcutWindowIDs[slot],
-              let source = windows.first(where: { $0.id == windowID }) else {
+            let source = windows.first(where: { $0.id == windowID })
+        else {
             return nil
         }
         return "\(source.applicationName) — \(source.title)"
     }
 
     func pin(_ source: WindowSource, to slot: Int) {
-        guard (1...9).contains(slot) else { return }
+        guard ShortcutSlot.isValid(slot) else { return }
 
         let identity = PinnedWindow(source: source)
         shortcutExclusions.remove(identity)
@@ -444,7 +448,8 @@ final class CaptureManager: ObservableObject {
 
     func clearShortcut(_ slot: Int) {
         if let windowID = shortcutWindowIDs[slot],
-           let source = windows.first(where: { $0.id == windowID }) {
+            let source = windows.first(where: { $0.id == windowID })
+        {
             shortcutExclusions.insert(PinnedWindow(source: source))
         } else if let pin = shortcutPins[slot] {
             shortcutExclusions.insert(pin)
@@ -463,7 +468,8 @@ final class CaptureManager: ObservableObject {
             return
         }
         guard let windowID = shortcutWindowIDs[slot],
-              let source = windows.first(where: { $0.id == windowID }) else {
+            let source = windows.first(where: { $0.id == windowID })
+        else {
             if let pin = shortcutPins[slot] {
                 errorMessage = "Option+\(slot) stays pinned to \(pin.description), but that window is unavailable."
                 NSSound.beep()
@@ -474,9 +480,11 @@ final class CaptureManager: ObservableObject {
     }
 
     func openScreenRecordingSettings() {
-        guard let url = URL(
-            string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
-        ) else { return }
+        guard
+            let url = URL(
+                string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture"
+            )
+        else { return }
         NSWorkspace.shared.open(url)
     }
 
@@ -510,8 +518,9 @@ final class CaptureManager: ObservableObject {
 
     private func processPendingSelections(generation: Int) async {
         while !Task.isCancelled,
-              generation == selectionGeneration,
-              let nextSelection = pendingSelection {
+            generation == selectionGeneration,
+            let nextSelection = pendingSelection
+        {
             pendingSelection = nil
             state = .switching
 
@@ -640,7 +649,8 @@ final class CaptureManager: ObservableObject {
 
     private func shouldCaptureCursor(for source: WindowSource) -> Bool {
         guard source.processIdentifier != 0,
-              let frontmostApplication = NSWorkspace.shared.frontmostApplication else {
+            let frontmostApplication = NSWorkspace.shared.frontmostApplication
+        else {
             return false
         }
         return frontmostApplication.processIdentifier == source.processIdentifier
@@ -649,7 +659,8 @@ final class CaptureManager: ObservableObject {
     private func handleApplicationActivation(_ application: NSRunningApplication) {
         refreshWindowsAutomatically()
         guard let source = activeCaptureSource else { return }
-        desiredCursorVisibility = application.processIdentifier == source.processIdentifier
+        desiredCursorVisibility =
+            application.processIdentifier == source.processIdentifier
             && shouldCaptureCursor(for: source)
         scheduleCursorVisibilityUpdateIfNeeded()
     }
@@ -657,7 +668,8 @@ final class CaptureManager: ObservableObject {
     private func handleApplicationDeactivation(_ application: NSRunningApplication) {
         refreshWindowsAutomatically()
         guard let source = activeCaptureSource,
-              application.processIdentifier == source.processIdentifier else { return }
+            application.processIdentifier == source.processIdentifier
+        else { return }
         desiredCursorVisibility = false
         scheduleCursorVisibilityUpdateIfNeeded()
     }
@@ -669,11 +681,12 @@ final class CaptureManager: ObservableObject {
 
     private func scheduleCursorVisibilityUpdateIfNeeded() {
         guard !isSwitchingStream,
-              stream != nil,
-              activeCaptureSource != nil,
-              activeCaptureFormat != nil,
-              capturesCursor != desiredCursorVisibility,
-              cursorVisibilityUpdateTask == nil else { return }
+            stream != nil,
+            activeCaptureSource != nil,
+            activeCaptureFormat != nil,
+            capturesCursor != desiredCursorVisibility,
+            cursorVisibilityUpdateTask == nil
+        else { return }
 
         cursorVisibilityUpdateTask = Task { [weak self] in
             await self?.applyCursorVisibilityUpdate()
@@ -682,9 +695,10 @@ final class CaptureManager: ObservableObject {
 
     private func applyCursorVisibilityUpdate() async {
         guard !Task.isCancelled,
-              let targetStream = stream,
-              let source = activeCaptureSource,
-              let format = activeCaptureFormat else {
+            let targetStream = stream,
+            let source = activeCaptureSource,
+            let format = activeCaptureFormat
+        else {
             cursorVisibilityUpdateTask = nil
             return
         }
@@ -698,7 +712,8 @@ final class CaptureManager: ObservableObject {
         do {
             try await targetStream.updateConfiguration(configuration)
             guard stream === targetStream,
-                  activeCaptureSource?.id == source.id else {
+                activeCaptureSource?.id == source.id
+            else {
                 cursorVisibilityUpdateTask = nil
                 return
             }
@@ -723,8 +738,8 @@ final class CaptureManager: ObservableObject {
         isSwitchingStream = false
     }
 
-    private func handleFrame(from sourceStream: SCStream, geometry: CaptureFrameGeometry) {
-        guard stream === sourceStream else { return }
+    private func handleFrame(from sourceStreamID: ObjectIdentifier, geometry: CaptureFrameGeometry) {
+        guard let stream, ObjectIdentifier(stream) == sourceStreamID else { return }
 
         let contentAspectRatio = geometry.contentAspectRatio
         if abs(stageAspectRatio - contentAspectRatio) > 0.001 {
@@ -748,10 +763,10 @@ final class CaptureManager: ObservableObject {
         }
     }
 
-    private func handleStreamStopped(_ stoppedStream: SCStream, error: Error) {
-        guard stream === stoppedStream else { return }
+    private func handleStreamStopped(_ stoppedStreamID: ObjectIdentifier, error: Error) {
+        guard let stream, ObjectIdentifier(stream) == stoppedStreamID else { return }
 
-        stream = nil
+        self.stream = nil
         resetCursorTracking()
         awaitingLiveSelection = nil
         pendingSelection = nil
@@ -801,72 +816,19 @@ final class CaptureManager: ObservableObject {
     }
 
     private func reconcileShortcuts(with sources: [WindowSource]) {
-        let oldResolvedIDs = shortcutWindowIDs
-        let oldPinnedWindowIDs = resolvedPinnedWindowIDs
-        let sourcesByID = Dictionary(uniqueKeysWithValues: sources.map { ($0.id, $0) })
-        var newResolvedIDs: [Int: CGWindowID] = [:]
-        var newPinnedWindowIDs: [Int: CGWindowID] = [:]
-        var usedWindowIDs: Set<CGWindowID> = []
-        var didUpdatePersistedIdentity = false
+        let resolution = ShortcutAssignmentPolicy.resolve(
+            candidates: sources.map(ShortcutCandidate.init(source:)),
+            pins: shortcutPins,
+            exclusions: shortcutExclusions,
+            previousAssignments: shortcutWindowIDs,
+            previousPinnedAssignments: resolvedPinnedWindowIDs
+        )
+        let pinsChanged = resolution.pins != shortcutPins
 
-        for slot in shortcutPins.keys.sorted() {
-            guard let pin = shortcutPins[slot] else { continue }
-
-            var resolvedSource: WindowSource?
-            if let oldWindowID = oldPinnedWindowIDs[slot],
-               let existingSource = sourcesByID[oldWindowID],
-               !usedWindowIDs.contains(oldWindowID) {
-                resolvedSource = existingSource
-            } else {
-                let matches = sources.filter {
-                    !usedWindowIDs.contains($0.id) && pin.matches($0)
-                }
-                if matches.count == 1 {
-                    resolvedSource = matches[0]
-                }
-            }
-
-            guard let resolvedSource else { continue }
-            newResolvedIDs[slot] = resolvedSource.id
-            newPinnedWindowIDs[slot] = resolvedSource.id
-            usedWindowIDs.insert(resolvedSource.id)
-
-            let currentIdentity = PinnedWindow(source: resolvedSource)
-            if currentIdentity != pin {
-                shortcutPins[slot] = currentIdentity
-                didUpdatePersistedIdentity = true
-            }
-        }
-
-        let reservedSlots = Set(shortcutPins.keys)
-        let automaticSlots = (1...9).filter { !reservedSlots.contains($0) }
-
-        // Keep automatic assignments stable while their windows remain available.
-        for slot in automaticSlots {
-            guard let oldWindowID = oldResolvedIDs[slot],
-                  let existingSource = sourcesByID[oldWindowID],
-                  !usedWindowIDs.contains(oldWindowID),
-                  !shortcutExclusions.contains(PinnedWindow(source: existingSource)) else {
-                continue
-            }
-            newResolvedIDs[slot] = oldWindowID
-            usedWindowIDs.insert(oldWindowID)
-        }
-
-        var remainingSources = sources.filter {
-            !usedWindowIDs.contains($0.id)
-                && !shortcutExclusions.contains(PinnedWindow(source: $0))
-        }.makeIterator()
-
-        for slot in automaticSlots where newResolvedIDs[slot] == nil {
-            guard let source = remainingSources.next() else { break }
-            newResolvedIDs[slot] = source.id
-            usedWindowIDs.insert(source.id)
-        }
-
-        shortcutWindowIDs = newResolvedIDs
-        resolvedPinnedWindowIDs = newPinnedWindowIDs
-        if didUpdatePersistedIdentity {
+        shortcutPins = resolution.pins
+        shortcutWindowIDs = resolution.assignments
+        resolvedPinnedWindowIDs = resolution.pinnedAssignments
+        if pinsChanged {
             persistShortcutPins()
         }
         refreshHotKeyRegistrations()
@@ -879,38 +841,11 @@ final class CaptureManager: ObservableObject {
     }
 
     private func persistShortcutPins() {
-        let pins = shortcutPins
-            .map { ShortcutPin(slot: $0.key, window: $0.value) }
-            .sorted { $0.slot < $1.slot }
-        guard let data = try? JSONEncoder().encode(pins) else { return }
-        defaults.set(data, forKey: Self.shortcutDefaultsKey)
+        shortcutStore.savePins(shortcutPins)
     }
 
     private func persistShortcutExclusions() {
-        let exclusions = shortcutExclusions.sorted {
-            $0.description.localizedCaseInsensitiveCompare($1.description) == .orderedAscending
-        }
-        guard let data = try? JSONEncoder().encode(exclusions) else { return }
-        defaults.set(data, forKey: Self.shortcutExclusionsDefaultsKey)
-    }
-
-    private static func loadShortcutPins(from defaults: UserDefaults) -> [Int: PinnedWindow] {
-        guard let data = defaults.data(forKey: shortcutDefaultsKey),
-              let pins = try? JSONDecoder().decode([ShortcutPin].self, from: data) else {
-            return [:]
-        }
-        return Dictionary(
-            pins.filter { (1...9).contains($0.slot) }.map { ($0.slot, $0.window) },
-            uniquingKeysWith: { _, newest in newest }
-        )
-    }
-
-    private static func loadShortcutExclusions(from defaults: UserDefaults) -> Set<PinnedWindow> {
-        guard let data = defaults.data(forKey: shortcutExclusionsDefaultsKey),
-              let exclusions = try? JSONDecoder().decode([PinnedWindow].self, from: data) else {
-            return []
-        }
-        return Set(exclusions)
+        shortcutStore.saveExclusions(shortcutExclusions)
     }
 
     private func shortcutList(_ slots: Set<Int>) -> String {
@@ -920,7 +855,8 @@ final class CaptureManager: ObservableObject {
     private static func friendlyMessage(for error: Error) -> String {
         let nsError = error as NSError
         if nsError.domain == SCStreamErrorDomain
-            || nsError.domain == "com.apple.ScreenCaptureKit.SCStreamErrorDomain" {
+            || nsError.domain == "com.apple.ScreenCaptureKit.SCStreamErrorDomain"
+        {
             return "Screen capture stopped (\(nsError.code)): \(nsError.localizedDescription)"
         }
         return error.localizedDescription
@@ -932,48 +868,5 @@ private enum CaptureLifecycleError: LocalizedError {
 
     var errorDescription: String? {
         "Screen capture stopped before it produced a frame."
-    }
-}
-
-private final class CaptureStreamOutput: NSObject, SCStreamOutput, SCStreamDelegate, @unchecked Sendable {
-    private let renderer: SampleBufferRenderer
-    private let onFrame: @Sendable (SCStream, CaptureFrameGeometry) -> Void
-    private let onFailure: @Sendable (SCStream, Error) -> Void
-
-    init(
-        renderer: SampleBufferRenderer,
-        onFrame: @escaping @Sendable (SCStream, CaptureFrameGeometry) -> Void,
-        onFailure: @escaping @Sendable (SCStream, Error) -> Void
-    ) {
-        self.renderer = renderer
-        self.onFrame = onFrame
-        self.onFailure = onFailure
-    }
-
-    func stream(
-        _ stream: SCStream,
-        didOutputSampleBuffer sampleBuffer: CMSampleBuffer,
-        of outputType: SCStreamOutputType
-    ) {
-        guard outputType == .screen, Self.isCompleteFrame(sampleBuffer) else { return }
-        guard let geometry = renderer.enqueue(sampleBuffer) else { return }
-        onFrame(stream, geometry)
-    }
-
-    func stream(_ stream: SCStream, didStopWithError error: Error) {
-        onFailure(stream, error)
-    }
-
-    private static func isCompleteFrame(_ sampleBuffer: CMSampleBuffer) -> Bool {
-        guard sampleBuffer.isValid, sampleBuffer.dataReadiness == .ready else { return false }
-        guard let attachments = CMSampleBufferGetSampleAttachmentsArray(
-            sampleBuffer,
-            createIfNecessary: false
-        ) as? [[SCStreamFrameInfo: Any]],
-              let statusValue = attachments.first?[.status] as? Int,
-              let frameStatus = SCFrameStatus(rawValue: statusValue) else {
-            return false
-        }
-        return frameStatus == .complete
     }
 }

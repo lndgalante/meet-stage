@@ -13,6 +13,9 @@ struct CaptureFrameGeometry: Sendable {
     }
 }
 
+/// Thread-safe handoff from ScreenCaptureKit's sample queue to the AppKit view.
+/// Every cross-thread mutable property is protected by `lock`; `StageVideoView`
+/// performs its visual work on the main queue.
 final class SampleBufferRenderer: @unchecked Sendable {
     private let lock = NSLock()
     private weak var view: StageVideoView?
@@ -20,72 +23,73 @@ final class SampleBufferRenderer: @unchecked Sendable {
     private var transitionsNextFrame = false
     private var renderGeneration: UInt64 = 0
 
+    @MainActor
     func attach(_ view: StageVideoView) {
-        lock.lock()
-        self.view = view
-        let generation = renderGeneration
-        lock.unlock()
+        let generation = lock.withLock {
+            self.view = view
+            return renderGeneration
+        }
         view.synchronizeRenderGeneration(generation)
     }
 
+    @MainActor
     func detach(_ view: StageVideoView) {
-        lock.lock()
-        if self.view === view {
-            self.view = nil
+        lock.withLock {
+            if self.view === view {
+                self.view = nil
+            }
         }
-        lock.unlock()
     }
 
+    @MainActor
     func beginCapture() {
-        lock.lock()
-        isSuppressingFrames = false
-        transitionsNextFrame = false
-        lock.unlock()
+        lock.withLock {
+            isSuppressingFrames = false
+            transitionsNextFrame = false
+        }
     }
 
+    @MainActor
     func prepareForSourceSwitch() -> UInt64 {
-        lock.lock()
-        isSuppressingFrames = true
-        transitionsNextFrame = false
-        let generation = renderGeneration
-        lock.unlock()
-        return generation
+        lock.withLock {
+            isSuppressingFrames = true
+            transitionsNextFrame = false
+            return renderGeneration
+        }
     }
 
+    @MainActor
     func commitSourceSwitch(generation: UInt64) {
-        lock.lock()
-        guard generation == renderGeneration else {
-            lock.unlock()
-            return
+        lock.withLock {
+            guard generation == renderGeneration else { return }
+            isSuppressingFrames = false
+            transitionsNextFrame = true
         }
-        isSuppressingFrames = false
-        transitionsNextFrame = true
-        lock.unlock()
     }
 
+    @MainActor
     func cancelSourceSwitch(generation: UInt64) {
-        lock.lock()
-        guard generation == renderGeneration else {
-            lock.unlock()
-            return
+        lock.withLock {
+            guard generation == renderGeneration else { return }
+            isSuppressingFrames = false
+            transitionsNextFrame = false
         }
-        isSuppressingFrames = false
-        transitionsNextFrame = false
-        lock.unlock()
     }
 
     func enqueue(_ sampleBuffer: CMSampleBuffer) -> CaptureFrameGeometry? {
         guard sampleBuffer.isValid, sampleBuffer.dataReadiness == .ready else { return nil }
 
-        guard let attachments = CMSampleBufferGetSampleAttachmentsArray(
-            sampleBuffer,
-            createIfNecessary: false
-        ) as? [[SCStreamFrameInfo: Any]],
-           let frameInfo = attachments.first,
-           let statusValue = frameInfo[.status] as? Int,
-           let frameStatus = SCFrameStatus(rawValue: statusValue),
-           frameStatus == .complete,
-           let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return nil }
+        guard
+            let attachments = CMSampleBufferGetSampleAttachmentsArray(
+                sampleBuffer,
+                createIfNecessary: false
+            ) as? [[SCStreamFrameInfo: Any]],
+            let frameInfo = attachments.first,
+            let statusValue = frameInfo[.status] as? Int,
+            let frameStatus = SCFrameStatus(rawValue: statusValue),
+            frameStatus == .complete,
+            let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer)
+        else { return nil }
 
         let bufferSize = CGSize(
             width: CVPixelBufferGetWidth(imageBuffer),
@@ -105,21 +109,18 @@ final class SampleBufferRenderer: @unchecked Sendable {
         guard !contentRect.isNull, contentRect.width > 0, contentRect.height > 0 else { return nil }
         let geometry = CaptureFrameGeometry(contentRect: contentRect, bufferSize: bufferSize)
 
-        lock.lock()
-        guard !isSuppressingFrames else {
-            lock.unlock()
-            return nil
+        let renderRequest: (startsTransition: Bool, generation: UInt64, view: StageVideoView?)? = lock.withLock {
+            guard !isSuppressingFrames else { return nil }
+            let startsTransition = transitionsNextFrame
+            transitionsNextFrame = false
+            return (startsTransition, renderGeneration, view)
         }
-        let startsTransition = transitionsNextFrame
-        transitionsNextFrame = false
-        let generation = renderGeneration
-        let currentView = view
-        lock.unlock()
-        currentView?.enqueue(
+        guard let renderRequest else { return nil }
+        renderRequest.view?.enqueue(
             sampleBuffer,
             geometry: geometry,
-            startsTransition: startsTransition,
-            renderGeneration: generation
+            startsTransition: renderRequest.startsTransition,
+            renderGeneration: renderRequest.generation
         )
         return geometry
     }
@@ -129,8 +130,8 @@ final class SampleBufferRenderer: @unchecked Sendable {
         if let rect = value as? CGRect {
             return rect
         }
-        guard CFGetTypeID(value as CFTypeRef) == CFDictionaryGetTypeID() else { return nil }
-        return CGRect(dictionaryRepresentation: value as! CFDictionary)
+        guard let dictionary = value as? NSDictionary else { return nil }
+        return CGRect(dictionaryRepresentation: dictionary as CFDictionary)
     }
 
     private static func pointPixelScale(from frameInfo: [SCStreamFrameInfo: Any]) -> CGFloat {
@@ -139,19 +140,21 @@ final class SampleBufferRenderer: @unchecked Sendable {
         return scale.isFinite && scale > 0 ? scale : 1
     }
 
+    @MainActor
     func clear() {
-        lock.lock()
-        renderGeneration &+= 1
-        let generation = renderGeneration
-        isSuppressingFrames = true
-        transitionsNextFrame = false
-        let currentView = view
-        lock.unlock()
+        let (generation, currentView) = lock.withLock {
+            renderGeneration &+= 1
+            isSuppressingFrames = true
+            transitionsNextFrame = false
+            return (renderGeneration, view)
+        }
         currentView?.clear(renderGeneration: generation)
     }
 }
 
-final class StageVideoView: NSView {
+/// An AppKit rendering surface whose state remains main-actor isolated. Only
+/// `enqueue` crosses queues, immediately scheduling its work on the main queue.
+final class StageVideoView: NSView, @unchecked Sendable {
     private var activeDisplayLayer = StageVideoView.makeDisplayLayer()
     private var activeFrameGeometry: CaptureFrameGeometry?
     private var retiringDisplayLayer: AVSampleBufferDisplayLayer?
@@ -185,18 +188,19 @@ final class StageVideoView: NSView {
         CATransaction.commit()
     }
 
-    func enqueue(
+    nonisolated func enqueue(
         _ sampleBuffer: CMSampleBuffer,
         geometry: CaptureFrameGeometry,
         startsTransition: Bool,
         renderGeneration: UInt64
     ) {
+        let sendableSampleBuffer = SendableSampleBuffer(sampleBuffer)
         DispatchQueue.main.async { [weak self] in
             guard let self, renderGeneration == self.renderGeneration else { return }
             if startsTransition, activeFrameGeometry != nil {
-                transition(to: sampleBuffer, geometry: geometry)
+                transition(to: sendableSampleBuffer.value, geometry: geometry)
             } else {
-                enqueue(sampleBuffer, on: activeDisplayLayer)
+                enqueue(sendableSampleBuffer.value, on: activeDisplayLayer)
                 activeFrameGeometry = geometry
                 needsLayout = true
             }
@@ -204,47 +208,25 @@ final class StageVideoView: NSView {
     }
 
     func synchronizeRenderGeneration(_ generation: UInt64) {
-        let synchronize = { [weak self] in
-            guard let self, generation >= renderGeneration else { return }
-            renderGeneration = generation
-        }
-        if Thread.isMainThread {
-            synchronize()
-        } else {
-            DispatchQueue.main.async(execute: synchronize)
-        }
+        guard generation >= renderGeneration else { return }
+        renderGeneration = generation
     }
 
     func clear(renderGeneration generation: UInt64) {
-        let clearLayers = { [weak self] in
-            guard let self, generation >= renderGeneration else { return }
-            renderGeneration = generation
-            removeRetiringLayer()
-            activeFrameGeometry = nil
-            activeDisplayLayer.removeAllAnimations()
-            activeDisplayLayer.opacity = 1
-            activeDisplayLayer.flushAndRemoveImage()
-        }
-        if Thread.isMainThread {
-            clearLayers()
-        } else {
-            DispatchQueue.main.async(execute: clearLayers)
-        }
+        guard generation >= renderGeneration else { return }
+        renderGeneration = generation
+        removeRetiringLayer()
+        activeFrameGeometry = nil
+        activeDisplayLayer.removeAllAnimations()
+        activeDisplayLayer.opacity = 1
+        activeDisplayLayer.flushAndRemoveImage()
     }
 
     func clearForDismantle() {
-        let clearLayers = { [weak self] in
-            guard let self else { return }
-            removeRetiringLayer()
-            activeFrameGeometry = nil
-            activeDisplayLayer.removeAllAnimations()
-            activeDisplayLayer.flushAndRemoveImage()
-        }
-        if Thread.isMainThread {
-            clearLayers()
-        } else {
-            DispatchQueue.main.async(execute: clearLayers)
-        }
+        removeRetiringLayer()
+        activeFrameGeometry = nil
+        activeDisplayLayer.removeAllAnimations()
+        activeDisplayLayer.flushAndRemoveImage()
     }
 
     private func transition(
@@ -298,7 +280,8 @@ final class StageVideoView: NSView {
         CATransaction.setDisableActions(true)
         CATransaction.setCompletionBlock { [weak self, weak oldLayer] in
             guard let self, let oldLayer,
-                  retiringDisplayLayer === oldLayer else { return }
+                retiringDisplayLayer === oldLayer
+            else { return }
             removeRetiringLayer()
         }
         newLayer.opacity = 1
@@ -359,5 +342,15 @@ final class StageVideoView: NSView {
             CAMediaTimingFunction(name: .easeInEaseOut),
             CAMediaTimingFunction(name: .easeOut)
         ]
+    }
+}
+
+/// The app does not mutate sample buffers on this render path. This wrapper
+/// retains one while ownership moves from the capture queue to the main queue.
+private struct SendableSampleBuffer: @unchecked Sendable {
+    let value: CMSampleBuffer
+
+    init(_ value: CMSampleBuffer) {
+        self.value = value
     }
 }

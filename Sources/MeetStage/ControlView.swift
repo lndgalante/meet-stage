@@ -1,10 +1,5 @@
 import SwiftUI
 
-enum ControlWindowSizing {
-    static let size = NSSize(width: 318, height: 92)
-    static let sourceAreaWidth: CGFloat = 190
-}
-
 struct ControlView: View {
     @ObservedObject var manager: CaptureManager
     @Environment(\.openWindow) private var openWindow
@@ -62,10 +57,11 @@ struct ControlView: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: 6) {
                     ForEach(manager.displayedWindows) { source in
+                        let shortcut = manager.shortcut(for: source)
                         CompactWindowButton(
                             source: source,
-                            shortcut: manager.shortcut(for: source),
-                            isShortcutAvailable: manager.shortcut(for: source).map {
+                            shortcut: shortcut,
+                            isShortcutAvailable: shortcut.map {
                                 !manager.unavailableShortcutSlots.contains($0)
                             } ?? true,
                             isSelected: source.id == manager.selectedWindowID,
@@ -345,7 +341,7 @@ private struct CompactWindowButton: View {
         .buttonStyle(.plain)
         .contextMenu {
             Menu("Pin Global Shortcut") {
-                ForEach(1...9, id: \.self) { slot in
+                ForEach(ShortcutSlot.all, id: \.self) { slot in
                     Button {
                         pin(slot)
                     } label: {
@@ -364,7 +360,7 @@ private struct CompactWindowButton: View {
 
             if isHovering {
                 hoverTask = Task { @MainActor in
-                    try? await Task.sleep(nanoseconds: 450_000_000)
+                    try? await Task.sleep(for: .milliseconds(450))
                     guard !Task.isCancelled else { return }
                     showPreview = true
                 }
@@ -528,11 +524,16 @@ private struct CompactActionButton: View {
 }
 
 private struct CompactIconButtonStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.96 : 1)
             .opacity(configuration.isPressed ? 0.72 : 1)
-            .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
+            .animation(
+                reduceMotion ? nil : .easeOut(duration: 0.1),
+                value: configuration.isPressed
+            )
     }
 }
 
@@ -544,6 +545,7 @@ private struct CaptureStatusControl: View {
     let action: () -> Void
 
     @State private var isHovering = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Group {
@@ -565,7 +567,7 @@ private struct CaptureStatusControl: View {
         }
         .onHover { isHovering = $0 && isCapturing }
         .help(tooltipText)
-        .animation(.easeOut(duration: 0.12), value: isHovering)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: isHovering)
     }
 
     @ViewBuilder
@@ -605,98 +607,5 @@ private struct CaptureStatusControl: View {
         isCapturing
             ? "\(statusDescription) · Click to stop capture (⌘.)"
             : "Capture status: \(statusDescription)"
-    }
-}
-
-struct WindowConfigurator: NSViewRepresentable {
-    enum Kind {
-        case control
-        case stage(aspectRatio: CGFloat)
-    }
-
-    let kind: Kind
-
-    final class Coordinator {
-        var lastStageAspectRatio: CGFloat?
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
-
-    func makeNSView(context: Context) -> NSView {
-        let view = NSView()
-        DispatchQueue.main.async {
-            configure(view.window, coordinator: context.coordinator)
-        }
-        return view
-    }
-
-    func updateNSView(_ nsView: NSView, context: Context) {
-        DispatchQueue.main.async {
-            configure(nsView.window, coordinator: context.coordinator)
-        }
-    }
-
-    private func configure(_ window: NSWindow?, coordinator: Coordinator) {
-        guard let window else { return }
-
-        switch kind {
-        case .control:
-            let compactSize = ControlWindowSizing.size
-            window.level = .floating
-            window.collectionBehavior.formUnion([.canJoinAllSpaces, .fullScreenAuxiliary])
-            window.styleMask = [.borderless]
-            window.isOpaque = false
-            window.backgroundColor = .clear
-            window.hasShadow = true
-            window.isMovableByWindowBackground = true
-            window.setContentSize(compactSize)
-            window.minSize = compactSize
-            window.maxSize = compactSize
-
-        case let .stage(aspectRatio):
-            let safeAspectRatio = max(0.75, min(aspectRatio, 3))
-            let stageStyle: NSWindow.StyleMask = [.borderless, .resizable]
-            if window.styleMask != stageStyle {
-                window.styleMask = stageStyle
-            }
-            window.isOpaque = true
-            window.backgroundColor = .black
-            window.hasShadow = false
-            window.titleVisibility = .hidden
-            window.titlebarAppearsTransparent = true
-            window.toolbar = nil
-            [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].forEach {
-                window.standardWindowButton($0)?.isHidden = true
-            }
-            window.isMovableByWindowBackground = true
-            window.contentAspectRatio = NSSize(width: safeAspectRatio, height: 1)
-            window.collectionBehavior.formUnion([.canJoinAllSpaces, .fullScreenAuxiliary])
-
-            guard coordinator.lastStageAspectRatio.map({ abs($0 - safeAspectRatio) > 0.001 }) ?? true else {
-                return
-            }
-
-            let previousCenter = NSPoint(x: window.frame.midX, y: window.frame.midY)
-            let screen = window.screen ?? NSScreen.main
-            let contentSize = StageWindowSizing.defaultWindowContentSize(
-                aspectRatio: safeAspectRatio,
-                on: screen
-            )
-            window.setContentSize(contentSize)
-
-            if let visibleFrame = screen?.visibleFrame {
-                let desiredOrigin = NSPoint(
-                    x: previousCenter.x - window.frame.width / 2,
-                    y: previousCenter.y - window.frame.height / 2
-                )
-                window.setFrameOrigin(NSPoint(
-                    x: min(max(desiredOrigin.x, visibleFrame.minX), visibleFrame.maxX - window.frame.width),
-                    y: min(max(desiredOrigin.y, visibleFrame.minY), visibleFrame.maxY - window.frame.height)
-                ))
-            }
-            coordinator.lastStageAspectRatio = safeAspectRatio
-        }
     }
 }

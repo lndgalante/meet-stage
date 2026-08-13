@@ -120,10 +120,14 @@ inside it.
 | --- | --- |
 | `Sources/MeetStage/MeetStageApp.swift` | SwiftUI app entry point and windows |
 | `Sources/MeetStage/ControlView.swift` | Floating controller and source picker |
-| `Sources/MeetStage/CaptureManager.swift` | Capture lifecycle, live state, and shortcut persistence |
+| `Sources/MeetStage/CaptureManager.swift` | Main-actor capture lifecycle and observable UI state |
+| `Sources/MeetStage/ShortcutAssignments.swift` | Deterministic shortcut-assignment policy |
+| `Sources/MeetStage/ShortcutPreferencesStore.swift` | Backward-compatible shortcut persistence |
 | `Sources/MeetStage/SampleBufferRenderer.swift` | High-resolution frame rendering |
 | `Sources/MeetStage/StageWindowSizing.swift` | Demo Stage geometry and aspect-ratio handling |
+| `Sources/MeetStage/WindowConfiguration.swift` | AppKit window behavior used by SwiftUI scenes |
 | `Sources/MeetStage/GlobalHotKeyManager.swift` | Option+1 through Option+9 registration |
+| `Tests/MeetStageTests/` | Shortcut, persistence, and stage-sizing tests |
 | `Resources/Info.plist` | Bundle name, version, permissions, and icon metadata |
 | `Brand/` | BetterDemos icon masters and brand guidance |
 | `dev-app.sh` | Debug build, package, sign, and relaunch workflow |
@@ -131,6 +135,8 @@ inside it.
 
 The Swift package and executable retain the internal name `MeetStage`. The app
 bundle and every user-facing surface use the BetterDemos product name.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for ownership boundaries, lifecycle
+invariants, and guidance for extending the app.
 
 ## Screen Recording permission
 
@@ -167,18 +173,22 @@ Run the packaged debug executable directly when you need Terminal output:
 Quit any existing BetterDemos instance first. You can also inspect logs in
 Console.app by filtering for `BetterDemos` or `MeetStage`.
 
-There is no automated test suite yet. Before handing off a change, run:
+Run the automated suite and packaging checks before handing off a change:
 
 ```bash
-swift build
+swift test
+swift format lint --strict --recursive Sources Tests Package.swift
 ./build-app.sh
 plutil -lint Resources/Info.plist
 codesign --verify --deep --strict "dist/BetterDemos.app"
 git diff --check
 ```
 
-For capture, sizing, shortcut, or controller changes, also test the complete
-flow manually in a meeting.
+The automated suite covers deterministic shortcut assignment, persisted
+shortcut compatibility, corrupt preference recovery, and stage sizing. For
+ScreenCaptureKit, global-hotkey, or controller changes, also test the complete
+flow manually in a meeting because those APIs require real windows and macOS
+privacy consent.
 
 ## Release build
 

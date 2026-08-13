@@ -7,7 +7,8 @@ struct MeetStageApp: App {
 
     init() {
         guard let iconURL = Bundle.main.url(forResource: "BetterDemos", withExtension: "icns"),
-              let icon = NSImage(contentsOf: iconURL) else { return }
+            let icon = NSImage(contentsOf: iconURL)
+        else { return }
         NSApplication.shared.applicationIconImage = icon
     }
 

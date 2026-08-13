@@ -10,16 +10,18 @@ struct StageCaptureFormat: Equatable {
     }
 }
 
-@MainActor
 enum StageWindowSizing {
     private static let windowScale: CGFloat = 0.68
     private static let maximumCaptureEdge: CGFloat = 4_096
+    private static let preferredMinimumWindowWidth: CGFloat = 640
 
+    @MainActor
     static func currentScreenAspectRatio() -> CGFloat {
         let size = currentScreen()?.frame.size ?? NSSize(width: 16, height: 10)
         return validAspectRatio(for: size)
     }
 
+    @MainActor
     static func captureFormat(for filter: SCContentFilter) -> StageCaptureFormat {
         let screen = currentScreen()
         let screenScale = screen?.backingScaleFactor ?? 1
@@ -34,7 +36,8 @@ enum StageWindowSizing {
             width: screenSize.width * screenScale,
             height: screenSize.height * screenScale
         )
-        let baseSize = measuredSize.width > 0 && measuredSize.height > 0
+        let baseSize =
+            measuredSize.width > 0 && measuredSize.height > 0
             ? measuredSize
             : fallbackSize
         let longestEdge = max(baseSize.width, baseSize.height)
@@ -46,15 +49,26 @@ enum StageWindowSizing {
         )
     }
 
+    @MainActor
     static func defaultWindowContentSize(
         aspectRatio: CGFloat? = nil,
         on screen: NSScreen? = nil
     ) -> NSSize {
         let targetScreen = screen ?? currentScreen()
         let visibleSize = targetScreen?.visibleFrame.size ?? NSSize(width: 1_440, height: 900)
-        let safeAspectRatio = normalized(aspectRatio ?? currentScreenAspectRatio())
-        let maximumWidth = visibleSize.width * windowScale
-        let maximumHeight = visibleSize.height * windowScale
+        return windowContentSize(
+            aspectRatio: aspectRatio ?? currentScreenAspectRatio(),
+            fitting: visibleSize
+        )
+    }
+
+    /// Returns a stage size based on the preferred screen fraction while
+    /// honoring the minimum width whenever it still fits on the screen.
+    static func windowContentSize(aspectRatio: CGFloat, fitting visibleSize: NSSize) -> NSSize {
+        let safeAspectRatio = normalizedAspectRatio(aspectRatio)
+        let maximumWidth = max(0, visibleSize.width * windowScale)
+        let maximumHeight = max(0, visibleSize.height * windowScale)
+        guard maximumWidth > 0, maximumHeight > 0 else { return .zero }
 
         var width = maximumWidth
         var height = width / safeAspectRatio
@@ -63,29 +77,35 @@ enum StageWindowSizing {
             width = height * safeAspectRatio
         }
 
-        if width < 640, maximumWidth >= 640 {
-            width = 640
-            height = width / safeAspectRatio
+        let preferredMinimumHeight = preferredMinimumWindowWidth / safeAspectRatio
+        if width < preferredMinimumWindowWidth,
+            maximumWidth >= preferredMinimumWindowWidth,
+            preferredMinimumHeight <= visibleSize.height
+        {
+            width = preferredMinimumWindowWidth
+            height = preferredMinimumHeight
         }
 
         return NSSize(width: width.rounded(), height: height.rounded())
     }
 
+    @MainActor
     private static func currentScreen() -> NSScreen? {
         NSScreen.main ?? NSScreen.screens.first
     }
 
     private static func validAspectRatio(for size: NSSize) -> CGFloat {
         guard size.width > 0, size.height > 0 else { return 16 / 10 }
-        return normalized(size.width / size.height)
+        return normalizedAspectRatio(size.width / size.height)
     }
 
-    private static func normalized(_ aspectRatio: CGFloat) -> CGFloat {
+    static func normalizedAspectRatio(_ aspectRatio: CGFloat) -> CGFloat {
         guard aspectRatio.isFinite, aspectRatio > 0 else { return 16 / 10 }
         return min(max(aspectRatio, 0.75), 3)
     }
 
-    private static func evenPixelCount(_ value: CGFloat) -> Int {
+    static func evenPixelCount(_ value: CGFloat) -> Int {
+        guard value.isFinite, value > 0 else { return 2 }
         let rounded = max(2, Int(value.rounded()))
         return rounded.isMultiple(of: 2) ? rounded : rounded - 1
     }

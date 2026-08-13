@@ -1,0 +1,13 @@
+{
+    "indentation": {
+        "spaces": 4
+    },
+    "lineLength": 120,
+    "multiElementCollectionTrailingCommas": false,
+    "rules": {
+        "NeverForceUnwrap": true,
+        "NeverUseForceTry": true,
+        "NeverUseImplicitlyUnwrappedOptionals": true
+    },
+    "version": 1
+}

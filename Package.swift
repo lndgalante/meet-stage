@@ -14,9 +14,6 @@ let package = Package(
         .executableTarget(
             name: "MeetStage",
             path: "Sources/MeetStage",
-            swiftSettings: [
-                .unsafeFlags(["-Xfrontend", "-strict-concurrency=minimal"])
-            ],
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("AVFoundation"),
@@ -25,7 +22,12 @@ let package = Package(
                 .linkedFramework("QuartzCore"),
                 .linkedFramework("ScreenCaptureKit")
             ]
+        ),
+        .testTarget(
+            name: "MeetStageTests",
+            dependencies: ["MeetStage"],
+            path: "Tests/MeetStageTests"
         )
     ],
-    swiftLanguageModes: [.v5]
+    swiftLanguageModes: [.v6]
 )

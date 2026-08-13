@@ -13,7 +13,7 @@ struct StageView: View {
                 renderer: manager.renderer,
                 reducesMotion: reduceMotion
             )
-                .ignoresSafeArea()
+            .ignoresSafeArea()
 
             if !manager.isLive {
                 ZStack {
@@ -69,6 +69,18 @@ private struct StageVideoRepresentable: NSViewRepresentable {
     let renderer: SampleBufferRenderer
     let reducesMotion: Bool
 
+    final class Coordinator {
+        var renderer: SampleBufferRenderer
+
+        init(renderer: SampleBufferRenderer) {
+            self.renderer = renderer
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(renderer: renderer)
+    }
+
     func makeNSView(context: Context) -> StageVideoView {
         let view = StageVideoView()
         view.reducesMotion = reducesMotion
@@ -77,11 +89,16 @@ private struct StageVideoRepresentable: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: StageVideoView, context: Context) {
+        if context.coordinator.renderer !== renderer {
+            context.coordinator.renderer.detach(nsView)
+            context.coordinator.renderer = renderer
+        }
         nsView.reducesMotion = reducesMotion
         renderer.attach(nsView)
     }
 
-    static func dismantleNSView(_ nsView: StageVideoView, coordinator: Void) {
+    static func dismantleNSView(_ nsView: StageVideoView, coordinator: Coordinator) {
+        coordinator.renderer.detach(nsView)
         nsView.clearForDismantle()
     }
 }

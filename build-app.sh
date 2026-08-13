@@ -4,41 +4,7 @@ set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
 APP_DIR="$PROJECT_DIR/dist/BetterDemos.app"
-CONTENTS_DIR="$APP_DIR/Contents"
-SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
 
-cd "$PROJECT_DIR"
-mkdir -p \
-    "$PROJECT_DIR/.build/clang-module-cache" \
-    "$PROJECT_DIR/.build/swiftpm-module-cache" \
-    "$PROJECT_DIR/.build/swiftpm-cache" \
-    "$PROJECT_DIR/.build/swiftpm-config" \
-    "$PROJECT_DIR/.build/swiftpm-security"
-
-SDKROOT="$SDK_PATH" \
-CLANG_MODULE_CACHE_PATH="$PROJECT_DIR/.build/clang-module-cache" \
-SWIFTPM_MODULECACHE_OVERRIDE="$PROJECT_DIR/.build/swiftpm-module-cache" \
-XDG_CACHE_HOME="$PROJECT_DIR/.build/swiftpm-cache" \
-swift build \
-    --disable-sandbox \
-    --cache-path "$PROJECT_DIR/.build/swiftpm-cache" \
-    --config-path "$PROJECT_DIR/.build/swiftpm-config" \
-    --security-path "$PROJECT_DIR/.build/swiftpm-security" \
-    -c release
-
-rm -rf "$APP_DIR"
-mkdir -p "$CONTENTS_DIR/MacOS" "$CONTENTS_DIR/Resources"
-cp "$PROJECT_DIR/.build/release/MeetStage" "$CONTENTS_DIR/MacOS/MeetStage"
-cp "$PROJECT_DIR/Resources/Info.plist" "$CONTENTS_DIR/Info.plist"
-cp "$PROJECT_DIR/Resources/BetterDemos.icns" "$CONTENTS_DIR/Resources/BetterDemos.icns"
-
-# Keep the local TCC identity stable across rebuilds. The default ad-hoc
-# designated requirement is the binary's cdhash, which changes every build.
-codesign \
-    --force \
-    --deep \
-    --sign - \
-    --requirements '=designated => identifier "dev.poc.meetstage.v2"' \
-    "$APP_DIR"
+/bin/zsh "$PROJECT_DIR/scripts/build-and-package.sh" release
 
 echo "$APP_DIR"

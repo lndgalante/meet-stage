@@ -1,11 +1,12 @@
 import Carbon.HIToolbox
 import Foundation
 
+/// Owns Carbon registrations for the app-wide Option+number shortcuts.
 @MainActor
 final class GlobalHotKeyManager {
     typealias Handler = @MainActor (Int) -> Void
 
-    private static let signature: OSType = 0x4D_53_54_47 // "MSTG"
+    private static let signature: OSType = 0x4D_53_54_47  // "MSTG"
     private static let numberKeyCodes: [Int: UInt32] = [
         1: UInt32(kVK_ANSI_1),
         2: UInt32(kVK_ANSI_2),
@@ -19,33 +20,24 @@ final class GlobalHotKeyManager {
     ]
 
     private let handler: Handler
-    private var eventHandler: EventHandlerRef?
-    private var hotKeyReferences: [Int: EventHotKeyRef] = [:]
+    private let resources = GlobalHotKeyResources()
 
     init(handler: @escaping Handler) {
         self.handler = handler
     }
 
-    deinit {
-        hotKeyReferences.values.forEach { reference in
-            UnregisterEventHotKey(reference)
-        }
-        if let eventHandler {
-            RemoveEventHandler(eventHandler)
-        }
-    }
-
     func updateRegisteredSlots(_ slots: Set<Int>) -> Set<Int> {
-        installEventHandlerIfNeeded()
+        let validSlots = Set(slots.filter(ShortcutSlot.isValid))
+        guard installEventHandlerIfNeeded() else { return slots }
 
-        for slot in Set(hotKeyReferences.keys).subtracting(slots) {
-            if let reference = hotKeyReferences.removeValue(forKey: slot) {
+        for slot in Set(resources.hotKeyReferences.keys).subtracting(validSlots) {
+            if let reference = resources.hotKeyReferences.removeValue(forKey: slot) {
                 UnregisterEventHotKey(reference)
             }
         }
 
-        var failures: Set<Int> = []
-        for slot in slots.sorted() where hotKeyReferences[slot] == nil {
+        var failures = slots.subtracting(validSlots)
+        for slot in validSlots.sorted() where resources.hotKeyReferences[slot] == nil {
             guard let keyCode = Self.numberKeyCodes[slot] else { continue }
 
             var reference: EventHotKeyRef?
@@ -63,7 +55,7 @@ final class GlobalHotKeyManager {
             )
 
             if status == noErr, let reference {
-                hotKeyReferences[slot] = reference
+                resources.hotKeyReferences[slot] = reference
             } else {
                 failures.insert(slot)
             }
@@ -72,21 +64,22 @@ final class GlobalHotKeyManager {
         return failures
     }
 
-    private func installEventHandlerIfNeeded() {
-        guard eventHandler == nil else { return }
+    private func installEventHandlerIfNeeded() -> Bool {
+        guard resources.eventHandler == nil else { return true }
 
         var eventType = EventTypeSpec(
             eventClass: OSType(kEventClassKeyboard),
             eventKind: UInt32(kEventHotKeyPressed)
         )
-        InstallEventHandler(
+        let status = InstallEventHandler(
             GetApplicationEventTarget(),
             Self.hotKeyCallback,
             1,
             &eventType,
             Unmanaged.passUnretained(self).toOpaque(),
-            &eventHandler
+            &resources.eventHandler
         )
+        return status == noErr && resources.eventHandler != nil
     }
 
     private static let hotKeyCallback: EventHandlerUPP = { _, event, userData in
@@ -103,6 +96,9 @@ final class GlobalHotKeyManager {
             &identifier
         )
         guard status == noErr else { return status }
+        guard identifier.signature == GlobalHotKeyManager.signature else {
+            return OSStatus(eventNotHandledErr)
+        }
 
         let manager = Unmanaged<GlobalHotKeyManager>
             .fromOpaque(userData)
@@ -114,5 +110,21 @@ final class GlobalHotKeyManager {
         }
 
         return noErr
+    }
+}
+
+/// Carbon's opaque references are not Sendable. Grouping them in one owner
+/// keeps their lifetime independent from the manager's actor-isolated state.
+private final class GlobalHotKeyResources: @unchecked Sendable {
+    var eventHandler: EventHandlerRef?
+    var hotKeyReferences: [Int: EventHotKeyRef] = [:]
+
+    deinit {
+        hotKeyReferences.values.forEach { reference in
+            UnregisterEventHotKey(reference)
+        }
+        if let eventHandler {
+            RemoveEventHandler(eventHandler)
+        }
     }
 }
