@@ -14,9 +14,10 @@ private enum ControlMetrics {
     static let sourceViewportHeight: CGFloat = 56
     static let sourceTileRadius: CGFloat = 10
     static let toggleWidth: CGFloat = 42
-    static let toggleHeight: CGFloat = 29
-    static let toggleBackgroundInset: CGFloat = 3
-    static let toggleHoverRadius: CGFloat = 8
+    static let toggleRegionWidth: CGFloat = toggleWidth + outerPadding
+    static let toggleRegionHeight: CGFloat = 36
+    static let toggleSurfaceGap: CGFloat = 4
+    static let toggleInnerCornerRadius: CGFloat = cornerRadius - toggleSurfaceGap
 }
 
 struct ControlView: View {
@@ -75,6 +76,7 @@ struct ControlView: View {
                     title: "Highlight clicks",
                     help: "Show click ripples on the selected window and Demo Stage",
                     isOn: manager.highlightsMouseClicks,
+                    position: .top,
                     action: manager.toggleMouseClickHighlighting
                 )
 
@@ -85,10 +87,16 @@ struct ControlView: View {
                         ? "Allow Accessibility access, then turn on keystroke highlighting"
                         : "Highlight keystrokes on the Demo Stage",
                     isOn: manager.highlightsKeystrokes,
+                    position: .bottom,
                     showsPermissionWarning: manager.needsKeystrokeAccessibilityPermission,
                     action: manager.toggleKeystrokeHighlighting
                 )
             }
+            .frame(
+                width: ControlMetrics.toggleRegionWidth,
+                height: ControlWindowSizing.size.height
+            )
+            .offset(x: ControlMetrics.outerPadding / 2)
             .frame(width: ControlMetrics.toggleWidth, height: ControlMetrics.contentHeight)
         }
         .frame(width: ControlWindowSizing.contentWidth, height: ControlMetrics.contentHeight)
@@ -484,10 +492,16 @@ private struct PermissionActionButton: View {
 }
 
 private struct PresentationToggleButton: View {
+    enum Position {
+        case top
+        case bottom
+    }
+
     let systemImage: String
     let title: String
     let help: String
     let isOn: Bool
+    let position: Position
     var isEnabled = true
     var showsPermissionWarning = false
     let action: () -> Void
@@ -517,11 +531,24 @@ private struct PresentationToggleButton: View {
             .foregroundStyle(
                 isOn || (isHovering && isEnabled) ? Color.primary : Color.secondary
             )
-            .frame(width: ControlMetrics.toggleWidth, height: ControlMetrics.toggleHeight)
+            .frame(
+                width: ControlMetrics.toggleRegionWidth,
+                height: ControlMetrics.toggleRegionHeight
+            )
             .background {
-                RoundedRectangle(cornerRadius: ControlMetrics.toggleHoverRadius, style: .continuous)
+                UnevenRoundedRectangle(
+                    topLeadingRadius: 0,
+                    bottomLeadingRadius: 0,
+                    bottomTrailingRadius: position == .bottom
+                        ? ControlMetrics.toggleInnerCornerRadius
+                        : 0,
+                    topTrailingRadius: position == .top
+                        ? ControlMetrics.toggleInnerCornerRadius
+                        : 0,
+                    style: .continuous
+                )
                     .fill(toggleBackground)
-                    .padding(ControlMetrics.toggleBackgroundInset)
+                    .padding(ControlMetrics.toggleSurfaceGap)
             }
             .contentShape(Rectangle())
         }
