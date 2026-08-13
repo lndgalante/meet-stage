@@ -25,6 +25,7 @@ final class CaptureManager: ObservableObject {
     @Published private(set) var highlightsKeystrokes: Bool
     @Published private(set) var needsKeystrokeAccessibilityPermission = false
     @Published private(set) var keystrokePresentation: KeystrokePresentation?
+    @Published private(set) var clickPresentations: [ClickPresentation] = []
     @Published private var shortcutPins: [Int: PinnedWindow] = [:]
     @Published private var shortcutExclusions: Set<PinnedWindow> = []
 
@@ -57,12 +58,14 @@ final class CaptureManager: ObservableObject {
     private var activeCaptureSource: WindowSource?
     private var activeCaptureFormat: StageCaptureFormat?
     private var capturesCursor = false
-    private var capturesMouseClicks = false
     private var desiredCursorVisibility = false
     private var isSwitchingStream = false
     private var captureConfigurationUpdateTask: Task<Void, Never>?
     private var keystrokeDismissTask: Task<Void, Never>?
+    private var clickDismissTasks: [UUID: Task<Void, Never>] = [:]
     private var keystrokeMonitor: GlobalKeystrokeMonitor?
+    private var mouseClickMonitor: GlobalMouseClickMonitor?
+    private let sourceClickRipplePresenter = SourceClickRipplePresenter()
     private let workspaceObservationBag: WorkspaceObservationBag
     private var windowMonitoringTask: Task<Void, Never>?
     private var windowRefreshTask: Task<Void, Never>?
@@ -79,11 +82,7 @@ final class CaptureManager: ObservableObject {
         self.shortcutStore = shortcutStore
         preferencesDefaults = defaults
         stageAspectRatio = StageWindowSizing.currentScreenAspectRatio()
-        if #available(macOS 15.0, *) {
-            highlightsMouseClicks = defaults.bool(forKey: Self.highlightsMouseClicksKey)
-        } else {
-            highlightsMouseClicks = false
-        }
+        highlightsMouseClicks = defaults.bool(forKey: Self.highlightsMouseClicksKey)
         highlightsKeystrokes =
             defaults.bool(forKey: Self.highlightsKeystrokesKey)
             && GlobalKeystrokeMonitor.hasAccessibilityPermission
@@ -160,11 +159,15 @@ final class CaptureManager: ObservableObject {
         if highlightsKeystrokes {
             startKeystrokeMonitor()
         }
+        if highlightsMouseClicks {
+            startMouseClickMonitor()
+        }
     }
 
     deinit {
         captureConfigurationUpdateTask?.cancel()
         keystrokeDismissTask?.cancel()
+        clickDismissTasks.values.forEach { $0.cancel() }
         windowMonitoringTask?.cancel()
         windowRefreshTask?.cancel()
     }
@@ -179,13 +182,6 @@ final class CaptureManager: ObservableObject {
 
     var needsScreenRecordingPermission: Bool {
         state == .permissionRequired
-    }
-
-    var canHighlightMouseClicks: Bool {
-        if #available(macOS 15.0, *) {
-            return true
-        }
-        return false
     }
 
     var displayedWindows: [WindowSource] {
@@ -409,9 +405,7 @@ final class CaptureManager: ObservableObject {
         selectedWindowDescription = "Nothing selected"
         errorMessage = nil
         state = .idle
-        keystrokePresentation = nil
-        keystrokeDismissTask?.cancel()
-        keystrokeDismissTask = nil
+        clearKeystrokePresentation()
         renderer.clear()
 
         guard let streamToStop else { return }
@@ -514,10 +508,14 @@ final class CaptureManager: ObservableObject {
     }
 
     func toggleMouseClickHighlighting() {
-        guard canHighlightMouseClicks else { return }
         highlightsMouseClicks.toggle()
         preferencesDefaults.set(highlightsMouseClicks, forKey: Self.highlightsMouseClicksKey)
-        scheduleCaptureConfigurationUpdateIfNeeded()
+        if highlightsMouseClicks {
+            startMouseClickMonitor()
+        } else {
+            mouseClickMonitor?.stop()
+            clearClickPresentations()
+        }
     }
 
     func toggleKeystrokeHighlighting() {
@@ -526,9 +524,7 @@ final class CaptureManager: ObservableObject {
             needsKeystrokeAccessibilityPermission = false
             preferencesDefaults.set(false, forKey: Self.highlightsKeystrokesKey)
             keystrokeMonitor?.stop()
-            keystrokePresentation = nil
-            keystrokeDismissTask?.cancel()
-            keystrokeDismissTask = nil
+            clearKeystrokePresentation()
             return
         }
 
@@ -617,6 +613,7 @@ final class CaptureManager: ObservableObject {
 
     private func switchCapture(to source: WindowSource) async throws {
         isSwitchingStream = true
+        clearClickPresentations()
         defer {
             isSwitchingStream = false
             synchronizeDesiredCursorVisibility()
@@ -631,11 +628,9 @@ final class CaptureManager: ObservableObject {
         let filter = SCContentFilter(desktopIndependentWindow: source.window)
         let format = StageWindowSizing.captureFormat(for: filter)
         let showsCursor = shouldCaptureCursor(for: source)
-        let showsMouseClicks = canHighlightMouseClicks && highlightsMouseClicks
         let configuration = makeStreamConfiguration(
             for: format,
-            showsCursor: showsCursor,
-            showsMouseClicks: showsMouseClicks
+            showsCursor: showsCursor
         )
 
         if let stream {
@@ -655,7 +650,6 @@ final class CaptureManager: ObservableObject {
             activeCaptureSource = source
             activeCaptureFormat = format
             capturesCursor = showsCursor
-            capturesMouseClicks = showsMouseClicks
             stageAspectRatio = format.aspectRatio
             return
         }
@@ -690,14 +684,12 @@ final class CaptureManager: ObservableObject {
         activeCaptureSource = source
         activeCaptureFormat = format
         capturesCursor = showsCursor
-        capturesMouseClicks = showsMouseClicks
         stageAspectRatio = format.aspectRatio
     }
 
     private func makeStreamConfiguration(
         for format: StageCaptureFormat,
-        showsCursor: Bool,
-        showsMouseClicks: Bool
+        showsCursor: Bool
     ) -> SCStreamConfiguration {
         let configuration = SCStreamConfiguration()
         configuration.width = format.width
@@ -707,9 +699,6 @@ final class CaptureManager: ObservableObject {
         configuration.pixelFormat = kCVPixelFormatType_32BGRA
         configuration.captureResolution = .best
         configuration.showsCursor = showsCursor
-        if #available(macOS 15.0, *) {
-            configuration.showMouseClicks = showsMouseClicks
-        }
         configuration.scalesToFit = true
         configuration.preservesAspectRatio = true
         configuration.backgroundColor = Self.blackBackground
@@ -732,10 +721,10 @@ final class CaptureManager: ObservableObject {
     private func handleApplicationActivation(_ application: NSRunningApplication) {
         refreshWindowsAutomatically()
         guard let source = activeCaptureSource else { return }
-        desiredCursorVisibility =
+        let selectedSourceIsFocused =
             application.processIdentifier == source.processIdentifier
             && shouldCaptureCursor(for: source)
-        scheduleCaptureConfigurationUpdateIfNeeded()
+        updatePresentationFocus(selectedSourceIsFocused)
     }
 
     private func handleApplicationDeactivation(_ application: NSRunningApplication) {
@@ -743,23 +732,29 @@ final class CaptureManager: ObservableObject {
         guard let source = activeCaptureSource,
             application.processIdentifier == source.processIdentifier
         else { return }
-        desiredCursorVisibility = false
-        scheduleCaptureConfigurationUpdateIfNeeded()
+        updatePresentationFocus(false)
     }
 
     private func synchronizeDesiredCursorVisibility() {
-        desiredCursorVisibility = activeCaptureSource.map(shouldCaptureCursor(for:)) ?? false
+        let selectedSourceIsFocused = activeCaptureSource.map(shouldCaptureCursor(for:)) ?? false
+        updatePresentationFocus(selectedSourceIsFocused)
+    }
+
+    private func updatePresentationFocus(_ selectedSourceIsFocused: Bool) {
+        desiredCursorVisibility = selectedSourceIsFocused
+        if !selectedSourceIsFocused {
+            clearKeystrokePresentation()
+            clearClickPresentations()
+        }
         scheduleCaptureConfigurationUpdateIfNeeded()
     }
 
     private func scheduleCaptureConfigurationUpdateIfNeeded() {
-        let desiredMouseClickVisibility = canHighlightMouseClicks && highlightsMouseClicks
         guard !isSwitchingStream,
             stream != nil,
             activeCaptureSource != nil,
             activeCaptureFormat != nil,
-            capturesCursor != desiredCursorVisibility
-                || capturesMouseClicks != desiredMouseClickVisibility,
+            capturesCursor != desiredCursorVisibility,
             captureConfigurationUpdateTask == nil
         else { return }
 
@@ -779,11 +774,9 @@ final class CaptureManager: ObservableObject {
         }
 
         let requestedCursorVisibility = desiredCursorVisibility
-        let requestedMouseClickVisibility = canHighlightMouseClicks && highlightsMouseClicks
         let configuration = makeStreamConfiguration(
             for: format,
-            showsCursor: requestedCursorVisibility,
-            showsMouseClicks: requestedMouseClickVisibility
+            showsCursor: requestedCursorVisibility
         )
 
         do {
@@ -796,7 +789,6 @@ final class CaptureManager: ObservableObject {
             }
 
             capturesCursor = requestedCursorVisibility
-            capturesMouseClicks = requestedMouseClickVisibility
             captureConfigurationUpdateTask = nil
             scheduleCaptureConfigurationUpdateIfNeeded()
         } catch {
@@ -812,9 +804,66 @@ final class CaptureManager: ObservableObject {
         activeCaptureSource = nil
         activeCaptureFormat = nil
         capturesCursor = false
-        capturesMouseClicks = false
         desiredCursorVisibility = false
+        clearKeystrokePresentation()
+        clearClickPresentations()
         isSwitchingStream = false
+    }
+
+    private func startMouseClickMonitor() {
+        if mouseClickMonitor == nil {
+            mouseClickMonitor = GlobalMouseClickMonitor { [weak self] location in
+                self?.showMouseClick(at: location)
+            }
+        }
+        mouseClickMonitor?.start()
+    }
+
+    private func showMouseClick(at clickLocation: GlobalClickLocation) {
+        guard let source = activeCaptureSource,
+            selectedWindowID == source.id,
+            PresentationEffectFocusPolicy.shouldPresent(
+                isEnabled: highlightsMouseClicks,
+                selectedSourceIsFocused: shouldCaptureCursor(for: source)
+            )
+        else { return }
+
+        let sourceFrame = WindowFrameResolver.currentFrame(
+            for: source.id,
+            fallback: source.window.frame
+        )
+        guard let normalizedLocation = ClickPresentationGeometry.normalizedLocation(
+            for: clickLocation.quartzPoint,
+            in: sourceFrame
+        ) else { return }
+
+        let presentation = ClickPresentation(location: normalizedLocation)
+        clickPresentations.append(presentation)
+        sourceClickRipplePresenter.show(
+            presentation,
+            sourceFrame: sourceFrame,
+            clickLocation: clickLocation
+        )
+
+        clickDismissTasks[presentation.id]?.cancel()
+        clickDismissTasks[presentation.id] = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(560))
+            guard !Task.isCancelled else { return }
+            self?.dismissClickPresentation(presentation.id)
+        }
+    }
+
+    private func dismissClickPresentation(_ id: UUID) {
+        clickDismissTasks[id]?.cancel()
+        clickDismissTasks[id] = nil
+        clickPresentations.removeAll { $0.id == id }
+    }
+
+    private func clearClickPresentations() {
+        clickDismissTasks.values.forEach { $0.cancel() }
+        clickDismissTasks.removeAll()
+        clickPresentations.removeAll()
+        sourceClickRipplePresenter.dismissAll()
     }
 
     private func startKeystrokeMonitor() {
@@ -827,7 +876,11 @@ final class CaptureManager: ObservableObject {
     }
 
     private func showKeystroke(_ label: String) {
-        guard highlightsKeystrokes else { return }
+        let selectedSourceIsFocused = activeCaptureSource.map(shouldCaptureCursor(for:)) ?? false
+        guard PresentationEffectFocusPolicy.shouldPresent(
+            isEnabled: highlightsKeystrokes,
+            selectedSourceIsFocused: selectedSourceIsFocused
+        ) else { return }
         keystrokeDismissTask?.cancel()
         let presentation = KeystrokePresentation(label: label)
         keystrokePresentation = presentation
@@ -839,6 +892,12 @@ final class CaptureManager: ObservableObject {
             self?.keystrokePresentation = nil
             self?.keystrokeDismissTask = nil
         }
+    }
+
+    private func clearKeystrokePresentation() {
+        keystrokeDismissTask?.cancel()
+        keystrokeDismissTask = nil
+        keystrokePresentation = nil
     }
 
     private func handleFrame(from sourceStreamID: ObjectIdentifier, geometry: CaptureFrameGeometry) {

@@ -2,9 +2,9 @@ import AppKit
 import SwiftUI
 
 enum ControlWindowSizing {
-    static let size = NSSize(width: 318, height: 80)
-    static let contentWidth: CGFloat = 302
-    static let sourceAreaWidth: CGFloat = 174
+    static let size = NSSize(width: 270, height: 72)
+    static let contentWidth: CGFloat = 256
+    static let sourceAreaWidth: CGFloat = 172
 }
 
 /// Applies AppKit-only window behavior that SwiftUI scenes cannot express.

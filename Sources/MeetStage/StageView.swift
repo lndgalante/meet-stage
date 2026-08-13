@@ -15,6 +15,21 @@ struct StageView: View {
             )
             .ignoresSafeArea()
 
+            if manager.isLive, !manager.clickPresentations.isEmpty {
+                GeometryReader { geometry in
+                    ForEach(manager.clickPresentations) { presentation in
+                        ClickRippleGlyph(reducesMotion: reduceMotion)
+                            .position(
+                                x: presentation.location.x * geometry.size.width,
+                                y: presentation.location.y * geometry.size.height
+                            )
+                    }
+                }
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+            }
+
             if !manager.isLive {
                 ZStack {
                     Color.black
