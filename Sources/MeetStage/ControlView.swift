@@ -1,5 +1,16 @@
 import SwiftUI
 
+private enum ControlMetrics {
+    static let outerPadding: CGFloat = 8
+    static let cornerRadius: CGFloat = 16
+    static let contentHeight: CGFloat = 64
+    static let sourceGroupWidth: CGFloat = 206
+    static let sourceTileWidth: CGFloat = 54
+    static let sourceTileHeight: CGFloat = 48
+    static let sourceTileRadius: CGFloat = 8
+    static let toggleWidth: CGFloat = 48
+}
+
 struct ControlView: View {
     @ObservedObject var manager: CaptureManager
     @Environment(\.openWindow) private var openWindow
@@ -15,14 +26,17 @@ struct ControlView: View {
                 sourcePanel
             }
         }
-        .padding(8)
+        .padding(ControlMetrics.outerPadding)
         .frame(width: ControlWindowSizing.size.width, height: ControlWindowSizing.size.height)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .background(
+            .regularMaterial,
+            in: RoundedRectangle(cornerRadius: ControlMetrics.cornerRadius, style: .continuous)
+        )
         .overlay {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .stroke(Color.white.opacity(0.18), lineWidth: 1)
+            RoundedRectangle(cornerRadius: ControlMetrics.cornerRadius, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.20), lineWidth: 1)
         }
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: ControlMetrics.cornerRadius, style: .continuous))
         .background(WindowConfigurator(kind: .control))
         .task {
             openWindow(id: "stage")
@@ -32,19 +46,40 @@ struct ControlView: View {
     }
 
     private var sourcePanel: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            sourceStrip
-            currentWindowLabel
-        }
-    }
+        HStack(spacing: 0) {
+            HStack(spacing: 8) {
+                captureStatusButton
 
-    private var sourceStrip: some View {
-        HStack(spacing: 7) {
-            captureStatusButton
+                VStack(alignment: .leading, spacing: 3) {
+                    sourceScroller
+                    currentWindowLabel
+                }
+            }
+            .frame(width: ControlMetrics.sourceGroupWidth, height: ControlMetrics.contentHeight)
 
-            sourceScroller
+            PresentationToggleButton(
+                systemImage: "cursorarrow.rays",
+                title: "Highlight clicks",
+                help: manager.canHighlightMouseClicks
+                    ? "Highlight mouse clicks on the Demo Stage"
+                    : "Click highlighting requires macOS 15 or later",
+                isOn: manager.highlightsMouseClicks,
+                isEnabled: manager.canHighlightMouseClicks,
+                action: manager.toggleMouseClickHighlighting
+            )
+
+            PresentationToggleButton(
+                systemImage: "command.square",
+                title: "Highlight keystrokes",
+                help: manager.needsKeystrokeAccessibilityPermission
+                    ? "Allow Accessibility access, then turn on keystroke highlighting"
+                    : "Highlight keystrokes on the Demo Stage",
+                isOn: manager.highlightsKeystrokes,
+                showsPermissionWarning: manager.needsKeystrokeAccessibilityPermission,
+                action: manager.toggleKeystrokeHighlighting
+            )
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(width: ControlWindowSizing.contentWidth, height: ControlMetrics.contentHeight)
     }
 
     private var sourceScroller: some View {
@@ -70,7 +105,7 @@ struct ControlView: View {
                     }
                 }
             }
-            .frame(width: ControlWindowSizing.sourceAreaWidth)
+            .frame(width: ControlWindowSizing.sourceAreaWidth, height: ControlMetrics.sourceTileHeight)
             .accessibilityLabel("Available windows")
             .accessibilityHint("Scroll horizontally to browse windows")
             .onAppear {
@@ -100,27 +135,19 @@ struct ControlView: View {
     }
 
     private var currentWindowLabel: some View {
-        HStack(spacing: 7) {
-            Color.clear
-                .frame(width: 24, height: 1)
-
-            Text(manager.currentWindowDescription)
-                .font(.system(size: 10.5, weight: .medium))
-                .foregroundStyle(manager.isLive ? Color.primary : Color.secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .frame(width: ControlWindowSizing.sourceAreaWidth, alignment: .leading)
-                .help("Current window: \(manager.currentWindowDescription)")
-                .accessibilityLabel("Current window: \(manager.currentWindowDescription)")
-                .contentTransition(.opacity)
-                .animation(
-                    reduceMotion ? nil : .easeOut(duration: 0.14),
-                    value: manager.currentWindowDescription
-                )
-
-            Spacer(minLength: 0)
-        }
-        .frame(height: 14)
+        Text(manager.currentWindowDescription)
+            .font(.caption2.weight(.medium))
+            .foregroundStyle(manager.isLive ? Color.primary : Color.secondary)
+            .lineLimit(1)
+            .truncationMode(.middle)
+            .frame(width: ControlWindowSizing.sourceAreaWidth, height: 13, alignment: .leading)
+            .help("Current window: \(manager.currentWindowDescription)")
+            .accessibilityLabel("Current window: \(manager.currentWindowDescription)")
+            .contentTransition(.opacity)
+            .animation(
+                reduceMotion ? nil : .easeOut(duration: 0.14),
+                value: manager.currentWindowDescription
+            )
     }
 
     private var captureStatusButton: some View {
@@ -226,7 +253,7 @@ private struct CompactWindowButton: View {
     var body: some View {
         Button(action: action) {
             ZStack {
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                RoundedRectangle(cornerRadius: ControlMetrics.sourceTileRadius, style: .continuous)
                     .fill(Color.black)
 
                 if let thumbnail = source.thumbnail {
@@ -237,7 +264,7 @@ private struct CompactWindowButton: View {
                     Image(nsImage: icon)
                         .resizable()
                         .scaledToFit()
-                        .padding(12)
+                        .padding(10)
                 } else {
                     Image(systemName: "macwindow")
                         .foregroundStyle(.secondary)
@@ -277,7 +304,7 @@ private struct CompactWindowButton: View {
                             Image(nsImage: icon)
                                 .resizable()
                                 .scaledToFit()
-                                .frame(width: 15, height: 15)
+                                .frame(width: 14, height: 14)
                                 .padding(2)
                                 .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
                         }
@@ -285,15 +312,17 @@ private struct CompactWindowButton: View {
                 }
                 .padding(4)
             }
-            .frame(width: 58, height: 52)
-            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+            .frame(width: ControlMetrics.sourceTileWidth, height: ControlMetrics.sourceTileHeight)
+            .clipShape(
+                RoundedRectangle(cornerRadius: ControlMetrics.sourceTileRadius, style: .continuous)
+            )
             .overlay {
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                RoundedRectangle(cornerRadius: ControlMetrics.sourceTileRadius, style: .continuous)
                     .stroke(borderColor, lineWidth: borderWidth)
             }
             .shadow(
                 color: isSelected ? Color.blue.opacity(0.35) : .clear,
-                radius: 4,
+                radius: 3,
                 y: 2
             )
             .animation(
@@ -301,7 +330,7 @@ private struct CompactWindowButton: View {
                 value: visualState
             )
         }
-        .buttonStyle(.plain)
+        .buttonStyle(CompactIconButtonStyle())
         .contextMenu {
             Menu("Pin Global Shortcut") {
                 ForEach(ShortcutSlot.all, id: \.self) { slot in
@@ -354,7 +383,7 @@ private struct CompactWindowButton: View {
     }
 
     private var borderWidth: CGFloat {
-        isPending ? 2 : isSelected ? 3 : 1
+        isPending || isSelected ? 2 : 1
     }
 
     private var visualState: Int {
@@ -456,6 +485,67 @@ private struct PermissionActionButton: View {
     }
 }
 
+private struct PresentationToggleButton: View {
+    let systemImage: String
+    let title: String
+    let help: String
+    let isOn: Bool
+    var isEnabled = true
+    var showsPermissionWarning = false
+    let action: () -> Void
+
+    @State private var isHovering = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 4) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 18, weight: .medium))
+                    .symbolRenderingMode(.monochrome)
+
+                ZStack {
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 9, weight: .bold))
+                        .opacity(isOn ? 1 : 0)
+
+                    if showsPermissionWarning {
+                        Image(systemName: "exclamationmark")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(.orange)
+                    }
+                }
+                .frame(height: 10)
+            }
+            .foregroundStyle(isOn ? Color.primary : Color.secondary)
+            .frame(width: ControlMetrics.toggleWidth, height: ControlMetrics.contentHeight)
+            .background(isHovering && isEnabled ? Color.primary.opacity(0.08) : .clear)
+            .contentShape(Rectangle())
+            .overlay(alignment: .leading) {
+                Rectangle()
+                    .fill(Color.white.opacity(0.12))
+                    .frame(width: 1)
+            }
+        }
+        .buttonStyle(CompactIconButtonStyle())
+        .disabled(!isEnabled)
+        .onHover { isHovering = $0 }
+        .help(help)
+        .accessibilityLabel(title)
+        .accessibilityValue(isOn ? "On" : showsPermissionWarning ? "Permission required" : "Off")
+        .accessibilityHint(help)
+        .accessibilityAddTraits(isOn ? .isSelected : [])
+        .animation(
+            reduceMotion ? nil : .easeOut(duration: 0.12),
+            value: isHovering
+        )
+        .animation(
+            reduceMotion ? nil : .easeOut(duration: 0.12),
+            value: isOn
+        )
+    }
+}
+
 private struct CompactIconButtonStyle: ButtonStyle {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -532,7 +622,7 @@ private struct CaptureStatusControl: View {
                 }
             }
         }
-        .frame(width: 24, height: 40)
+        .frame(width: 24, height: ControlMetrics.contentHeight)
         .contentShape(Rectangle())
     }
 

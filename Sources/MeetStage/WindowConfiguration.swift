@@ -2,8 +2,9 @@ import AppKit
 import SwiftUI
 
 enum ControlWindowSizing {
-    static let size = NSSize(width: 318, height: 92)
-    static let sourceAreaWidth: CGFloat = 190
+    static let size = NSSize(width: 318, height: 80)
+    static let contentWidth: CGFloat = 302
+    static let sourceAreaWidth: CGFloat = 174
 }
 
 /// Applies AppKit-only window behavior that SwiftUI scenes cannot express.
@@ -53,6 +54,9 @@ struct WindowConfigurator: NSViewRepresentable {
             window.setContentSize(compactSize)
             window.minSize = compactSize
             window.maxSize = compactSize
+            if !NSScreen.screens.contains(where: { $0.visibleFrame.intersects(window.frame) }) {
+                window.center()
+            }
 
         case let .stage(aspectRatio):
             configureStage(window, aspectRatio: aspectRatio, coordinator: coordinator)

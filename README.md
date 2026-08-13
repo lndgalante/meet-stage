@@ -34,6 +34,12 @@ source. Newly opened windows appear automatically, and closed windows are
 removed automatically. When you switch with a global shortcut, BetterDemos
 brings that source into view automatically.
 
+Use the two presentation controls at the trailing edge of the strip to
+highlight mouse clicks or show keystrokes on the Demo Stage. Click highlighting
+uses ScreenCaptureKit on macOS 15 and later. Keystroke highlighting asks for
+Accessibility access the first time you enable it so BetterDemos can observe
+keys pressed in the app you are presenting.
+
 ## Requirements
 
 - macOS 14 or newer

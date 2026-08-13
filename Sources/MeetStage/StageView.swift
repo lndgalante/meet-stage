@@ -42,7 +42,27 @@ struct StageView: View {
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel(stageAccessibilityLabel)
             }
+
+            if manager.isLive,
+                let keystroke = manager.keystrokePresentation
+            {
+                KeystrokeBadge(label: keystroke.label)
+                    .id(keystroke.id)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                    .padding(.bottom, 28)
+                    .transition(
+                        reduceMotion
+                            ? .opacity
+                            : .opacity.combined(with: .scale(scale: 0.92, anchor: .bottom))
+                    )
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+            }
         }
+        .animation(
+            reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 1),
+            value: manager.keystrokePresentation?.id
+        )
         .background(WindowConfigurator(kind: .stage(aspectRatio: manager.stageAspectRatio)))
     }
 
@@ -62,6 +82,27 @@ struct StageView: View {
     private var stageAccessibilityLabel: String {
         let title = manager.state == .switching ? "Preparing the stage" : "Nothing is on stage"
         return "\(title). \(stageGuidance)"
+    }
+}
+
+private struct KeystrokeBadge: View {
+    let label: String
+
+    var body: some View {
+        Text(label)
+            .font(.system(size: 18, weight: .semibold, design: .rounded))
+            .foregroundStyle(.white)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 9)
+            .background(
+                Color.black.opacity(0.78),
+                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.22), lineWidth: 1)
+            }
+            .shadow(color: Color.black.opacity(0.32), radius: 8, y: 3)
     }
 }
 
