@@ -141,13 +141,6 @@ struct ControlView: View {
     private var actionButtons: some View {
         HStack(spacing: 2) {
             CompactActionButton(
-                systemImage: "arrow.clockwise",
-                help: manager.isRefreshing ? "Refreshing available windows…" : "Refresh available windows (⌘R)",
-                isDisabled: manager.isRefreshing,
-                action: manager.refreshWindows
-            )
-
-            CompactActionButton(
                 systemImage: "rectangle.on.rectangle",
                 help: "Show Demo Stage"
             ) {
@@ -213,12 +206,6 @@ struct ControlView: View {
 
             Spacer()
 
-            CompactActionButton(
-                systemImage: "arrow.clockwise",
-                help: manager.isRefreshing ? "Refreshing windows…" : "Refresh windows",
-                isDisabled: manager.isRefreshing,
-                action: manager.refreshWindows
-            )
             CompactActionButton(
                 systemImage: "rectangle.on.rectangle",
                 help: "Show Demo Stage"
