@@ -43,11 +43,6 @@ struct ControlView: View {
             captureStatusButton
 
             sourceScroller
-
-            Divider()
-                .frame(height: 38)
-
-            actionButtons
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -138,18 +133,6 @@ struct ControlView: View {
         )
     }
 
-    private var actionButtons: some View {
-        HStack(spacing: 2) {
-            CompactActionButton(
-                systemImage: "rectangle.on.rectangle",
-                help: "Show Demo Stage"
-            ) {
-                openWindow(id: "stage")
-            }
-
-        }
-    }
-
     private var permissionStrip: some View {
         HStack(spacing: 8) {
             HStack(spacing: 8) {
@@ -205,13 +188,6 @@ struct ControlView: View {
             }
 
             Spacer()
-
-            CompactActionButton(
-                systemImage: "rectangle.on.rectangle",
-                help: "Show Demo Stage"
-            ) {
-                openWindow(id: "stage")
-            }
         }
     }
 
@@ -477,36 +453,6 @@ private struct PermissionActionButton: View {
             .controlSize(.small)
             .help(help)
             .accessibilityLabel(help)
-    }
-}
-
-private struct CompactActionButton: View {
-    let systemImage: String
-    let help: String
-    var tint: Color = .primary
-    var isDisabled = false
-    let action: () -> Void
-
-    @State private var isHovering = false
-
-    var body: some View {
-        Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(tint)
-                .frame(width: 28, height: 40)
-                .background {
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(isHovering ? Color.primary.opacity(0.09) : .clear)
-                        .frame(height: 28)
-                }
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(CompactIconButtonStyle())
-        .disabled(isDisabled)
-        .onHover { isHovering = $0 && !isDisabled }
-        .help(help)
-        .accessibilityLabel(help)
     }
 }
 
