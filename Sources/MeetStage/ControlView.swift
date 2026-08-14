@@ -110,22 +110,22 @@ struct ControlView: View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: ControlMetrics.sourceTileSpacing) {
-                    ForEach(manager.displayedWindows) { source in
-                        let shortcut = manager.shortcut(for: source)
-                        CompactWindowButton(
-                            source: source,
-                            shortcut: shortcut,
-                            isShortcutAvailable: shortcut.map {
-                                !manager.unavailableShortcutSlots.contains($0)
-                            } ?? true,
-                            isSelected: source.id == manager.selectedWindowID,
-                            isPending: source.id == manager.pendingWindowID,
-                            shortcutOwner: manager.shortcutOwnerDescription(for:),
-                            action: { manager.select(source) },
-                            pin: { manager.pin(source, to: $0) },
-                            unpin: { manager.unpin(source) }
-                        )
-                        .id(source.id)
+                    ForEach(ShortcutSlot.all, id: \.self) { slot in
+                        if let source = manager.window(forShortcutSlot: slot) {
+                            windowButton(for: source, shortcut: slot)
+                                .id(source.id)
+                        } else {
+                            EmptyShortcutSlot(
+                                slot: slot,
+                                pinnedWindowDescription: manager.shortcutOwnerDescription(for: slot)
+                            )
+                            .id("empty-shortcut-\(slot)")
+                        }
+                    }
+
+                    ForEach(manager.unassignedDisplayedWindows) { source in
+                        windowButton(for: source, shortcut: nil)
+                            .id(source.id)
                     }
                 }
                 .padding(.horizontal, ControlMetrics.sourceTileHorizontalInset)
@@ -146,7 +146,26 @@ struct ControlView: View {
             .onChange(of: manager.displayedWindows.map(\.id)) { _, _ in
                 scrollToFocusedSource(using: proxy)
             }
+            .onChange(of: manager.shortcutWindowIDs) { _, _ in
+                scrollToFocusedSource(using: proxy)
+            }
         }
+    }
+
+    private func windowButton(for source: WindowSource, shortcut: Int?) -> some View {
+        CompactWindowButton(
+            source: source,
+            shortcut: shortcut,
+            isShortcutAvailable: shortcut.map {
+                !manager.unavailableShortcutSlots.contains($0)
+            } ?? true,
+            isSelected: source.id == manager.selectedWindowID,
+            isPending: source.id == manager.pendingWindowID,
+            shortcutOwner: manager.shortcutOwnerDescription(for:),
+            action: { manager.select(source) },
+            pin: { manager.pin(source, to: $0) },
+            unpin: { manager.unpin(source) }
+        )
     }
 
     private func scrollToFocusedSource(using proxy: ScrollViewProxy) {
@@ -243,6 +262,51 @@ struct ControlView: View {
         manager.errorMessage ?? "Open an app window. It will appear automatically."
     }
 
+}
+
+private struct EmptyShortcutSlot: View {
+    let slot: Int
+    let pinnedWindowDescription: String?
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: ControlMetrics.sourceTileRadius, style: .continuous)
+                .fill(Color.black.opacity(0.16))
+
+            RoundedRectangle(cornerRadius: ControlMetrics.sourceTileRadius, style: .continuous)
+                .strokeBorder(
+                    Color.white.opacity(0.13),
+                    style: StrokeStyle(lineWidth: 1, dash: [3, 3])
+                )
+
+            Text("⌥\(slot)")
+                .font(.system(.caption2, design: .rounded, weight: .bold))
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 2)
+                .background(Color.white.opacity(0.06), in: Capsule())
+                .padding(4)
+        }
+        .frame(width: ControlMetrics.sourceTileWidth, height: ControlMetrics.sourceTileHeight)
+        .help(helpText)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Option \(slot), empty shortcut slot")
+        .accessibilityHint(accessibilityHint)
+    }
+
+    private var helpText: String {
+        if let pinnedWindowDescription {
+            return "Option+\(slot): \(pinnedWindowDescription) is unavailable"
+        }
+        return "Option+\(slot): Empty shortcut slot"
+    }
+
+    private var accessibilityHint: String {
+        if pinnedWindowDescription != nil {
+            return "The pinned window is currently unavailable"
+        }
+        return "A window can be pinned here from its context menu"
+    }
 }
 
 private struct CompactWindowButton: View {

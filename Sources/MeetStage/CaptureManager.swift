@@ -207,6 +207,15 @@ final class CaptureManager: ObservableObject {
             .map(\.element)
     }
 
+    var unassignedDisplayedWindows: [WindowSource] {
+        displayedWindows.filter { shortcut(for: $0) == nil }
+    }
+
+    func window(forShortcutSlot slot: Int) -> WindowSource? {
+        guard let windowID = shortcutWindowIDs[slot] else { return nil }
+        return windows.first { $0.id == windowID }
+    }
+
     var pinnedShortcuts: [ShortcutPin] {
         shortcutPins
             .map { ShortcutPin(slot: $0.key, window: $0.value) }
