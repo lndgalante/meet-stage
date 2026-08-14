@@ -18,6 +18,8 @@ private enum ControlMetrics {
     static let toggleRegionHeight: CGFloat = 36
     static let toggleSurfaceGap: CGFloat = 4
     static let toggleInnerCornerRadius: CGFloat = cornerRadius - toggleSurfaceGap
+    static let clickHighlightGlyphOffset = CGSize(width: -0.5, height: -0.5)
+    static let keystrokeHighlightGlyphOffset = CGSize(width: 0.25, height: -0.5)
 }
 
 struct ControlView: View {
@@ -77,6 +79,7 @@ struct ControlView: View {
                     help: "Show click ripples on the selected window and Demo Stage",
                     isOn: manager.highlightsMouseClicks,
                     position: .top,
+                    glyphOffset: ControlMetrics.clickHighlightGlyphOffset,
                     action: manager.toggleMouseClickHighlighting
                 )
 
@@ -88,6 +91,7 @@ struct ControlView: View {
                         : "Highlight keystrokes on the Demo Stage",
                     isOn: manager.highlightsKeystrokes,
                     position: .bottom,
+                    glyphOffset: ControlMetrics.keystrokeHighlightGlyphOffset,
                     showsPermissionWarning: manager.needsKeystrokeAccessibilityPermission,
                     action: manager.toggleKeystrokeHighlighting
                 )
@@ -502,6 +506,7 @@ private struct PresentationToggleButton: View {
     let help: String
     let isOn: Bool
     let position: Position
+    let glyphOffset: CGSize
     var isEnabled = true
     var showsPermissionWarning = false
     let action: () -> Void
@@ -515,6 +520,7 @@ private struct PresentationToggleButton: View {
                 Image(systemName: systemImage)
                     .font(.system(size: 15, weight: .medium))
                     .symbolRenderingMode(.monochrome)
+                    .offset(x: glyphOffset.width, y: glyphOffset.height)
 
                 if showsPermissionWarning {
                     HStack {
