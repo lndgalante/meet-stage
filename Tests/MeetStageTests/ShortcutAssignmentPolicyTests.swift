@@ -5,6 +5,16 @@ import Testing
 @Suite("Shortcut assignment policy")
 struct ShortcutAssignmentPolicyTests {
     @Test
+    func testDefaultVisibleSlotsStopAtFour() {
+        #expect(ShortcutSlot.visibleSlots() == [1, 2, 3, 4])
+    }
+
+    @Test
+    func testVisibleSlotsIncludeMeaningfulLaterShortcuts() {
+        #expect(ShortcutSlot.visibleSlots(including: [6, 9]) == [1, 2, 3, 4, 6, 9])
+    }
+
+    @Test
     func testAutomaticAssignmentsFollowCandidateOrder() {
         let candidates = [
             candidate(id: 11, title: "Editor"),

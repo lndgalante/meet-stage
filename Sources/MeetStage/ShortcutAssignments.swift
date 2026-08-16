@@ -3,9 +3,14 @@ import CoreGraphics
 /// The global keyboard-shortcut slots supported by BetterDemos.
 enum ShortcutSlot {
     static let all = 1...9
+    static let defaultVisible = 1...4
 
     static func isValid(_ slot: Int) -> Bool {
         all.contains(slot)
+    }
+
+    static func visibleSlots(including additionalSlots: Set<Int> = []) -> [Int] {
+        all.filter { defaultVisible.contains($0) || additionalSlots.contains($0) }
     }
 }
 

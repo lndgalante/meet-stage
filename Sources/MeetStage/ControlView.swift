@@ -1,20 +1,24 @@
 import SwiftUI
 
 private enum ControlMetrics {
-    static let outerPadding: CGFloat = 7
-    static let cornerRadius: CGFloat = 16
+    static let outerPadding: CGFloat = 5
+    static let cornerRadius: CGFloat = 14
     static let controlBarCornerRadius: CGFloat = 12
-    static let contentHeight: CGFloat = 58
-    static let captureControlWidth: CGFloat = 42
-    static let captureGlyphHorizontalOffset: CGFloat = -4
-    static let sourceTileWidth: CGFloat = 52
-    static let sourceTileHeight: CGFloat = 52
+    static let contentHeight: CGFloat = 44
+    static let sourceTileWidth: CGFloat = 44
+    static let sourceTileHeight: CGFloat = 44
     static let sourceTileSpacing: CGFloat = 4
     static let sourceTileHorizontalInset: CGFloat = 4
-    static let sourceTileVerticalInset: CGFloat = 2
-    static let sourceViewportHeight: CGFloat = 56
-    static let sourceTileRadius: CGFloat = 10
+    static let sourceTileVerticalInset: CGFloat = 0
+    static let sourceViewportHeight: CGFloat = 44
+    static let sourceTileRadius: CGFloat = 9
+    static let sourceBadgeIconSize: CGFloat = 12
+    static let sourceStateIconSize: CGFloat = 12
+    static let sourceScrollFadeWidth: CGFloat = 14
+    static let sourceScrollShadowWidth: CGFloat = 18
+    static let sourceScrollCoordinateSpace = "source-scroll"
     static let controlBarButtonHeight: CGFloat = 30
+    static let controlBarIconSize: CGFloat = 12
     static let clickHighlightGlyphOffset = CGSize(width: -0.5, height: -0.5)
     static let keystrokeHighlightGlyphOffset = CGSize(width: 0.25, height: -0.5)
 }
@@ -23,6 +27,7 @@ struct ControlView: View {
     @ObservedObject var manager: CaptureManager
     @Environment(\.openWindow) private var openWindow
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var sourceScrollBounds = CGRect.zero
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -68,13 +73,8 @@ struct ControlView: View {
             in: RoundedRectangle(cornerRadius: ControlMetrics.cornerRadius, style: .continuous)
         )
         .overlay {
-            ZStack {
-                CaptureSeparatorShape()
-                    .fill(Color.white.opacity(0.12))
-
-                RoundedRectangle(cornerRadius: ControlMetrics.cornerRadius, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.20), lineWidth: 1)
-            }
+            RoundedRectangle(cornerRadius: ControlMetrics.cornerRadius, style: .continuous)
+                .strokeBorder(Color.white.opacity(0.20), lineWidth: 1)
         }
         .clipShape(RoundedRectangle(cornerRadius: ControlMetrics.cornerRadius, style: .continuous))
     }
@@ -165,24 +165,15 @@ struct ControlView: View {
     }
 
     private var sourcePanel: some View {
-        HStack(spacing: 0) {
-            captureStatusButton
-                .offset(x: ControlMetrics.captureGlyphHorizontalOffset)
-                .frame(
-                    width: ControlMetrics.captureControlWidth,
-                    height: ControlMetrics.contentHeight
-                )
-
-            sourceScroller
-        }
-        .frame(width: ControlWindowSizing.contentWidth, height: ControlMetrics.contentHeight)
+        sourceScroller
+            .frame(width: ControlWindowSizing.contentWidth, height: ControlMetrics.contentHeight)
     }
 
     private var sourceScroller: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: ControlMetrics.sourceTileSpacing) {
-                    ForEach(ShortcutSlot.all, id: \.self) { slot in
+                HStack(spacing: ControlMetrics.sourceTileSpacing) {
+                    ForEach(visibleShortcutSlots, id: \.self) { slot in
                         if let source = manager.window(forShortcutSlot: slot) {
                             windowButton(for: source, shortcut: slot)
                                 .id(source.id)
@@ -202,8 +193,36 @@ struct ControlView: View {
                 }
                 .padding(.horizontal, ControlMetrics.sourceTileHorizontalInset)
                 .padding(.vertical, ControlMetrics.sourceTileVerticalInset)
+                .background {
+                    GeometryReader { geometry in
+                        let bounds = geometry.frame(
+                            in: .named(ControlMetrics.sourceScrollCoordinateSpace)
+                        )
+                        Color.clear
+                            .onAppear {
+                                sourceScrollBounds = bounds
+                            }
+                            .onChange(of: bounds) { _, newBounds in
+                                sourceScrollBounds = newBounds
+                            }
+                    }
+                }
             }
+            .coordinateSpace(name: ControlMetrics.sourceScrollCoordinateSpace)
             .frame(width: ControlWindowSizing.sourceAreaWidth, height: ControlMetrics.sourceViewportHeight)
+            .mask {
+                SourceScrollFadeMask(
+                    leadingStrength: leadingSourceFadeStrength,
+                    trailingStrength: trailingSourceFadeStrength
+                )
+            }
+            .overlay {
+                SourceScrollEdgeShadow(
+                    leadingStrength: leadingSourceFadeStrength,
+                    trailingStrength: trailingSourceFadeStrength
+                )
+                .allowsHitTesting(false)
+            }
             .accessibilityLabel("Available windows")
             .accessibilityHint("Scroll horizontally to browse windows")
             .onAppear {
@@ -222,6 +241,33 @@ struct ControlView: View {
                 scrollToFocusedSource(using: proxy)
             }
         }
+    }
+
+    private var leadingSourceFadeStrength: CGFloat {
+        guard sourceScrollBounds.width > 0 else { return 0 }
+        return min(
+            max(-sourceScrollBounds.minX / ControlMetrics.sourceScrollFadeWidth, 0),
+            1
+        )
+    }
+
+    private var trailingSourceFadeStrength: CGFloat {
+        guard sourceScrollBounds.width > 0 else { return 0 }
+        let remainingDistance = sourceScrollBounds.maxX - ControlWindowSizing.sourceAreaWidth
+        return min(
+            max(remainingDistance / ControlMetrics.sourceScrollFadeWidth, 0),
+            1
+        )
+    }
+
+    private var visibleShortcutSlots: [Int] {
+        let additionalSlots = Set(
+            ShortcutSlot.all.filter { slot in
+                manager.window(forShortcutSlot: slot) != nil
+                    || manager.shortcutOwnerDescription(for: slot) != nil
+            }
+        )
+        return ShortcutSlot.visibleSlots(including: additionalSlots)
     }
 
     private func windowButton(for source: WindowSource, shortcut: Int?) -> some View {
@@ -251,64 +297,47 @@ struct ControlView: View {
         }
     }
 
-    private var captureStatusButton: some View {
-        CaptureStatusControl(
-            state: manager.state,
-            statusDescription: manager.statusDescription,
-            isCapturing: manager.isCapturing,
-            isLive: manager.isLive,
-            action: manager.stopCapture
-        )
-    }
-
     private var permissionStrip: some View {
-        HStack(spacing: 8) {
-            HStack(spacing: 8) {
-                Image(systemName: "lock.screen")
-                    .font(.title3)
-                    .foregroundStyle(.red)
+        HStack(spacing: 5) {
+            Image(systemName: "lock.screen")
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(.red)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Allow screen recording")
-                        .font(.callout.weight(.semibold))
-                    Text("Open Settings, then restart.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .accessibilityElement(children: .combine)
+            Text("Allow screen recording")
+                .font(.caption.weight(.semibold))
+                .lineLimit(1)
 
-            Spacer(minLength: 4)
+            Spacer(minLength: 2)
 
             PermissionActionButton(
-                title: "Settings",
-                help: "Open Screen Recording Settings",
+                systemImage: "gearshape",
+                title: "Open Screen Recording Settings",
                 action: manager.openScreenRecordingSettings
             )
             PermissionActionButton(
-                title: "Restart",
-                help: "Restart BetterDemos",
+                systemImage: "arrow.clockwise",
+                title: "Restart BetterDemos",
                 action: manager.restartApplication
             )
         }
     }
 
     private var emptyStrip: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 6) {
             if manager.state == .loading {
                 ProgressView()
                     .controlSize(.small)
             } else {
                 Image(systemName: manager.errorMessage == nil ? "macwindow.badge.plus" : "exclamationmark.triangle")
-                    .font(.title2)
+                    .font(.system(size: 16, weight: .medium))
                     .foregroundStyle(manager.errorMessage == nil ? Color.secondary : Color.red)
             }
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 0) {
                 Text(emptyTitle)
-                    .font(.callout.weight(.semibold))
+                    .font(.caption.weight(.semibold))
                 Text(emptyDetail)
-                    .font(.caption)
+                    .font(.caption2)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .truncationMode(.tail)
@@ -334,6 +363,57 @@ struct ControlView: View {
         manager.errorMessage ?? "Open an app window. It will appear automatically."
     }
 
+}
+
+private struct SourceScrollFadeMask: View {
+    let leadingStrength: CGFloat
+    let trailingStrength: CGFloat
+
+    var body: some View {
+        HStack(spacing: 0) {
+            LinearGradient(
+                colors: [Color.black.opacity(1 - leadingStrength), .black],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            .frame(width: ControlMetrics.sourceScrollFadeWidth)
+
+            Rectangle()
+                .fill(.black)
+
+            LinearGradient(
+                colors: [.black, Color.black.opacity(1 - trailingStrength)],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            .frame(width: ControlMetrics.sourceScrollFadeWidth)
+        }
+    }
+}
+
+private struct SourceScrollEdgeShadow: View {
+    let leadingStrength: CGFloat
+    let trailingStrength: CGFloat
+
+    var body: some View {
+        HStack(spacing: 0) {
+            LinearGradient(
+                colors: [Color.black.opacity(0.55 * leadingStrength), .clear],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            .frame(width: ControlMetrics.sourceScrollShadowWidth)
+
+            Spacer(minLength: 0)
+
+            LinearGradient(
+                colors: [.clear, Color.black.opacity(0.55 * trailingStrength)],
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            .frame(width: ControlMetrics.sourceScrollShadowWidth)
+        }
+    }
 }
 
 private struct EmptyShortcutSlot: View {
@@ -444,7 +524,7 @@ private struct CompactWindowButton: View {
                             Image(systemName: "checkmark.circle.fill")
                                 .symbolRenderingMode(.palette)
                                 .foregroundStyle(.white, .blue)
-                                .font(.system(size: 14))
+                                .font(.system(size: ControlMetrics.sourceStateIconSize))
                                 .transition(.opacity.combined(with: .scale(scale: 0.75)))
                         }
                     }
@@ -455,7 +535,10 @@ private struct CompactWindowButton: View {
                             Image(nsImage: icon)
                                 .resizable()
                                 .scaledToFit()
-                                .frame(width: 14, height: 14)
+                                .frame(
+                                    width: ControlMetrics.sourceBadgeIconSize,
+                                    height: ControlMetrics.sourceBadgeIconSize
+                                )
                                 .padding(2)
                                 .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
                         }
@@ -618,16 +701,20 @@ private struct WindowHoverPreview: View {
 }
 
 private struct PermissionActionButton: View {
+    let systemImage: String
     let title: String
-    let help: String
     let action: () -> Void
 
     var body: some View {
-        Button(title, action: action)
-            .buttonStyle(.bordered)
-            .controlSize(.small)
-            .help(help)
-            .accessibilityLabel(help)
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 13, weight: .medium))
+                .frame(width: 24, height: ControlMetrics.contentHeight)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(CompactIconButtonStyle())
+        .help(title)
+        .accessibilityLabel(title)
     }
 }
 
@@ -652,7 +739,7 @@ private struct ControlBarButton: View {
             Button(action: action) {
                 ZStack {
                     Image(systemName: systemImage)
-                        .font(.system(size: 15, weight: .medium))
+                        .font(.system(size: ControlMetrics.controlBarIconSize, weight: .medium))
                         .symbolRenderingMode(.monochrome)
                         .offset(x: glyphOffset.width, y: glyphOffset.height)
 
@@ -711,25 +798,6 @@ private struct ControlBarButton: View {
     }
 }
 
-private struct CaptureSeparatorShape: Shape {
-    func path(in rect: CGRect) -> Path {
-        let thickness: CGFloat = 1
-        let borderInset: CGFloat = 1
-        let captureBoundary = ControlMetrics.outerPadding + ControlMetrics.captureControlWidth
-
-        var path = Path()
-        path.addRect(
-            CGRect(
-                x: captureBoundary - thickness / 2,
-                y: borderInset,
-                width: thickness,
-                height: rect.height - borderInset * 2
-            )
-        )
-        return path
-    }
-}
-
 private struct CompactIconButtonStyle: ButtonStyle {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -741,78 +809,5 @@ private struct CompactIconButtonStyle: ButtonStyle {
                 reduceMotion ? nil : .easeOut(duration: 0.1),
                 value: configuration.isPressed
             )
-    }
-}
-
-private struct CaptureStatusControl: View {
-    let state: CaptureState
-    let statusDescription: String
-    let isCapturing: Bool
-    let isLive: Bool
-    let action: () -> Void
-
-    @State private var isHovering = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    var body: some View {
-        Group {
-            if isCapturing {
-                Button(action: action) {
-                    statusGlyph
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(CompactIconButtonStyle())
-                .accessibilityLabel("Stop capture")
-                .accessibilityValue(statusDescription)
-                .accessibilityHint("Stops the current window capture")
-            } else {
-                statusGlyph
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel("Capture status")
-                    .accessibilityValue(statusDescription)
-            }
-        }
-        .onHover { isHovering = $0 && isCapturing }
-        .help(tooltipText)
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: isHovering)
-    }
-
-    @ViewBuilder
-    private var statusGlyph: some View {
-        ZStack {
-            if isCapturing && isHovering {
-                RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(.red)
-                    .frame(width: 10, height: 10)
-            } else {
-                switch state {
-                case .capturing:
-                    Image(systemName: "record.circle.fill")
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(.green)
-                        .shadow(color: Color.green.opacity(isLive ? 0.55 : 0), radius: 4, y: 2)
-                case .loading, .switching:
-                    ProgressView()
-                        .controlSize(.mini)
-                        .tint(.orange)
-                case .permissionRequired, .failed:
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(.red)
-                case .idle:
-                    Image(systemName: "circle")
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-        .frame(width: 24, height: ControlMetrics.contentHeight)
-        .contentShape(Rectangle())
-    }
-
-    private var tooltipText: String {
-        isCapturing
-            ? "\(statusDescription) · Click to stop capture (⌘.)"
-            : "Capture status: \(statusDescription)"
     }
 }
