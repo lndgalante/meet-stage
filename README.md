@@ -10,7 +10,7 @@ reopening the share picker or exposing your desktop.
 
 BetterDemos has two windows:
 
-- **BetterDemos** is a compact floating controller with three visible previews
+- **BetterDemos** is a compact floating controller with four visible previews
   in a horizontally scrolling window strip, plus global shortcuts.
 - **BetterDemos — Demo Stage** is the clean, high-resolution output window. This
   is the only window you share in Google Meet or another meeting app.
@@ -34,11 +34,12 @@ source. Newly opened windows appear automatically, and closed windows are
 removed automatically. When you switch with a global shortcut, BetterDemos
 brings that source into view automatically.
 
-Use the two presentation controls at the trailing edge of the strip to
-highlight mouse clicks or show keystrokes on the Demo Stage. Click highlighting
-uses ScreenCaptureKit on macOS 15 and later. Keystroke highlighting asks for
-Accessibility access the first time you enable it so BetterDemos can observe
-keys pressed in the app you are presenting.
+Use the attached control bar below the strip to highlight mouse clicks or show
+keystrokes on the Demo Stage. Click highlighting uses ScreenCaptureKit on macOS
+15 and later. Keystroke highlighting asks for Accessibility access the first
+time you enable it so BetterDemos can observe keys pressed in the app you are
+presenting. Annotation and app settings controls are reserved for upcoming
+features.
 
 ## Requirements
 

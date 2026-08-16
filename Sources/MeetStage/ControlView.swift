@@ -3,6 +3,7 @@ import SwiftUI
 private enum ControlMetrics {
     static let outerPadding: CGFloat = 7
     static let cornerRadius: CGFloat = 16
+    static let controlBarCornerRadius: CGFloat = 12
     static let contentHeight: CGFloat = 58
     static let captureControlWidth: CGFloat = 42
     static let captureGlyphHorizontalOffset: CGFloat = -4
@@ -13,11 +14,7 @@ private enum ControlMetrics {
     static let sourceTileVerticalInset: CGFloat = 2
     static let sourceViewportHeight: CGFloat = 56
     static let sourceTileRadius: CGFloat = 10
-    static let toggleWidth: CGFloat = 42
-    static let toggleRegionWidth: CGFloat = toggleWidth + outerPadding
-    static let toggleRegionHeight: CGFloat = 36
-    static let toggleSurfaceGap: CGFloat = 4
-    static let toggleInnerCornerRadius: CGFloat = cornerRadius - toggleSurfaceGap
+    static let controlBarButtonHeight: CGFloat = 30
     static let clickHighlightGlyphOffset = CGSize(width: -0.5, height: -0.5)
     static let keystrokeHighlightGlyphOffset = CGSize(width: 0.25, height: -0.5)
 }
@@ -28,6 +25,30 @@ struct ControlView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
+        ZStack(alignment: .top) {
+            controlBar
+                .offset(
+                    y: ControlWindowSizing.captureSurfaceSize.height
+                        - ControlWindowSizing.controlBarOverlap
+                )
+
+            captureSurface
+                .zIndex(1)
+        }
+        .frame(
+            width: ControlWindowSizing.size.width,
+            height: ControlWindowSizing.size.height,
+            alignment: .top
+        )
+        .background(WindowConfigurator(kind: .control))
+        .task {
+            openWindow(id: "stage")
+            manager.startWindowMonitoring()
+            manager.refreshWindows()
+        }
+    }
+
+    private var captureSurface: some View {
         Group {
             if manager.needsScreenRecordingPermission {
                 permissionStrip
@@ -38,14 +59,17 @@ struct ControlView: View {
             }
         }
         .padding(ControlMetrics.outerPadding)
-        .frame(width: ControlWindowSizing.size.width, height: ControlWindowSizing.size.height)
+        .frame(
+            width: ControlWindowSizing.captureSurfaceSize.width,
+            height: ControlWindowSizing.captureSurfaceSize.height
+        )
         .background(
             .regularMaterial,
             in: RoundedRectangle(cornerRadius: ControlMetrics.cornerRadius, style: .continuous)
         )
         .overlay {
             ZStack {
-                ControlSeparatorShape()
+                CaptureSeparatorShape()
                     .fill(Color.white.opacity(0.12))
 
                 RoundedRectangle(cornerRadius: ControlMetrics.cornerRadius, style: .continuous)
@@ -53,12 +77,91 @@ struct ControlView: View {
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: ControlMetrics.cornerRadius, style: .continuous))
-        .background(WindowConfigurator(kind: .control))
-        .task {
-            openWindow(id: "stage")
-            manager.startWindowMonitoring()
-            manager.refreshWindows()
+    }
+
+    private var controlBar: some View {
+        HStack(spacing: 0) {
+            ControlBarButton(
+                systemImage: "gearshape",
+                title: "Settings",
+                help: "Settings (coming soon)",
+                action: {}
+            )
+
+            controlBarDivider
+
+            ControlBarButton(
+                systemImage: "pencil.and.outline",
+                title: "Annotate",
+                help: "Annotate (coming soon)",
+                action: {}
+            )
+
+            controlBarDivider
+
+            ControlBarButton(
+                systemImage: "cursorarrow.rays",
+                title: "Highlight clicks",
+                help: "Show click ripples on the selected window and Demo Stage",
+                isOn: manager.highlightsMouseClicks,
+                glyphOffset: ControlMetrics.clickHighlightGlyphOffset,
+                action: manager.toggleMouseClickHighlighting
+            )
+
+            controlBarDivider
+
+            ControlBarButton(
+                systemImage: "command.square",
+                title: "Highlight keystrokes",
+                help: manager.needsKeystrokeAccessibilityPermission
+                    ? "Allow Accessibility access, then turn on keystroke highlighting"
+                    : "Highlight keystrokes on the Demo Stage",
+                isOn: manager.highlightsKeystrokes,
+                glyphOffset: ControlMetrics.keystrokeHighlightGlyphOffset,
+                showsPermissionWarning: manager.needsKeystrokeAccessibilityPermission,
+                action: manager.toggleKeystrokeHighlighting
+            )
         }
+        .padding(.top, ControlWindowSizing.controlBarOverlap)
+        .frame(
+            width: ControlWindowSizing.controlBarWidth,
+            height: ControlWindowSizing.controlBarHeight
+        )
+        .background(
+            .regularMaterial,
+            in: UnevenRoundedRectangle(
+                topLeadingRadius: 0,
+                bottomLeadingRadius: ControlMetrics.controlBarCornerRadius,
+                bottomTrailingRadius: ControlMetrics.controlBarCornerRadius,
+                topTrailingRadius: 0,
+                style: .continuous
+            )
+        )
+        .overlay {
+            UnevenRoundedRectangle(
+                topLeadingRadius: 0,
+                bottomLeadingRadius: ControlMetrics.controlBarCornerRadius,
+                bottomTrailingRadius: ControlMetrics.controlBarCornerRadius,
+                topTrailingRadius: 0,
+                style: .continuous
+            )
+            .strokeBorder(Color.white.opacity(0.16), lineWidth: 1)
+        }
+        .clipShape(
+            UnevenRoundedRectangle(
+                topLeadingRadius: 0,
+                bottomLeadingRadius: ControlMetrics.controlBarCornerRadius,
+                bottomTrailingRadius: ControlMetrics.controlBarCornerRadius,
+                topTrailingRadius: 0,
+                style: .continuous
+            )
+        )
+    }
+
+    private var controlBarDivider: some View {
+        Rectangle()
+            .fill(Color.white.opacity(0.10))
+            .frame(width: 1, height: ControlMetrics.controlBarButtonHeight)
     }
 
     private var sourcePanel: some View {
@@ -71,37 +174,6 @@ struct ControlView: View {
                 )
 
             sourceScroller
-
-            VStack(spacing: 0) {
-                PresentationToggleButton(
-                    systemImage: "cursorarrow.rays",
-                    title: "Highlight clicks",
-                    help: "Show click ripples on the selected window and Demo Stage",
-                    isOn: manager.highlightsMouseClicks,
-                    position: .top,
-                    glyphOffset: ControlMetrics.clickHighlightGlyphOffset,
-                    action: manager.toggleMouseClickHighlighting
-                )
-
-                PresentationToggleButton(
-                    systemImage: "command.square",
-                    title: "Highlight keystrokes",
-                    help: manager.needsKeystrokeAccessibilityPermission
-                        ? "Allow Accessibility access, then turn on keystroke highlighting"
-                        : "Highlight keystrokes on the Demo Stage",
-                    isOn: manager.highlightsKeystrokes,
-                    position: .bottom,
-                    glyphOffset: ControlMetrics.keystrokeHighlightGlyphOffset,
-                    showsPermissionWarning: manager.needsKeystrokeAccessibilityPermission,
-                    action: manager.toggleKeystrokeHighlighting
-                )
-            }
-            .frame(
-                width: ControlMetrics.toggleRegionWidth,
-                height: ControlWindowSizing.size.height
-            )
-            .offset(x: ControlMetrics.outerPadding / 2)
-            .frame(width: ControlMetrics.toggleWidth, height: ControlMetrics.contentHeight)
         }
         .frame(width: ControlWindowSizing.contentWidth, height: ControlMetrics.contentHeight)
     }
@@ -559,18 +631,12 @@ private struct PermissionActionButton: View {
     }
 }
 
-private struct PresentationToggleButton: View {
-    enum Position {
-        case top
-        case bottom
-    }
-
+private struct ControlBarButton: View {
     let systemImage: String
     let title: String
     let help: String
-    let isOn: Bool
-    let position: Position
-    let glyphOffset: CGSize
+    var isOn: Bool?
+    var glyphOffset = CGSize.zero
     var isEnabled = true
     var showsPermissionWarning = false
     let action: () -> Void
@@ -579,57 +645,47 @@ private struct PresentationToggleButton: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        Button(action: action) {
-            ZStack {
-                Image(systemName: systemImage)
-                    .font(.system(size: 15, weight: .medium))
-                    .symbolRenderingMode(.monochrome)
-                    .offset(x: glyphOffset.width, y: glyphOffset.height)
+        ZStack {
+            Rectangle()
+                .fill(buttonBackground)
 
-                if showsPermissionWarning {
-                    HStack {
-                        Spacer()
+            Button(action: action) {
+                ZStack {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 15, weight: .medium))
+                        .symbolRenderingMode(.monochrome)
+                        .offset(x: glyphOffset.width, y: glyphOffset.height)
 
-                        Image(systemName: "exclamationmark")
-                            .font(.system(size: 7, weight: .bold))
-                            .foregroundStyle(.orange)
-                            .frame(width: 8, height: 8)
+                    if showsPermissionWarning {
+                        HStack {
+                            Spacer()
+
+                            Image(systemName: "exclamationmark")
+                                .font(.system(size: 7, weight: .bold))
+                                .foregroundStyle(.orange)
+                                .frame(width: 8, height: 8)
+                        }
+                        .padding(.trailing, 4)
                     }
-                    .padding(.trailing, 4)
                 }
-            }
-            .foregroundStyle(
-                isOn || (isHovering && isEnabled) ? Color.primary : Color.secondary
-            )
-            .frame(
-                width: ControlMetrics.toggleRegionWidth,
-                height: ControlMetrics.toggleRegionHeight
-            )
-            .background {
-                UnevenRoundedRectangle(
-                    topLeadingRadius: 0,
-                    bottomLeadingRadius: 0,
-                    bottomTrailingRadius: position == .bottom
-                        ? ControlMetrics.toggleInnerCornerRadius
-                        : 0,
-                    topTrailingRadius: position == .top
-                        ? ControlMetrics.toggleInnerCornerRadius
-                        : 0,
-                    style: .continuous
+                .foregroundStyle(
+                    isOn == true || (isHovering && isEnabled) ? Color.primary : Color.secondary
                 )
-                    .fill(toggleBackground)
-                    .padding(ControlMetrics.toggleSurfaceGap)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
             }
-            .contentShape(Rectangle())
+            .buttonStyle(CompactIconButtonStyle())
+            .disabled(!isEnabled)
+            .help(help)
+            .accessibilityLabel(title)
+            .accessibilityValue(accessibilityValue)
+            .accessibilityHint(help)
+            .accessibilityAddTraits(isOn == true ? .isSelected : [])
         }
-        .buttonStyle(CompactIconButtonStyle())
-        .disabled(!isEnabled)
+        .frame(maxWidth: .infinity)
+        .frame(height: ControlMetrics.controlBarButtonHeight)
+        .contentShape(Rectangle())
         .onHover { isHovering = $0 }
-        .help(help)
-        .accessibilityLabel(title)
-        .accessibilityValue(isOn ? "On" : showsPermissionWarning ? "Permission required" : "Off")
-        .accessibilityHint(help)
-        .accessibilityAddTraits(isOn ? .isSelected : [])
         .animation(
             reduceMotion ? nil : .easeOut(duration: 0.12),
             value: isHovering
@@ -640,38 +696,34 @@ private struct PresentationToggleButton: View {
         )
     }
 
-    private var toggleBackground: Color {
-        guard isEnabled, isOn else { return .clear }
-        return Color.primary.opacity(isHovering ? 0.14 : 0.10)
+    private var buttonBackground: Color {
+        guard isEnabled else { return .clear }
+        if isOn == true {
+            return Color.primary.opacity(isHovering ? 0.14 : 0.10)
+        }
+        return isHovering ? Color.primary.opacity(0.07) : .clear
+    }
+
+    private var accessibilityValue: String {
+        guard let isOn else { return "Coming soon" }
+        if showsPermissionWarning { return "Permission required" }
+        return isOn ? "On" : "Off"
     }
 }
 
-private struct ControlSeparatorShape: Shape {
+private struct CaptureSeparatorShape: Shape {
     func path(in rect: CGRect) -> Path {
         let thickness: CGFloat = 1
         let borderInset: CGFloat = 1
         let captureBoundary = ControlMetrics.outerPadding + ControlMetrics.captureControlWidth
-        let effectsBoundary = rect.maxX
-            - ControlMetrics.outerPadding
-            - ControlMetrics.toggleWidth
 
         var path = Path()
-        for boundary in [captureBoundary, effectsBoundary] {
-            path.addRect(
-                CGRect(
-                    x: boundary - thickness / 2,
-                    y: borderInset,
-                    width: thickness,
-                    height: rect.height - borderInset * 2
-                )
-            )
-        }
         path.addRect(
             CGRect(
-                x: effectsBoundary - thickness / 2,
-                y: rect.midY - thickness / 2,
-                width: rect.maxX - borderInset - effectsBoundary + thickness / 2,
-                height: thickness
+                x: captureBoundary - thickness / 2,
+                y: borderInset,
+                width: thickness,
+                height: rect.height - borderInset * 2
             )
         )
         return path

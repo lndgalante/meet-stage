@@ -2,9 +2,16 @@ import AppKit
 import SwiftUI
 
 enum ControlWindowSizing {
-    static let size = NSSize(width: 270, height: 72)
-    static let contentWidth: CGFloat = 256
-    static let sourceAreaWidth: CGFloat = 172
+    static let captureSurfaceSize = NSSize(width: 284, height: 72)
+    static let controlBarWidth: CGFloat = 256
+    static let controlBarHeight: CGFloat = 36
+    static let controlBarOverlap: CGFloat = 6
+    static let size = NSSize(
+        width: captureSurfaceSize.width,
+        height: captureSurfaceSize.height + controlBarHeight - controlBarOverlap
+    )
+    static let contentWidth: CGFloat = 270
+    static let sourceAreaWidth: CGFloat = 228
 }
 
 /// Applies AppKit-only window behavior that SwiftUI scenes cannot express.
