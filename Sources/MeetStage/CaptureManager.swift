@@ -308,7 +308,7 @@ final class CaptureManager: ObservableObject {
         if isManual {
             isRefreshing = true
             errorMessage = nil
-            if stream == nil && selectionTask == nil {
+            if stream == nil && selectionTask == nil && state != .paused {
                 state = .loading
             }
         }
@@ -362,8 +362,23 @@ final class CaptureManager: ObservableObject {
 
             windows = candidates
             reconcileShortcuts(with: candidates)
+
+            if state == .paused,
+                let selectedWindowID,
+                !candidates.contains(where: { $0.id == selectedWindowID })
+            {
+                self.selectedWindowID = nil
+                selectedWindowDescription = "Nothing selected"
+            }
+
             if stream == nil {
-                state = selectionTask == nil ? .idle : .switching
+                if selectionTask != nil {
+                    state = .switching
+                } else if state == .paused, selectedWindowID != nil {
+                    state = .paused
+                } else {
+                    state = .idle
+                }
             } else if pendingWindowID == nil, selectedWindowID != nil {
                 state = .capturing
             }
@@ -389,7 +404,15 @@ final class CaptureManager: ObservableObject {
             NSSound.beep()
             return
         }
-        guard source.id != selectedWindowID || state != .capturing else { return }
+
+        if CaptureSelectionPolicy.action(
+            for: source.id,
+            selectedWindowID: selectedWindowID,
+            state: state
+        ) == .pause {
+            pauseCapture()
+            return
+        }
 
         pendingSelection = source
         pendingWindowID = source.id
@@ -400,7 +423,16 @@ final class CaptureManager: ObservableObject {
         startSelectionTask()
     }
 
+    private func pauseCapture() {
+        guard isLive else { return }
+        endCapture(preservingSelection: true)
+    }
+
     func stopCapture() {
+        endCapture(preservingSelection: false)
+    }
+
+    private func endCapture(preservingSelection: Bool) {
         pendingSelection = nil
         awaitingLiveSelection = nil
         pendingWindowID = nil
@@ -411,10 +443,12 @@ final class CaptureManager: ObservableObject {
         let streamToStop = stream
         self.stream = nil
         resetCursorTracking()
-        selectedWindowID = nil
-        selectedWindowDescription = "Nothing selected"
+        if !preservingSelection {
+            selectedWindowID = nil
+            selectedWindowDescription = "Nothing selected"
+        }
         errorMessage = nil
-        state = .idle
+        state = preservingSelection && selectedWindowID != nil ? .paused : .idle
         clearKeystrokePresentation()
         renderer.clear()
 
@@ -422,7 +456,7 @@ final class CaptureManager: ObservableObject {
         Task {
             do {
                 try await streamToStop.stopCapture()
-            } catch  where stream == nil && state == .idle {
+            } catch where stream == nil && (state == .idle || state == .paused) {
                 let message = Self.friendlyMessage(for: error)
                 errorMessage = message
                 state = .failed(message)

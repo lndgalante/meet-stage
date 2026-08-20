@@ -32,7 +32,8 @@ shortcut reserved instead of silently pointing it somewhere else.
 Swipe or scroll horizontally over the window strip to browse every available
 source. Newly opened windows appear automatically, and closed windows are
 removed automatically. When you switch with a global shortcut, BetterDemos
-brings that source into view automatically.
+brings that source into view automatically. Click the live source, or press its
+Option shortcut again, to pause sharing. Repeat the same action to resume it.
 
 Use the attached control bar below the strip to highlight mouse clicks or show
 keystrokes on the Demo Stage. Click highlighting uses ScreenCaptureKit on macOS
@@ -116,6 +117,7 @@ identity.
 4. Select a source window.
 5. In your meeting, share **BetterDemos — Demo Stage**.
 6. Switch sources from BetterDemos or your pinned Option shortcuts.
+7. Repeat the current source click or Option shortcut to pause or resume it.
 
 The BetterDemos controller is excluded from the source list. Your meeting keeps
 capturing the same Demo Stage window while BetterDemos changes what appears

@@ -279,13 +279,15 @@ struct ControlView: View {
     }
 
     private func windowButton(for source: WindowSource, shortcut: Int?) -> some View {
-        CompactWindowButton(
+        let isSelected = source.id == manager.selectedWindowID
+        return CompactWindowButton(
             source: source,
             shortcut: shortcut,
             isShortcutAvailable: shortcut.map {
                 !manager.unavailableShortcutSlots.contains($0)
             } ?? true,
-            isSelected: source.id == manager.selectedWindowID,
+            isSelected: isSelected,
+            isPaused: isSelected && manager.state == .paused,
             isPending: source.id == manager.pendingWindowID,
             shortcutOwner: manager.shortcutOwnerDescription(for:),
             action: { manager.select(source) },
@@ -360,6 +362,8 @@ struct ControlView: View {
         switch manager.state {
         case .loading:
             return "Finding windows…"
+        case .paused:
+            return "Sharing paused"
         case .failed:
             return "Capture needs attention"
         default:
@@ -482,6 +486,7 @@ private struct CompactWindowButton: View {
     let shortcut: Int?
     let isShortcutAvailable: Bool
     let isSelected: Bool
+    let isPaused: Bool
     let isPending: Bool
     let shortcutOwner: (Int) -> String?
     let action: () -> Void
@@ -540,6 +545,19 @@ private struct CompactWindowButton: View {
                     }
                     Spacer()
                     HStack {
+                        if isPaused {
+                            Image(systemName: "pause.circle.fill")
+                                .symbolRenderingMode(.palette)
+                                .foregroundStyle(.white, .orange)
+                                .font(.system(size: ControlMetrics.sourceBadgeIconSize))
+                                .transition(.opacity.combined(with: .scale(scale: 0.75)))
+                        } else if isSelected && !isPending {
+                            Image(systemName: "checkmark.circle.fill")
+                                .symbolRenderingMode(.palette)
+                                .foregroundStyle(.white, .blue)
+                                .font(.system(size: ControlMetrics.sourceBadgeIconSize))
+                                .transition(.opacity.combined(with: .scale(scale: 0.75)))
+                        }
                         Spacer()
                         if let icon = source.applicationIcon {
                             Image(nsImage: icon)
@@ -610,13 +628,16 @@ private struct CompactWindowButton: View {
             hoverTask?.cancel()
         }
         .accessibilityLabel(accessibilityLabel)
-        .accessibilityValue(isPending ? "Switching" : isSelected ? "Live" : "Not live")
-        .accessibilityHint("Selects this window. Open the context menu to pin a global shortcut.")
+        .accessibilityValue(
+            isPending ? "Switching" : isPaused ? "Paused" : isSelected ? "Live" : "Not live"
+        )
+        .accessibilityHint(accessibilityHint)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     private var borderColor: Color {
         if isPending { return .orange }
+        if isPaused { return .orange }
         if isSelected { return .blue }
         return .white.opacity(0.14)
     }
@@ -626,13 +647,24 @@ private struct CompactWindowButton: View {
     }
 
     private var visualState: Int {
-        isPending ? 2 : isSelected ? 1 : 0
+        isPending ? 3 : isPaused ? 2 : isSelected ? 1 : 0
     }
 
     private var accessibilityLabel: String {
-        let name = "Share \(source.applicationName), \(source.title)"
+        let action = isPaused ? "Resume sharing" : isSelected ? "Pause sharing" : "Share"
+        let name = "\(action) \(source.applicationName), \(source.title)"
         guard let shortcut else { return name }
         return "\(name), shortcut Option \(shortcut)"
+    }
+
+    private var accessibilityHint: String {
+        if isPaused {
+            return "Resumes this window. Open the context menu to pin a global shortcut."
+        }
+        if isSelected {
+            return "Pauses this window. Open the context menu to pin a global shortcut."
+        }
+        return "Selects this window. Open the context menu to pin a global shortcut."
     }
 
     @ViewBuilder

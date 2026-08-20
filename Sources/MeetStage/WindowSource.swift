@@ -87,6 +87,7 @@ enum CaptureState: Equatable {
     case loading
     case switching
     case capturing
+    case paused
     case permissionRequired
     case failed(String)
 
@@ -100,6 +101,8 @@ enum CaptureState: Equatable {
             return "Switching…"
         case .capturing:
             return "Live"
+        case .paused:
+            return "Paused"
         case .permissionRequired:
             return "Permission needed"
         case .failed:

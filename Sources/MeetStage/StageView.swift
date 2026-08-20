@@ -37,11 +37,15 @@ struct StageView: View {
                             ProgressView()
                                 .controlSize(.large)
                         } else {
-                            Image(systemName: "rectangle.on.rectangle.slash")
+                            Image(
+                                systemName: manager.state == .paused
+                                    ? "pause.circle"
+                                    : "rectangle.on.rectangle.slash"
+                            )
                                 .font(.system(size: 48, weight: .light))
                                 .foregroundStyle(.secondary)
                         }
-                        Text(manager.state == .switching ? "Preparing the stage" : "Nothing is on stage")
+                        Text(stageTitle)
                             .font(.title2.weight(.medium))
                         Text(stageGuidance)
                             .foregroundStyle(.secondary)
@@ -87,6 +91,8 @@ struct StageView: View {
         switch manager.state {
         case .switching:
             return "Waiting for the first video frame."
+        case .paused:
+            return "Select this window again in BetterDemos to resume."
         case .permissionRequired:
             return "Allow screen recording in BetterDemos."
         case .failed:
@@ -97,8 +103,18 @@ struct StageView: View {
     }
 
     private var stageAccessibilityLabel: String {
-        let title = manager.state == .switching ? "Preparing the stage" : "Nothing is on stage"
-        return "\(title). \(stageGuidance)"
+        "\(stageTitle). \(stageGuidance)"
+    }
+
+    private var stageTitle: String {
+        switch manager.state {
+        case .switching:
+            return "Preparing the stage"
+        case .paused:
+            return "Sharing is paused"
+        default:
+            return "Nothing is on stage"
+        }
     }
 }
 

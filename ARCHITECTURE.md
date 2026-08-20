@@ -26,8 +26,10 @@ The user-visible state follows this flow:
 
 ```text
 idle -> switching -> capturing
-  |         |            |
-  +------> failed <-------+
+  |         ^            |
+  |         |            v
+  |         +--------- paused
+  +------> failed <------+
   |
   +------> permissionRequired
 ```
@@ -35,7 +37,10 @@ idle -> switching -> capturing
 Selecting a source does not mark it live. `CaptureManager` waits for a complete
 ScreenCaptureKit frame before publishing the new selected window. Selection and
 render generations reject stale asynchronous work after a stop or rapid source
-change. Keep this first-frame invariant when changing capture orchestration.
+change. Repeating the current selection while capturing pauses it without
+discarding the selected window; repeating it while paused re-enters `switching`
+and waits for a fresh first frame. Keep this first-frame invariant when changing
+capture orchestration.
 
 ## Shortcut invariants
 
