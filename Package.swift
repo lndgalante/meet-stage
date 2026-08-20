@@ -14,6 +14,7 @@ let package = Package(
         .executableTarget(
             name: "MeetStage",
             path: "Sources/MeetStage",
+            exclude: ["IdleStageChrome.metal"],
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("AVFoundation"),

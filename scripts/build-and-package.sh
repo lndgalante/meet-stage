@@ -17,6 +17,17 @@ APP_DIR="$PROJECT_DIR/dist/BetterDemos.app"
 CONTENTS_DIR="$APP_DIR/Contents"
 SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
 BUNDLE_IDENTIFIER="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$PROJECT_DIR/Resources/Info.plist")"
+METAL_SOURCE="$PROJECT_DIR/Sources/MeetStage/IdleStageChrome.metal"
+METAL_AIR="$PROJECT_DIR/.build/$CONFIGURATION/IdleStageChrome.air"
+METAL_LIBRARY="$PROJECT_DIR/.build/$CONFIGURATION/IdleStageChrome.metallib"
+if ! METAL_COMPONENT_JSON="$(xcodebuild -showComponent MetalToolchain -json 2>/dev/null)"; then
+    echo "The Metal Toolchain is required. Install it with:" >&2
+    echo "  xcodebuild -downloadComponent MetalToolchain" >&2
+    exit 1
+fi
+METAL_TOOLCHAIN_IDENTIFIER="$(
+    plutil -extract toolchainIdentifier raw -o - - <<< "$METAL_COMPONENT_JSON"
+)"
 
 cd "$PROJECT_DIR"
 mkdir -p \
@@ -37,11 +48,17 @@ swift build \
     --security-path "$PROJECT_DIR/.build/swiftpm-security" \
     -c "$CONFIGURATION"
 
+xcrun --sdk macosx --toolchain "$METAL_TOOLCHAIN_IDENTIFIER" \
+    metal -c "$METAL_SOURCE" -o "$METAL_AIR"
+xcrun --sdk macosx --toolchain "$METAL_TOOLCHAIN_IDENTIFIER" \
+    metallib "$METAL_AIR" -o "$METAL_LIBRARY"
+
 rm -rf "$APP_DIR"
 mkdir -p "$CONTENTS_DIR/MacOS" "$CONTENTS_DIR/Resources"
 cp "$PROJECT_DIR/.build/$CONFIGURATION/MeetStage" "$CONTENTS_DIR/MacOS/MeetStage"
 cp "$PROJECT_DIR/Resources/Info.plist" "$CONTENTS_DIR/Info.plist"
 cp "$PROJECT_DIR/Resources/BetterDemos.icns" "$CONTENTS_DIR/Resources/BetterDemos.icns"
+cp "$METAL_LIBRARY" "$CONTENTS_DIR/Resources/IdleStageChrome.metallib"
 
 # A stable designated requirement keeps Screen Recording approval valid across
 # debug and release builds even though the ad-hoc binary hash changes.

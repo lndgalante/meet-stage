@@ -29,8 +29,7 @@ struct StageView: View {
 
             if !manager.isLive {
                 ZStack {
-                    Color.black
-                        .ignoresSafeArea()
+                    IdleStageChrome()
 
                     VStack(spacing: 14) {
                         if manager.state == .switching {
@@ -115,6 +114,50 @@ struct StageView: View {
         default:
             return "Nothing is on stage"
         }
+    }
+}
+
+private struct IdleStageChrome: View {
+    private static let shaderLibrary: ShaderLibrary? = {
+        guard let url = Bundle.main.url(
+            forResource: "IdleStageChrome",
+            withExtension: "metallib"
+        ) else { return nil }
+
+        return ShaderLibrary(url: url)
+    }()
+
+    var body: some View {
+        Group {
+            if let shaderLibrary = Self.shaderLibrary {
+                Color.black
+                    .colorEffect(
+                        shaderLibrary.idleStageChrome(
+                            .boundingRect,
+                            .float(20),
+                            .float(0.5),
+                            .float(34),
+                            .float(1),
+                            .float(1),
+                            .float(0.56),
+                            .float(0.2),
+                            .float(1),
+                            .float2(0.5, 0),
+                            .color(.black),
+                            .color(.white),
+                            .color(.white),
+                            .color(Color(red: 214 / 255, green: 226 / 255, blue: 242 / 255)),
+                            .color(Color(red: 196 / 255, green: 212 / 255, blue: 235 / 255)),
+                            .color(Color(red: 120 / 255, green: 136 / 255, blue: 160 / 255)),
+                            .color(.black)
+                        )
+                    )
+            } else {
+                Color.black
+            }
+        }
+        .ignoresSafeArea()
+        .accessibilityHidden(true)
     }
 }
 
