@@ -28,6 +28,7 @@ struct ControlView: View {
     @Environment(\.openWindow) private var openWindow
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var sourceScrollBounds = CGRect.zero
+    @State private var isSettingsPresented = false
 
     var body: some View {
         ZStack(alignment: .top) {
@@ -84,9 +85,17 @@ struct ControlView: View {
             ControlBarButton(
                 systemImage: "gearshape",
                 title: "Settings",
-                help: "Settings (coming soon)",
-                action: {}
+                help: "Open Settings",
+                isPresented: isSettingsPresented,
+                action: { isSettingsPresented.toggle() }
             )
+            .popover(
+                isPresented: $isSettingsPresented,
+                attachmentAnchor: .rect(.bounds),
+                arrowEdge: .bottom
+            ) {
+                SettingsPopover()
+            }
 
             controlBarDivider
 
@@ -363,6 +372,14 @@ struct ControlView: View {
         manager.errorMessage ?? "Open an app window. It will appear automatically."
     }
 
+}
+
+private struct SettingsPopover: View {
+    var body: some View {
+        Color.clear
+            .frame(width: 380, height: 280)
+            .accessibilityLabel("Settings")
+    }
 }
 
 private struct SourceScrollFadeMask: View {
@@ -723,6 +740,7 @@ private struct ControlBarButton: View {
     let title: String
     let help: String
     var isOn: Bool?
+    var isPresented: Bool?
     var glyphOffset = CGSize.zero
     var isEnabled = true
     var showsPermissionWarning = false
@@ -756,7 +774,7 @@ private struct ControlBarButton: View {
                     }
                 }
                 .foregroundStyle(
-                    isOn == true || (isHovering && isEnabled) ? Color.primary : Color.secondary
+                    isActive || (isHovering && isEnabled) ? Color.primary : Color.secondary
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .contentShape(Rectangle())
@@ -781,17 +799,28 @@ private struct ControlBarButton: View {
             reduceMotion ? nil : .easeOut(duration: 0.12),
             value: isOn
         )
+        .animation(
+            reduceMotion ? nil : .easeOut(duration: 0.12),
+            value: isPresented
+        )
     }
 
     private var buttonBackground: Color {
         guard isEnabled else { return .clear }
-        if isOn == true {
+        if isActive {
             return Color.primary.opacity(isHovering ? 0.14 : 0.10)
         }
         return isHovering ? Color.primary.opacity(0.07) : .clear
     }
 
+    private var isActive: Bool {
+        isOn == true || isPresented == true
+    }
+
     private var accessibilityValue: String {
+        if let isPresented {
+            return isPresented ? "Open" : "Closed"
+        }
         guard let isOn else { return "Coming soon" }
         if showsPermissionWarning { return "Permission required" }
         return isOn ? "On" : "Off"
