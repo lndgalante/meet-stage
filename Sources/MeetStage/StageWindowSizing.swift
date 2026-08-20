@@ -10,6 +10,21 @@ struct StageCaptureFormat: Equatable {
     }
 }
 
+enum StageWindowAspectRatioPolicy {
+    static func displayedAspectRatio(
+        for state: CaptureState,
+        sourceAspectRatio: CGFloat,
+        inactiveAspectRatio: CGFloat
+    ) -> CGFloat {
+        switch state {
+        case .switching, .capturing:
+            return sourceAspectRatio
+        case .idle, .loading, .paused, .permissionRequired, .failed:
+            return inactiveAspectRatio
+        }
+    }
+}
+
 enum StageWindowSizing {
     private static let windowScale: CGFloat = 0.68
     private static let maximumCaptureEdge: CGFloat = 4_096

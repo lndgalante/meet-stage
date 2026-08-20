@@ -5,6 +5,50 @@ import Testing
 @Suite("Stage window sizing")
 struct StageWindowSizingTests {
     @Test
+    func testLiveStageUsesSourceAspectRatio() {
+        let sourceAspectRatio: CGFloat = 4 / 3
+        let inactiveAspectRatio: CGFloat = 16 / 10
+
+        #expect(
+            StageWindowAspectRatioPolicy.displayedAspectRatio(
+                for: .capturing,
+                sourceAspectRatio: sourceAspectRatio,
+                inactiveAspectRatio: inactiveAspectRatio
+            ) == sourceAspectRatio
+        )
+        #expect(
+            StageWindowAspectRatioPolicy.displayedAspectRatio(
+                for: .switching,
+                sourceAspectRatio: sourceAspectRatio,
+                inactiveAspectRatio: inactiveAspectRatio
+            ) == sourceAspectRatio
+        )
+    }
+
+    @Test
+    func testInactiveStageStatesUseCanonicalAspectRatio() {
+        let sourceAspectRatio: CGFloat = 4 / 3
+        let inactiveAspectRatio: CGFloat = 16 / 10
+        let states: [CaptureState] = [
+            .idle,
+            .loading,
+            .paused,
+            .permissionRequired,
+            .failed("Unavailable")
+        ]
+
+        for state in states {
+            #expect(
+                StageWindowAspectRatioPolicy.displayedAspectRatio(
+                    for: state,
+                    sourceAspectRatio: sourceAspectRatio,
+                    inactiveAspectRatio: inactiveAspectRatio
+                ) == inactiveAspectRatio
+            )
+        }
+    }
+
+    @Test
     func testWideStageUsesPreferredScreenFraction() {
         let size = StageWindowSizing.windowContentSize(
             aspectRatio: 16 / 9,

@@ -57,8 +57,6 @@ struct ControlView: View {
         Group {
             if manager.needsScreenRecordingPermission {
                 permissionStrip
-            } else if manager.windows.isEmpty {
-                emptyStrip
             } else {
                 sourcePanel
             }
@@ -330,49 +328,6 @@ struct ControlView: View {
                 action: manager.restartApplication
             )
         }
-    }
-
-    private var emptyStrip: some View {
-        HStack(spacing: 6) {
-            if manager.state == .loading {
-                ProgressView()
-                    .controlSize(.small)
-            } else {
-                Image(systemName: manager.errorMessage == nil ? "macwindow.badge.plus" : "exclamationmark.triangle")
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(manager.errorMessage == nil ? Color.secondary : Color.red)
-            }
-
-            VStack(alignment: .leading, spacing: 0) {
-                Text(emptyTitle)
-                    .font(.caption.weight(.semibold))
-                Text(emptyDetail)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                    .help(emptyDetail)
-            }
-
-            Spacer()
-        }
-    }
-
-    private var emptyTitle: String {
-        switch manager.state {
-        case .loading:
-            return "Finding windows…"
-        case .paused:
-            return "Sharing paused"
-        case .failed:
-            return "Capture needs attention"
-        default:
-            return "No windows available"
-        }
-    }
-
-    private var emptyDetail: String {
-        manager.errorMessage ?? "Open an app window. It will appear automatically."
     }
 
 }

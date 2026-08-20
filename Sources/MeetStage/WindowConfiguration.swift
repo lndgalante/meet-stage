@@ -16,6 +16,14 @@ enum ControlWindowSizing {
 
 /// Applies AppKit-only window behavior that SwiftUI scenes cannot express.
 struct WindowConfigurator: NSViewRepresentable {
+    static let stageStyleMask: NSWindow.StyleMask = [
+        .titled,
+        .closable,
+        .miniaturizable,
+        .resizable,
+        .fullSizeContentView
+    ]
+
     enum Kind {
         case control
         case stage(aspectRatio: CGFloat)
@@ -25,6 +33,7 @@ struct WindowConfigurator: NSViewRepresentable {
 
     final class Coordinator {
         var lastStageAspectRatio: CGFloat?
+        var stageDragView: StageWindowDragView?
     }
 
     func makeCoordinator() -> Coordinator {
@@ -43,6 +52,11 @@ struct WindowConfigurator: NSViewRepresentable {
         DispatchQueue.main.async {
             configure(nsView.window, coordinator: context.coordinator)
         }
+    }
+
+    static func dismantleNSView(_ nsView: NSView, coordinator: Coordinator) {
+        coordinator.stageDragView?.removeFromSuperview()
+        coordinator.stageDragView = nil
     }
 
     private func configure(_ window: NSWindow?, coordinator: Coordinator) {
@@ -79,9 +93,8 @@ struct WindowConfigurator: NSViewRepresentable {
         // Keep the shared window's capture bounds stable from the empty state
         // through live presentation. Any stage frame or shadow can be flattened
         // onto black by meeting apps that do not carry window alpha.
-        let stageStyle: NSWindow.StyleMask = [.borderless, .resizable]
-        if window.styleMask != stageStyle {
-            window.styleMask = stageStyle
+        if window.styleMask != Self.stageStyleMask {
+            window.styleMask = Self.stageStyleMask
         }
         window.isOpaque = false
         window.backgroundColor = .clear
@@ -92,9 +105,11 @@ struct WindowConfigurator: NSViewRepresentable {
         [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].forEach {
             window.standardWindowButton($0)?.isHidden = true
         }
+        window.isMovable = true
         window.isMovableByWindowBackground = true
         window.contentAspectRatio = NSSize(width: safeAspectRatio, height: 1)
         window.collectionBehavior.formUnion([.canJoinAllSpaces, .fullScreenAuxiliary])
+        installStageDragSurface(in: window, coordinator: coordinator)
 
         guard coordinator.lastStageAspectRatio.map({ abs($0 - safeAspectRatio) > 0.001 }) ?? true else {
             return
@@ -116,6 +131,31 @@ struct WindowConfigurator: NSViewRepresentable {
         coordinator.lastStageAspectRatio = safeAspectRatio
     }
 
+    private func installStageDragSurface(
+        in window: NSWindow,
+        coordinator: Coordinator
+    ) {
+        guard let contentView = window.contentView,
+            let frameView = contentView.superview
+        else { return }
+
+        let dragView: StageWindowDragView
+        if let existingDragView = coordinator.stageDragView,
+            existingDragView.superview === frameView
+        {
+            dragView = existingDragView
+        } else {
+            coordinator.stageDragView?.removeFromSuperview()
+            dragView = StageWindowDragView()
+            dragView.autoresizingMask = [.width, .height]
+            frameView.addSubview(dragView, positioned: .above, relativeTo: contentView)
+            coordinator.stageDragView = dragView
+        }
+
+        // Keep native resize hit regions reachable around the stage perimeter.
+        dragView.frame = contentView.frame.insetBy(dx: 6, dy: 6)
+    }
+
     private static func origin(
         centeredAt center: NSPoint,
         windowSize: NSSize,
@@ -129,5 +169,17 @@ struct WindowConfigurator: NSViewRepresentable {
             x: min(max(desiredOrigin.x, visibleFrame.minX), visibleFrame.maxX - windowSize.width),
             y: min(max(desiredOrigin.y, visibleFrame.minY), visibleFrame.maxY - windowSize.height)
         )
+    }
+}
+
+final class StageWindowDragView: NSView {
+    override var mouseDownCanMoveWindow: Bool { true }
+
+    override func mouseDown(with event: NSEvent) {
+        guard let window else {
+            super.mouseDown(with: event)
+            return
+        }
+        window.performDrag(with: event)
     }
 }

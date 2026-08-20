@@ -11,6 +11,9 @@ final class CaptureManager: ObservableObject {
     private static let blackBackground = CGColor(gray: 0, alpha: 1)
     private static let highlightsMouseClicksKey = "presentation.highlightsMouseClicks"
     private static let highlightsKeystrokesKey = "presentation.highlightsKeystrokes"
+    private static let firstFrameTimeout: Duration = .seconds(3)
+    private static let unavailableSourceMessage =
+        "Window unavailable. Restore it or choose another window."
 
     @Published private(set) var windows: [WindowSource] = []
     @Published private(set) var selectedWindowID: CGWindowID?
@@ -32,8 +35,17 @@ final class CaptureManager: ObservableObject {
 
     let renderer = SampleBufferRenderer()
 
+    var displayedStageAspectRatio: CGFloat {
+        StageWindowAspectRatioPolicy.displayedAspectRatio(
+            for: state,
+            sourceAspectRatio: stageAspectRatio,
+            inactiveAspectRatio: inactiveStageAspectRatio
+        )
+    }
+
     private let shortcutStore: ShortcutPreferencesStore
     private let preferencesDefaults: UserDefaults
+    private let inactiveStageAspectRatio: CGFloat
     private let sampleQueue = DispatchQueue(
         label: "dev.poc.meetstage.screen-frames",
         qos: .userInteractive
@@ -72,6 +84,7 @@ final class CaptureManager: ObservableObject {
     private var windowRefreshTask: Task<Void, Never>?
     private var queuedManualRefresh = false
     private var awaitingLiveSelection: WindowSource?
+    private var firstFrameTimeoutTask: Task<Void, Never>?
     private var pendingSelection: WindowSource?
     private var selectionTask: Task<Void, Never>?
     private var selectionGeneration = 0
@@ -80,9 +93,11 @@ final class CaptureManager: ObservableObject {
 
     init(defaults: UserDefaults = .standard) {
         let shortcutStore = ShortcutPreferencesStore(defaults: defaults)
+        let inactiveStageAspectRatio = StageWindowSizing.currentScreenAspectRatio()
         self.shortcutStore = shortcutStore
+        self.inactiveStageAspectRatio = inactiveStageAspectRatio
         preferencesDefaults = defaults
-        stageAspectRatio = StageWindowSizing.currentScreenAspectRatio()
+        stageAspectRatio = inactiveStageAspectRatio
         highlightsMouseClicks = defaults.bool(forKey: Self.highlightsMouseClicksKey)
         highlightsKeystrokes =
             defaults.bool(forKey: Self.highlightsKeystrokesKey)
@@ -171,6 +186,7 @@ final class CaptureManager: ObservableObject {
         clickDismissTasks.values.forEach { $0.cancel() }
         windowMonitoringTask?.cancel()
         windowRefreshTask?.cancel()
+        firstFrameTimeoutTask?.cancel()
     }
 
     var isCapturing: Bool {
@@ -383,6 +399,8 @@ final class CaptureManager: ObservableObject {
                 state = .capturing
             }
 
+            handleUnavailableCaptureSources(in: candidates)
+
             let sourcesNeedingThumbnails =
                 isManual
                 ? candidates
@@ -415,6 +433,7 @@ final class CaptureManager: ObservableObject {
         }
 
         pendingSelection = source
+        cancelFirstFrameTimeout()
         pendingWindowID = source.id
         errorMessage = nil
         state = .switching
@@ -433,6 +452,7 @@ final class CaptureManager: ObservableObject {
     }
 
     private func endCapture(preservingSelection: Bool) {
+        cancelFirstFrameTimeout()
         pendingSelection = nil
         awaitingLiveSelection = nil
         pendingWindowID = nil
@@ -635,6 +655,7 @@ final class CaptureManager: ObservableObject {
                 // A successful ScreenCaptureKit call confirms the filter, but
                 // only the next complete buffer confirms visible output.
                 awaitingLiveSelection = nextSelection
+                scheduleFirstFrameTimeout(for: nextSelection.id)
             } catch {
                 guard !Task.isCancelled, generation == selectionGeneration else { break }
 
@@ -653,6 +674,84 @@ final class CaptureManager: ObservableObject {
 
         guard generation == selectionGeneration else { return }
         selectionTask = nil
+    }
+
+    private func scheduleFirstFrameTimeout(for sourceID: CGWindowID) {
+        cancelFirstFrameTimeout()
+        firstFrameTimeoutTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: Self.firstFrameTimeout)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            self?.recoverFromUnavailableSelection(sourceID: sourceID)
+        }
+    }
+
+    private func cancelFirstFrameTimeout() {
+        firstFrameTimeoutTask?.cancel()
+        firstFrameTimeoutTask = nil
+    }
+
+    private func handleUnavailableCaptureSources(in sources: [WindowSource]) {
+        let availableWindowIDs = sources.map(\.id)
+
+        if let awaitingSourceID = awaitingLiveSelection?.id,
+            pendingWindowID == awaitingSourceID,
+            selectionTask == nil,
+            !availableWindowIDs.contains(awaitingSourceID)
+        {
+            recoverFromUnavailableSelection(sourceID: awaitingSourceID)
+            return
+        }
+
+        if let selectedWindowID,
+            stream != nil,
+            pendingWindowID == nil,
+            !availableWindowIDs.contains(selectedWindowID)
+        {
+            failUnavailableSelection()
+        }
+    }
+
+    private func recoverFromUnavailableSelection(sourceID: CGWindowID) {
+        guard awaitingLiveSelection?.id == sourceID,
+            pendingWindowID == sourceID
+        else { return }
+
+        cancelFirstFrameTimeout()
+        awaitingLiveSelection = nil
+        pendingWindowID = nil
+
+        let recoveryAction = UnavailableSelectionRecoveryPolicy.action(
+            failedSourceID: sourceID,
+            selectedWindowID: selectedWindowID,
+            availableWindowIDs: windows.map(\.id)
+        )
+
+        switch recoveryAction {
+        case let .restore(windowID):
+            guard let source = windows.first(where: { $0.id == windowID }) else {
+                failUnavailableSelection()
+                return
+            }
+            pendingSelection = source
+            pendingWindowID = source.id
+            errorMessage = Self.unavailableSourceMessage
+            state = .switching
+            guard selectionTask == nil else { return }
+            startSelectionTask()
+
+        case .fail:
+            failUnavailableSelection()
+        }
+    }
+
+    private func failUnavailableSelection() {
+        endCapture(preservingSelection: false)
+        errorMessage = Self.unavailableSourceMessage
+        state = .failed(Self.unavailableSourceMessage)
     }
 
     private func switchCapture(to source: WindowSource) async throws {
@@ -844,6 +943,7 @@ final class CaptureManager: ObservableObject {
     }
 
     private func resetCursorTracking() {
+        cancelFirstFrameTimeout()
         captureConfigurationUpdateTask?.cancel()
         captureConfigurationUpdateTask = nil
         activeCaptureSource = nil
@@ -954,6 +1054,7 @@ final class CaptureManager: ObservableObject {
         }
 
         if let liveSelection = awaitingLiveSelection {
+            cancelFirstFrameTimeout()
             selectedWindowID = liveSelection.id
             selectedWindowDescription = "\(liveSelection.applicationName) — \(liveSelection.title)"
             awaitingLiveSelection = nil
@@ -974,6 +1075,7 @@ final class CaptureManager: ObservableObject {
         guard let stream, ObjectIdentifier(stream) == stoppedStreamID else { return }
 
         self.stream = nil
+        cancelFirstFrameTimeout()
         resetCursorTracking()
         awaitingLiveSelection = nil
         pendingSelection = nil

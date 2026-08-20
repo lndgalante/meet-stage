@@ -21,6 +21,9 @@ ScreenCaptureKit delivers a complete video frame. The controller keeps the name
 of the current live window visible below the source strip. The pointer appears
 on the Demo Stage only while the selected source application is active, so
 moving through a different app does not leak its cursor position into the demo.
+Idle, paused, permission, and error screens all use the same default stage size.
+The stage keeps standard macOS window semantics beneath its hidden chrome, so it
+can be dragged from its surface and selected by window-capture utilities.
 
 BetterDemos automatically assigns **Option+1** through **Option+9** to the first
 nine available windows. Right-click a source to move it to a specific shortcut
@@ -30,10 +33,13 @@ window for a manual pin is unavailable or ambiguous, BetterDemos keeps the
 shortcut reserved instead of silently pointing it somewhere else.
 
 Swipe or scroll horizontally over the window strip to browse every available
-source. Newly opened windows appear automatically, and closed windows are
-removed automatically. When you switch with a global shortcut, BetterDemos
-brings that source into view automatically. Click the live source, or press its
-Option shortcut again, to pause sharing. Repeat the same action to resume it.
+source. Newly opened windows appear automatically. Minimized or hidden windows
+temporarily leave the strip and return when restored, while their pinned slots
+stay reserved. Closed windows are removed automatically. The four default
+shortcut slots remain visible even when none currently resolve to a window.
+When you switch with a global shortcut, BetterDemos brings that source into view
+automatically. Click the live source, or press its Option shortcut again, to
+pause sharing. Repeat the same action to resume it.
 
 Use the attached control bar below the strip to highlight mouse clicks or show
 keystrokes on the Demo Stage. Click highlighting uses ScreenCaptureKit on macOS

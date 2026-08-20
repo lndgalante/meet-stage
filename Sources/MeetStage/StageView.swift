@@ -83,7 +83,11 @@ struct StageView: View {
             reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 1),
             value: manager.keystrokePresentation?.id
         )
-        .background(WindowConfigurator(kind: .stage(aspectRatio: manager.stageAspectRatio)))
+        .background(
+            WindowConfigurator(
+                kind: .stage(aspectRatio: manager.displayedStageAspectRatio)
+            )
+        )
     }
 
     private var stageGuidance: String {
@@ -94,8 +98,8 @@ struct StageView: View {
             return "Select this window again in BetterDemos to resume."
         case .permissionRequired:
             return "Allow screen recording in BetterDemos."
-        case .failed:
-            return "Capture stopped. Choose a window to try again."
+        case let .failed(message):
+            return message
         default:
             return "Choose a window in BetterDemos."
         }
