@@ -6,9 +6,6 @@ struct StageView: View {
 
     var body: some View {
         ZStack {
-            Color.black
-                .ignoresSafeArea()
-
             StageVideoRepresentable(
                 renderer: manager.renderer,
                 reducesMotion: reduceMotion
@@ -53,6 +50,11 @@ struct StageView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                .overlay {
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .strokeBorder(Color.white.opacity(0.10), lineWidth: 1)
+                }
                 .allowsHitTesting(false)
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel(stageAccessibilityLabel)

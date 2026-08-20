@@ -6,7 +6,8 @@ import ScreenCaptureKit
 @MainActor
 final class CaptureManager: ObservableObject {
     // SCStreamConfiguration.backgroundColor is an unretained CGColorRef. Keep
-    // this object alive while ScreenCaptureKit copies stream configurations.
+    // these objects alive while ScreenCaptureKit copies stream configurations.
+    private static let transparentBackground = CGColor(gray: 0, alpha: 0)
     private static let blackBackground = CGColor(gray: 0, alpha: 1)
     private static let highlightsMouseClicksKey = "presentation.highlightsMouseClicks"
     private static let highlightsKeystrokesKey = "presentation.highlightsKeystrokes"
@@ -710,7 +711,8 @@ final class CaptureManager: ObservableObject {
         configuration.showsCursor = showsCursor
         configuration.scalesToFit = true
         configuration.preservesAspectRatio = true
-        configuration.backgroundColor = Self.blackBackground
+        configuration.backgroundColor = Self.transparentBackground
+        configuration.shouldBeOpaque = false
         configuration.capturesAudio = false
         configuration.ignoreShadowsSingleWindow = true
         configuration.ignoreGlobalClipSingleWindow = true

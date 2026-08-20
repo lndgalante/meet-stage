@@ -166,7 +166,8 @@ final class StageVideoView: NSView, @unchecked Sendable {
         super.init(frame: frameRect)
         wantsLayer = true
         layer = CALayer()
-        layer?.backgroundColor = NSColor.black.cgColor
+        layer?.backgroundColor = NSColor.clear.cgColor
+        layer?.isOpaque = false
         layer?.masksToBounds = true
 
         layer?.addSublayer(activeDisplayLayer)
@@ -333,7 +334,8 @@ final class StageVideoView: NSView, @unchecked Sendable {
     private static func makeDisplayLayer() -> AVSampleBufferDisplayLayer {
         let displayLayer = AVSampleBufferDisplayLayer()
         displayLayer.videoGravity = .resize
-        displayLayer.backgroundColor = NSColor.black.cgColor
+        displayLayer.backgroundColor = NSColor.clear.cgColor
+        displayLayer.isOpaque = false
         return displayLayer
     }
 

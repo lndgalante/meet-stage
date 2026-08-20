@@ -76,12 +76,15 @@ struct WindowConfigurator: NSViewRepresentable {
         coordinator: Coordinator
     ) {
         let safeAspectRatio = StageWindowSizing.normalizedAspectRatio(aspectRatio)
+        // Keep the shared window's capture bounds stable from the empty state
+        // through live presentation. Any stage frame or shadow can be flattened
+        // onto black by meeting apps that do not carry window alpha.
         let stageStyle: NSWindow.StyleMask = [.borderless, .resizable]
         if window.styleMask != stageStyle {
             window.styleMask = stageStyle
         }
-        window.isOpaque = true
-        window.backgroundColor = .black
+        window.isOpaque = false
+        window.backgroundColor = .clear
         window.hasShadow = false
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
