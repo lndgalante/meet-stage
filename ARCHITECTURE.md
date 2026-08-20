@@ -19,6 +19,9 @@ to follow while keeping the parts that do not require macOS services testable.
 - `SampleBufferRenderer` is the only cross-thread rendering bridge. Its lock
   protects renderer state; `StageVideoView` performs layer work on the main
   queue.
+- `AnnotationSession` owns normalized temporary ink shared by the selected
+  source overlay and `StageView`. `CaptureManager` owns annotation lifecycle,
+  persistence, and source-switch cleanup.
 
 ## Capture lifecycle
 

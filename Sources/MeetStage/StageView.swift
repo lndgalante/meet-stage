@@ -27,6 +27,16 @@ struct StageView: View {
                 .accessibilityHidden(true)
             }
 
+            if manager.isLive {
+                AnnotationInkLayer(
+                    session: manager.annotations,
+                    acceptsInput: false
+                )
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+            }
+
             if !manager.isLive {
                 ZStack {
                     IdleStageChrome()
@@ -41,8 +51,8 @@ struct StageView: View {
                                     ? "pause.circle"
                                     : "rectangle.on.rectangle.slash"
                             )
-                                .font(.system(size: 48, weight: .light))
-                                .foregroundStyle(.secondary)
+                            .font(.system(size: 48, weight: .light))
+                            .foregroundStyle(.secondary)
                         }
                         Text(stageTitle)
                             .font(.title2.weight(.medium))
@@ -83,6 +93,9 @@ struct StageView: View {
             reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 1),
             value: manager.keystrokePresentation?.id
         )
+        .onExitCommand {
+            manager.finishAnnotations()
+        }
         .background(
             WindowConfigurator(
                 kind: .stage(aspectRatio: manager.displayedStageAspectRatio)
@@ -123,10 +136,12 @@ struct StageView: View {
 
 private struct IdleStageChrome: View {
     private static let shaderLibrary: ShaderLibrary? = {
-        guard let url = Bundle.main.url(
-            forResource: "IdleStageChrome",
-            withExtension: "metallib"
-        ) else { return nil }
+        guard
+            let url = Bundle.main.url(
+                forResource: "IdleStageChrome",
+                withExtension: "metallib"
+            )
+        else { return nil }
 
         return ShaderLibrary(url: url)
     }()

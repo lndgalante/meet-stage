@@ -20,6 +20,7 @@ private enum ControlMetrics {
     static let controlBarIconSize: CGFloat = 12
     static let clickHighlightGlyphOffset = CGSize(width: -0.5, height: -0.5)
     static let keystrokeHighlightGlyphOffset = CGSize(width: 0.25, height: -0.5)
+    static let demoCyan = Color(red: 54 / 255, green: 214 / 255, blue: 1)
 }
 
 struct ControlView: View {
@@ -91,7 +92,7 @@ struct ControlView: View {
                 attachmentAnchor: .rect(.bounds),
                 arrowEdge: .bottom
             ) {
-                SettingsPopover()
+                SettingsPopover(manager: manager)
             }
 
             controlBarDivider
@@ -99,8 +100,13 @@ struct ControlView: View {
             ControlBarButton(
                 systemImage: "pencil.and.outline",
                 title: "Annotate",
-                help: "Annotate (coming soon)",
-                action: {}
+                help: manager.isLive
+                    ? "Draw temporary ink over the selected app window"
+                    : "Select a live window to annotate",
+                isOn: manager.isAnnotating,
+                isEnabled: manager.isLive,
+                activeTint: ControlMetrics.demoCyan,
+                action: manager.toggleAnnotations
             )
 
             controlBarDivider
@@ -333,10 +339,41 @@ struct ControlView: View {
 }
 
 private struct SettingsPopover: View {
+    @ObservedObject var manager: CaptureManager
+
     var body: some View {
-        Color.clear
-            .frame(width: 380, height: 280)
-            .accessibilityLabel("Settings")
+        VStack(alignment: .leading, spacing: 12) {
+            Label("Annotations", systemImage: "pencil.and.outline")
+                .font(.headline)
+
+            Text("Drawings fade after")
+                .font(.callout)
+
+            Picker(
+                "Drawing lifetime",
+                selection: Binding(
+                    get: { manager.annotationLifetimeSeconds },
+                    set: { newValue in
+                        manager.setAnnotationLifetimeSeconds(newValue)
+                    }
+                )
+            ) {
+                ForEach(AnnotationTiming.supportedLifetimeSeconds, id: \.self) { seconds in
+                    Text("\(seconds)s")
+                        .tag(seconds)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+
+            Text("The timer starts when you lift the pointer.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .padding(16)
+        .frame(width: 260, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Settings")
     }
 }
 
@@ -723,6 +760,7 @@ private struct ControlBarButton: View {
     var isPresented: Bool?
     var glyphOffset = CGSize.zero
     var isEnabled = true
+    var activeTint: Color?
     var showsPermissionWarning = false
     let action: () -> Void
 
@@ -754,7 +792,9 @@ private struct ControlBarButton: View {
                     }
                 }
                 .foregroundStyle(
-                    isActive || (isHovering && isEnabled) ? Color.primary : Color.secondary
+                    isActive
+                        ? (activeTint ?? Color.primary)
+                        : (isHovering && isEnabled ? Color.primary : Color.secondary)
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .contentShape(Rectangle())
@@ -788,7 +828,7 @@ private struct ControlBarButton: View {
     private var buttonBackground: Color {
         guard isEnabled else { return .clear }
         if isActive {
-            return Color.primary.opacity(isHovering ? 0.14 : 0.10)
+            return (activeTint ?? Color.primary).opacity(isHovering ? 0.16 : 0.11)
         }
         return isHovering ? Color.primary.opacity(0.07) : .clear
     }
@@ -798,6 +838,7 @@ private struct ControlBarButton: View {
     }
 
     private var accessibilityValue: String {
+        guard isEnabled else { return "Unavailable" }
         if let isPresented {
             return isPresented ? "Open" : "Closed"
         }

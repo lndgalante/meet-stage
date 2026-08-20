@@ -11,6 +11,7 @@ final class CaptureManager: ObservableObject {
     private static let blackBackground = CGColor(gray: 0, alpha: 1)
     private static let highlightsMouseClicksKey = "presentation.highlightsMouseClicks"
     private static let highlightsKeystrokesKey = "presentation.highlightsKeystrokes"
+    private static let annotationLifetimeSecondsKey = "presentation.annotationLifetimeSeconds"
     private static let firstFrameTimeout: Duration = .seconds(3)
     private static let unavailableSourceMessage =
         "Window unavailable. Restore it or choose another window."
@@ -30,10 +31,13 @@ final class CaptureManager: ObservableObject {
     @Published private(set) var needsKeystrokeAccessibilityPermission = false
     @Published private(set) var keystrokePresentation: KeystrokePresentation?
     @Published private(set) var clickPresentations: [ClickPresentation] = []
+    @Published private(set) var isAnnotating = false
+    @Published private(set) var annotationLifetimeSeconds: Int
     @Published private var shortcutPins: [Int: PinnedWindow] = [:]
     @Published private var shortcutExclusions: Set<PinnedWindow> = []
 
     let renderer = SampleBufferRenderer()
+    let annotations: AnnotationSession
 
     var displayedStageAspectRatio: CGFloat {
         StageWindowAspectRatioPolicy.displayedAspectRatio(
@@ -79,6 +83,7 @@ final class CaptureManager: ObservableObject {
     private var keystrokeMonitor: GlobalKeystrokeMonitor?
     private var mouseClickMonitor: GlobalMouseClickMonitor?
     private let sourceClickRipplePresenter = SourceClickRipplePresenter()
+    private lazy var sourceAnnotationPresenter = SourceAnnotationPresenter()
     private let workspaceObservationBag: WorkspaceObservationBag
     private var windowMonitoringTask: Task<Void, Never>?
     private var windowRefreshTask: Task<Void, Never>?
@@ -98,6 +103,15 @@ final class CaptureManager: ObservableObject {
         self.inactiveStageAspectRatio = inactiveStageAspectRatio
         preferencesDefaults = defaults
         stageAspectRatio = inactiveStageAspectRatio
+        let savedAnnotationLifetime =
+            defaults.object(
+                forKey: Self.annotationLifetimeSecondsKey
+            ) as? NSNumber
+        let annotationLifetimeSeconds = AnnotationTiming.normalizedLifetimeSeconds(
+            savedAnnotationLifetime?.intValue ?? AnnotationTiming.defaultLifetimeSeconds
+        )
+        self.annotationLifetimeSeconds = annotationLifetimeSeconds
+        annotations = AnnotationSession(lifetimeSeconds: annotationLifetimeSeconds)
         highlightsMouseClicks = defaults.bool(forKey: Self.highlightsMouseClicksKey)
         highlightsKeystrokes =
             defaults.bool(forKey: Self.highlightsKeystrokesKey)
@@ -476,7 +490,7 @@ final class CaptureManager: ObservableObject {
         Task {
             do {
                 try await streamToStop.stopCapture()
-            } catch where stream == nil && (state == .idle || state == .paused) {
+            } catch  where stream == nil && (state == .idle || state == .paused) {
                 let message = Self.friendlyMessage(for: error)
                 errorMessage = message
                 state = .failed(message)
@@ -580,6 +594,45 @@ final class CaptureManager: ObservableObject {
             mouseClickMonitor?.stop()
             clearClickPresentations()
         }
+    }
+
+    func toggleAnnotations() {
+        if isAnnotating {
+            disableAnnotations(clearStrokes: true)
+            return
+        }
+
+        guard isLive, let source = activeCaptureSource else {
+            NSSound.beep()
+            return
+        }
+
+        isAnnotating = true
+        clearClickPresentations()
+        sourceAnnotationPresenter.show(
+            session: annotations,
+            sourceWindowID: source.id,
+            fallbackSourceFrame: source.window.frame,
+            onFinish: { [weak self] in
+                self?.disableAnnotations(clearStrokes: true)
+            }
+        )
+    }
+
+    func clearAnnotations() {
+        annotations.clear()
+    }
+
+    func finishAnnotations() {
+        guard isAnnotating else { return }
+        disableAnnotations(clearStrokes: true)
+    }
+
+    func setAnnotationLifetimeSeconds(_ value: Int) {
+        let normalizedValue = AnnotationTiming.normalizedLifetimeSeconds(value)
+        annotationLifetimeSeconds = normalizedValue
+        annotations.setLifetimeSeconds(normalizedValue)
+        preferencesDefaults.set(normalizedValue, forKey: Self.annotationLifetimeSecondsKey)
     }
 
     func toggleKeystrokeHighlighting() {
@@ -756,6 +809,7 @@ final class CaptureManager: ObservableObject {
 
     private func switchCapture(to source: WindowSource) async throws {
         isSwitchingStream = true
+        disableAnnotations(clearStrokes: true)
         clearClickPresentations()
         defer {
             isSwitchingStream = false
@@ -952,6 +1006,7 @@ final class CaptureManager: ObservableObject {
         desiredCursorVisibility = false
         clearKeystrokePresentation()
         clearClickPresentations()
+        disableAnnotations(clearStrokes: true)
         isSwitchingStream = false
     }
 
@@ -965,7 +1020,8 @@ final class CaptureManager: ObservableObject {
     }
 
     private func showMouseClick(at clickLocation: GlobalClickLocation) {
-        guard let source = activeCaptureSource,
+        guard !isAnnotating,
+            let source = activeCaptureSource,
             selectedWindowID == source.id,
             PresentationEffectFocusPolicy.shouldPresent(
                 isEnabled: highlightsMouseClicks,
@@ -977,10 +1033,12 @@ final class CaptureManager: ObservableObject {
             for: source.id,
             fallback: source.window.frame
         )
-        guard let normalizedLocation = ClickPresentationGeometry.normalizedLocation(
-            for: clickLocation.quartzPoint,
-            in: sourceFrame
-        ) else { return }
+        guard
+            let normalizedLocation = ClickPresentationGeometry.normalizedLocation(
+                for: clickLocation.quartzPoint,
+                in: sourceFrame
+            )
+        else { return }
 
         let presentation = ClickPresentation(location: normalizedLocation)
         clickPresentations.append(presentation)
@@ -1011,6 +1069,14 @@ final class CaptureManager: ObservableObject {
         sourceClickRipplePresenter.dismissAll()
     }
 
+    private func disableAnnotations(clearStrokes: Bool) {
+        isAnnotating = false
+        sourceAnnotationPresenter.dismiss()
+        if clearStrokes {
+            annotations.clear()
+        }
+    }
+
     private func startKeystrokeMonitor() {
         if keystrokeMonitor == nil {
             keystrokeMonitor = GlobalKeystrokeMonitor { [weak self] label in
@@ -1022,10 +1088,12 @@ final class CaptureManager: ObservableObject {
 
     private func showKeystroke(_ label: String) {
         let selectedSourceIsFocused = activeCaptureSource.map(shouldCaptureCursor(for:)) ?? false
-        guard PresentationEffectFocusPolicy.shouldPresent(
-            isEnabled: highlightsKeystrokes,
-            selectedSourceIsFocused: selectedSourceIsFocused
-        ) else { return }
+        guard
+            PresentationEffectFocusPolicy.shouldPresent(
+                isEnabled: highlightsKeystrokes,
+                selectedSourceIsFocused: selectedSourceIsFocused
+            )
+        else { return }
         keystrokeDismissTask?.cancel()
         let presentation = KeystrokePresentation(label: label)
         keystrokePresentation = presentation

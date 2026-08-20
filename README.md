@@ -41,12 +41,15 @@ When you switch with a global shortcut, BetterDemos brings that source into view
 automatically. Click the live source, or press its Option shortcut again, to
 pause sharing. Repeat the same action to resume it.
 
-Use the attached control bar below the strip to highlight mouse clicks or show
-keystrokes on the Demo Stage. Click highlighting uses ScreenCaptureKit on macOS
-15 and later. Keystroke highlighting asks for Accessibility access the first
-time you enable it so BetterDemos can observe keys pressed in the app you are
-presenting. Annotation and app settings controls are reserved for upcoming
-features.
+Use the attached control bar below the strip to draw temporary annotations,
+highlight mouse clicks, or show keystrokes on the Demo Stage. Annotation mode
+places its drawing surface over the selected app window and mirrors that ink on
+the shared Demo Stage; the Demo Stage itself stays draggable and does not accept
+drawing input. Each stroke fades automatically after the delay selected in
+Settings. Press Escape, choose Done, or click the pencil again to leave
+annotation mode. Click highlighting uses ScreenCaptureKit on macOS 15 and later.
+Keystroke highlighting asks for Accessibility access the first time you enable
+it so BetterDemos can observe keys pressed in the app you are presenting.
 
 ## Requirements
 
@@ -142,6 +145,7 @@ inside it.
 | `Sources/MeetStage/StageWindowSizing.swift` | Demo Stage geometry and aspect-ratio handling |
 | `Sources/MeetStage/WindowConfiguration.swift` | AppKit window behavior used by SwiftUI scenes |
 | `Sources/MeetStage/GlobalHotKeyManager.swift` | Option+1 through Option+9 registration |
+| `Sources/MeetStage/Annotations.swift` | Temporary ink model, source overlay, stage rendering, and fade timing |
 | `Tests/MeetStageTests/` | Shortcut, persistence, and stage-sizing tests |
 | `Resources/Info.plist` | Bundle name, version, permissions, and icon metadata |
 | `Brand/` | BetterDemos icon masters and brand guidance |

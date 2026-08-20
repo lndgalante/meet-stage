@@ -45,6 +45,26 @@ struct MeetStageApp: App {
                 .keyboardShortcut(".", modifiers: [.command])
                 .disabled(!captureManager.isCapturing)
             }
+
+            CommandMenu("Presentation") {
+                Button("Toggle Annotations") {
+                    captureManager.toggleAnnotations()
+                }
+                .keyboardShortcut("a", modifiers: [.command, .shift])
+                .disabled(!captureManager.isLive)
+
+                Button("Finish Annotating") {
+                    captureManager.finishAnnotations()
+                }
+                .keyboardShortcut(.escape, modifiers: [])
+                .disabled(!captureManager.isAnnotating)
+
+                Button("Clear Annotations") {
+                    captureManager.clearAnnotations()
+                }
+                .keyboardShortcut(.delete, modifiers: [.command, .shift])
+                .disabled(!captureManager.isLive)
+            }
         }
     }
 }
