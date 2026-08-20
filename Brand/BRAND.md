@@ -55,13 +55,16 @@ live before it has been confirmed.
 
 | Token | Value | Role |
 | --- | --- | --- |
-| Night | `#15191D` | App icon and presentation backdrop |
-| Demo cyan | `#36D6FF` | Active window and primary brand accent |
-| Paper | `#F4F7F8` | Supporting geometry and high-contrast text |
+| Night | `#15191D` | Presentation backdrop |
+| Graphite | `#4D4D4D` | App icon tile |
+| Demo cyan | `#36D6FF` | Active window and primary product accent |
+| Stage gray | `#D2D2D2` | App icon center stage |
+| Paper | `#F4F7F8` | App icon side windows and high-contrast text |
 
-The icon's cyan center is the stable Demo Stage. The two side forms are app
-windows waiting to be shown. Keep the mark wordless and use it on Night whenever
-possible.
+The icon's outlined center is the stable Demo Stage. The two side forms are app
+windows waiting to be shown. Keep the app icon wordless and monochrome so it
+uses the same quiet, system-native treatment in the Dock and macOS permission
+settings. Reserve Demo cyan for active states inside the product.
 
 ## Naming note
 
@@ -75,3 +78,4 @@ domain clearance before a public commercial launch.
 - `BetterDemos-AppIcon-1024.png` — selected 1024px icon master
 - `BetterDemos-sizes/` — 16px through 1024px macOS icon-size exports
 - `../Resources/BetterDemos.icns` — packaged macOS application icon
+- `../scripts/generate-app-icon.swift` — deterministic source for all app-icon assets

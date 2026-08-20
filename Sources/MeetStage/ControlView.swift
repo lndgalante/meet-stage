@@ -13,7 +13,6 @@ private enum ControlMetrics {
     static let sourceViewportHeight: CGFloat = 44
     static let sourceTileRadius: CGFloat = 9
     static let sourceBadgeIconSize: CGFloat = 12
-    static let sourceStateIconSize: CGFloat = 12
     static let sourceScrollFadeWidth: CGFloat = 14
     static let sourceScrollShadowWidth: CGFloat = 18
     static let sourceScrollCoordinateSpace = "source-scroll"
@@ -536,12 +535,6 @@ private struct CompactWindowButton: View {
                             ProgressView()
                                 .controlSize(.mini)
                                 .tint(.orange)
-                                .transition(.opacity.combined(with: .scale(scale: 0.75)))
-                        } else if isSelected {
-                            Image(systemName: "checkmark.circle.fill")
-                                .symbolRenderingMode(.palette)
-                                .foregroundStyle(.white, .blue)
-                                .font(.system(size: ControlMetrics.sourceStateIconSize))
                                 .transition(.opacity.combined(with: .scale(scale: 0.75)))
                         }
                     }
