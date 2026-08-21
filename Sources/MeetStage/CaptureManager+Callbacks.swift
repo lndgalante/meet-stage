@@ -24,6 +24,7 @@ extension CaptureManager {
         if selectedWindowID != nil {
             state = pendingWindowID == nil ? .capturing : .switching
             if state == .capturing {
+                activateSpotlightIfPossible()
                 activateAnnotationsIfPossible()
             }
         }

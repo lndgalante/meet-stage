@@ -174,17 +174,6 @@ struct CompactWindowButton: View {
                                 .transition(.opacity.combined(with: .scale(scale: 0.75)))
                         }
                         Spacer()
-                        if let icon = source.applicationIcon {
-                            Image(nsImage: icon)
-                                .resizable()
-                                .scaledToFit()
-                                .frame(
-                                    width: ControlMetrics.sourceBadgeIconSize,
-                                    height: ControlMetrics.sourceBadgeIconSize
-                                )
-                                .padding(2)
-                                .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
-                        }
                     }
                 }
                 .padding(4)
@@ -196,6 +185,21 @@ struct CompactWindowButton: View {
             .overlay {
                 RoundedRectangle(cornerRadius: ControlMetrics.sourceTileRadius, style: .continuous)
                     .strokeBorder(borderColor, lineWidth: borderWidth)
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if let icon = source.applicationIcon {
+                    Image(nsImage: icon)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(
+                            width: ControlMetrics.sourceApplicationIconSize,
+                            height: ControlMetrics.sourceApplicationIconSize
+                        )
+                        .offset(
+                            x: ControlMetrics.sourceApplicationIconHorizontalOffset,
+                            y: ControlMetrics.sourceApplicationIconVerticalOffset
+                        )
+                }
             }
             .animation(
                 reduceMotion ? nil : .easeOut(duration: 0.14),

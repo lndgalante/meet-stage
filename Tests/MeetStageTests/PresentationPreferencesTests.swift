@@ -13,6 +13,8 @@ struct PresentationPreferencesTests {
         let manager = CaptureManager(defaults: fixture.defaults)
 
         #expect(manager.annotationColor == .orange)
+        #expect(manager.spotlightSize == .medium)
+        #expect(manager.spotlightOutsideOpacity == SpotlightAppearance.defaultOutsideOpacity)
         #expect(manager.clickHighlightColor == .orange)
         #expect(manager.clickHighlightSize == .medium)
         #expect(manager.keystrokeHighlightSize == .medium)
@@ -27,6 +29,8 @@ struct PresentationPreferencesTests {
 
         let manager = CaptureManager(defaults: fixture.defaults)
         manager.setAnnotationColor(.purple)
+        manager.setSpotlightSize(.large)
+        manager.setSpotlightOutsideOpacity(0.55)
         manager.setClickHighlightColor(.green)
         manager.setClickHighlightSize(.large)
         manager.setKeystrokeHighlightSize(.small)
@@ -35,6 +39,10 @@ struct PresentationPreferencesTests {
         let restoredManager = CaptureManager(defaults: fixture.defaults)
         #expect(restoredManager.annotationColor == .purple)
         #expect(restoredManager.annotations.inkColor == .purple)
+        #expect(restoredManager.spotlightSize == .large)
+        #expect(restoredManager.spotlight.size == .large)
+        #expect(restoredManager.spotlightOutsideOpacity == 0.55)
+        #expect(restoredManager.spotlight.outsideOpacity == 0.55)
         #expect(restoredManager.clickHighlightColor == .green)
         #expect(restoredManager.clickHighlightSize == .large)
         #expect(restoredManager.keystrokeHighlightSize == .small)
@@ -55,6 +63,10 @@ struct PresentationPreferencesTests {
             forKey: PresentationPreferencesStore.clickHighlightSizeKey
         )
         fixture.defaults.set(
+            "enormous",
+            forKey: PresentationPreferencesStore.spotlightSizeKey
+        )
+        fixture.defaults.set(
             "transparent",
             forKey: PresentationPreferencesStore.keystrokeAppearanceKey
         )
@@ -62,8 +74,22 @@ struct PresentationPreferencesTests {
         let manager = CaptureManager(defaults: fixture.defaults)
 
         #expect(manager.annotationColor == .orange)
+        #expect(manager.spotlightSize == .medium)
         #expect(manager.clickHighlightSize == .medium)
         #expect(manager.keystrokeAppearance == .dark)
+    }
+
+    @Test("Clamps spotlight intensity at the persistence boundary")
+    func clampsSpotlightIntensity() throws {
+        let fixture = try PreferencesFixture()
+        defer { fixture.dispose() }
+
+        fixture.store.spotlightOutsideOpacity = 8
+
+        #expect(
+            fixture.store.spotlightOutsideOpacity
+                == SpotlightAppearance.outsideOpacityRange.upperBound
+        )
     }
 
     @Test("Normalizes drawing lifetime at the persistence boundary")

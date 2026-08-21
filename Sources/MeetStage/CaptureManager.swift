@@ -31,6 +31,9 @@ final class CaptureManager: ObservableObject {
     @Published var clickPresentations: [ClickPresentation] = []
     @Published var annotationsEnabled = false
     @Published var isAnnotating = false
+    @Published var spotlightEnabled = false
+    @Published var spotlightSize: PresentationSize
+    @Published var spotlightOutsideOpacity: Double
     @Published var annotationLifetimeSeconds: Int
     @Published var annotationColor: PresentationColor
     @Published var clickHighlightColor: PresentationColor
@@ -42,6 +45,7 @@ final class CaptureManager: ObservableObject {
 
     let renderer = SampleBufferRenderer()
     let annotations: AnnotationSession
+    let spotlight: SpotlightSession
 
     var displayedStageAspectRatio: CGFloat {
         StageWindowAspectRatioPolicy.displayedAspectRatio(
@@ -86,7 +90,9 @@ final class CaptureManager: ObservableObject {
     var clickDismissTasks: [UUID: Task<Void, Never>] = [:]
     var keystrokeMonitor: GlobalKeystrokeMonitor?
     var mouseClickMonitor: GlobalMouseClickMonitor?
+    var spotlightPointerMonitor: GlobalPointerMonitor?
     let sourceClickRipplePresenter = SourceClickRipplePresenter()
+    let sourceSpotlightPresenter = SourceSpotlightPresenter()
     lazy var sourceAnnotationPresenter = SourceAnnotationPresenter()
     var workspaceMonitor: WorkspaceMonitor?
     var windowMonitoringTask: Task<Void, Never>?
@@ -114,6 +120,10 @@ final class CaptureManager: ObservableObject {
         let annotationColor = presentationStore.annotationColor
         self.annotationLifetimeSeconds = annotationLifetimeSeconds
         self.annotationColor = annotationColor
+        let spotlightSize = presentationStore.spotlightSize
+        let spotlightOutsideOpacity = presentationStore.spotlightOutsideOpacity
+        self.spotlightSize = spotlightSize
+        self.spotlightOutsideOpacity = spotlightOutsideOpacity
         clickHighlightColor = presentationStore.clickHighlightColor
         clickHighlightSize = presentationStore.clickHighlightSize
         keystrokeHighlightSize = presentationStore.keystrokeHighlightSize
@@ -121,6 +131,10 @@ final class CaptureManager: ObservableObject {
         annotations = AnnotationSession(
             lifetimeSeconds: annotationLifetimeSeconds,
             inkColor: annotationColor
+        )
+        spotlight = SpotlightSession(
+            size: spotlightSize,
+            outsideOpacity: spotlightOutsideOpacity
         )
         highlightsMouseClicks = presentationStore.highlightsMouseClicks
         highlightsKeystrokes =
@@ -155,6 +169,15 @@ final class CaptureManager: ObservableObject {
 
     var isLive: Bool {
         stream != nil && selectedWindowID != nil
+    }
+
+    var isSpotlightVisible: Bool {
+        SpotlightVisibilityPolicy.shouldShow(
+            isEnabled: spotlightEnabled,
+            captureState: state,
+            hasActiveCapture: stream != nil,
+            hasSelectedWindow: selectedWindowID != nil
+        )
     }
 
     var needsScreenRecordingPermission: Bool {

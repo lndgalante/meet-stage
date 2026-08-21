@@ -432,7 +432,7 @@ enum AnnotationWindowPolicy {
     // controller is floating. This slot keeps ink above the source without
     // making the controller unreachable when the two overlap.
     static let sourceOverlayLevel = NSWindow.Level(
-        rawValue: NSWindow.Level.normal.rawValue + 1
+        rawValue: NSWindow.Level.normal.rawValue + 2
     )
 
     @MainActor

@@ -155,6 +155,21 @@ extension CaptureManager {
 
     // MARK: - Presentation commands and preferences
 
+    func toggleSpotlight() {
+        spotlightEnabled.toggle()
+        if spotlightEnabled {
+            startSpotlightPointerMonitor()
+            if let currentPointerLocation = CGEvent(source: nil)?.location {
+                moveSpotlight(to: currentPointerLocation)
+            }
+            focusSelectedSourceForSpotlightIfPossible()
+            activateSpotlightIfPossible()
+        } else {
+            spotlightPointerMonitor?.stop()
+            deactivateSpotlight()
+        }
+    }
+
     func toggleMouseClickHighlighting() {
         highlightsMouseClicks.toggle()
         presentationStore.highlightsMouseClicks = highlightsMouseClicks
@@ -197,6 +212,19 @@ extension CaptureManager {
         annotationColor = value
         annotations.setInkColor(value)
         presentationStore.annotationColor = value
+    }
+
+    func setSpotlightSize(_ value: PresentationSize) {
+        spotlightSize = value
+        spotlight.setSize(value)
+        presentationStore.spotlightSize = value
+    }
+
+    func setSpotlightOutsideOpacity(_ value: Double) {
+        let normalizedValue = SpotlightAppearance.normalizedOutsideOpacity(value)
+        spotlightOutsideOpacity = normalizedValue
+        spotlight.setOutsideOpacity(normalizedValue)
+        presentationStore.spotlightOutsideOpacity = normalizedValue
     }
 
     func setClickHighlightColor(_ value: PresentationColor) {

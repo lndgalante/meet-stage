@@ -2,7 +2,7 @@ import SwiftUI
 
 struct SettingsPopover: View {
     @ObservedObject var manager: CaptureManager
-    @State private var selectedTab: SettingsTab = .annotations
+    @State private var selectedTab: SettingsTab = .spotlight
 
     var body: some View {
         VStack(spacing: 16) {
@@ -17,10 +17,12 @@ struct SettingsPopover: View {
             }
             .labelsHidden()
             .pickerStyle(.segmented)
-            .frame(width: 330)
+            .frame(width: 384)
 
             Group {
                 switch selectedTab {
+                case .spotlight:
+                    spotlightSettings
                 case .annotations:
                     annotationSettings
                 case .clicks:
@@ -31,9 +33,49 @@ struct SettingsPopover: View {
             }
         }
         .padding(18)
-        .frame(width: 420)
+        .frame(width: 456)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Settings")
+    }
+
+    private var spotlightSettings: some View {
+        VStack(spacing: 12) {
+            SettingsPreviewWell {
+                SpotlightSettingsPreview(
+                    size: manager.spotlightSize,
+                    outsideOpacity: manager.spotlightOutsideOpacity
+                )
+            }
+
+            SettingsFormRow(title: "Spotlight size") {
+                Picker(
+                    "Spotlight size",
+                    selection: Binding(
+                        get: { manager.spotlightSize },
+                        set: { manager.setSpotlightSize($0) }
+                    )
+                ) {
+                    ForEach(PresentationSize.allCases) { size in
+                        Text(size.label)
+                            .tag(size)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+            }
+
+            SettingsFormRow(title: "Outside opacity") {
+                SettingsPercentageSlider(
+                    label: "Outside opacity",
+                    value: Binding(
+                        get: { manager.spotlightOutsideOpacity },
+                        set: { manager.setSpotlightOutsideOpacity($0) }
+                    ),
+                    range: SpotlightAppearance.outsideOpacityRange
+                )
+            }
+
+        }
     }
 
     private var annotationSettings: some View {
@@ -166,6 +208,7 @@ struct SettingsPopover: View {
 }
 
 private enum SettingsTab: String, CaseIterable, Identifiable {
+    case spotlight
     case annotations
     case clicks
     case keystrokes
@@ -190,12 +233,113 @@ private struct SettingsFormRow<Content: View>: View {
         HStack(spacing: 14) {
             Text(title)
                 .font(.callout.weight(.medium))
-                .frame(width: 92, alignment: .trailing)
+                .frame(width: 112, alignment: .trailing)
 
             content
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(minHeight: 30)
+    }
+}
+
+private struct SettingsPercentageSlider: View {
+    let label: String
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Slider(
+                value: $value,
+                in: range,
+                step: 0.05
+            )
+            .labelsHidden()
+            .accessibilityLabel(label)
+            .accessibilityValue(percentageLabel)
+
+            Text(percentageLabel)
+                .font(.callout.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .frame(width: 38, alignment: .trailing)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private var percentageLabel: String {
+        "\(Int((value * 100).rounded()))%"
+    }
+}
+
+private struct SpotlightSettingsPreview: View {
+    let size: PresentationSize
+    let outsideOpacity: Double
+
+    var body: some View {
+        GeometryReader { geometry in
+            let diameter = previewDiameter(in: geometry.size)
+            let aperture = CGRect(
+                x: geometry.size.width * 0.87 - diameter / 2,
+                y: geometry.size.height / 2 - diameter / 2,
+                width: diameter,
+                height: diameter
+            )
+
+            ZStack {
+                previewContent
+
+                SpotlightEffectLayer(
+                    aperture: aperture,
+                    outsideOpacity: outsideOpacity
+                )
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private var previewContent: some View {
+        HStack(spacing: 14) {
+            VStack(spacing: 7) {
+                Circle()
+                    .fill(Color.accentColor.opacity(0.78))
+                    .frame(width: 17, height: 17)
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(Color.primary.opacity(0.16))
+                    .frame(width: 16, height: 5)
+            }
+
+            VStack(alignment: .leading, spacing: 7) {
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(Color.primary.opacity(0.28))
+                    .frame(width: 76, height: 7)
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(Color.primary.opacity(0.13))
+                    .frame(width: 118, height: 6)
+                RoundedRectangle(cornerRadius: 2, style: .continuous)
+                    .fill(Color.primary.opacity(0.13))
+                    .frame(width: 94, height: 6)
+            }
+
+            Spacer(minLength: 6)
+
+            RoundedRectangle(cornerRadius: 6, style: .continuous)
+                .fill(Color.accentColor.opacity(0.82))
+                .frame(width: 64, height: 28)
+        }
+        .padding(.horizontal, 22)
+    }
+
+    private func previewDiameter(in viewportSize: CGSize) -> CGFloat {
+        let scale: CGFloat
+        switch size {
+        case .small:
+            scale = 0.48
+        case .medium:
+            scale = 0.66
+        case .large:
+            scale = 0.84
+        }
+        return viewportSize.height * scale
     }
 }
 

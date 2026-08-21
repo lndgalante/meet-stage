@@ -12,6 +12,12 @@ struct StageView: View {
             )
             .ignoresSafeArea()
 
+            if manager.isSpotlightVisible {
+                SpotlightSurface(session: manager.spotlight)
+                    .ignoresSafeArea()
+                    .transition(.opacity)
+            }
+
             if manager.isLive {
                 AnnotationInkLayer(
                     session: manager.annotations,
@@ -99,6 +105,10 @@ struct StageView: View {
         .animation(
             reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 1),
             value: manager.keystrokePresentation?.id
+        )
+        .animation(
+            reduceMotion ? nil : .easeOut(duration: 0.18),
+            value: manager.spotlightEnabled
         )
         .onExitCommand {
             manager.finishAnnotations()

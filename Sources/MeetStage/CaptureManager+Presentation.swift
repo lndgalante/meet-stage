@@ -37,10 +37,12 @@ extension CaptureManager {
     func updatePresentationFocus(_ selectedSourceIsFocused: Bool) {
         desiredCursorVisibility = selectedSourceIsFocused
         if selectedSourceIsFocused {
+            activateSpotlightIfPossible()
             activateAnnotationsIfPossible()
         } else {
             clearKeystrokePresentation()
             clearClickPresentations()
+            deactivateSpotlight()
             deactivateAnnotations(clearStrokes: false)
         }
         scheduleCaptureConfigurationUpdateIfNeeded()
@@ -107,6 +109,7 @@ extension CaptureManager {
         desiredCursorVisibility = false
         clearKeystrokePresentation()
         clearClickPresentations()
+        deactivateSpotlight()
         deactivateAnnotations(clearStrokes: true)
         isSwitchingStream = false
     }
@@ -177,6 +180,67 @@ extension CaptureManager {
         clickDismissTasks.removeAll()
         clickPresentations.removeAll()
         sourceClickRipplePresenter.dismissAll()
+    }
+
+    func startSpotlightPointerMonitor() {
+        if spotlightPointerMonitor == nil {
+            spotlightPointerMonitor = GlobalPointerMonitor { [weak self] location in
+                self?.moveSpotlight(to: location)
+            }
+        }
+        spotlightPointerMonitor?.start()
+    }
+
+    func moveSpotlight(to globalLocation: CGPoint) {
+        guard spotlightEnabled,
+            let source = activeCaptureSource,
+            selectedWindowID == source.id
+        else { return }
+
+        let sourceFrame = WindowFrameResolver.currentFrame(
+            for: source.id,
+            fallback: source.window.frame
+        )
+        guard
+            let location = SpotlightGeometry.normalizedLocation(
+                for: globalLocation,
+                in: sourceFrame
+            )
+        else { return }
+
+        spotlight.move(to: location)
+    }
+
+    func activateSpotlightIfPossible() {
+        guard isSpotlightVisible,
+            let source = activeCaptureSource,
+            PresentationEffectFocusPolicy.shouldPresent(
+                isEnabled: true,
+                selectedSourceIsFocused: shouldCaptureCursor(for: source)
+            )
+        else { return }
+
+        sourceSpotlightPresenter.show(
+            session: spotlight,
+            sourceWindowID: source.id,
+            fallbackSourceFrame: source.window.frame
+        )
+    }
+
+    func focusSelectedSourceForSpotlightIfPossible() {
+        guard isLive,
+            let source = activeCaptureSource,
+            !shouldCaptureCursor(for: source),
+            let application = NSRunningApplication(
+                processIdentifier: source.processIdentifier
+            )
+        else { return }
+
+        application.activate()
+    }
+
+    func deactivateSpotlight() {
+        sourceSpotlightPresenter.dismiss()
     }
 
     func activateAnnotationsIfPossible() {

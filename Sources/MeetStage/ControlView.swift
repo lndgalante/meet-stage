@@ -5,14 +5,22 @@ enum ControlMetrics {
     static let cornerRadius: CGFloat = 14
     static let controlBarCornerRadius: CGFloat = 12
     static let contentHeight: CGFloat = 44
-    static let sourceTileWidth: CGFloat = 44
-    static let sourceTileHeight: CGFloat = 44
     static let sourceTileSpacing: CGFloat = 4
     static let sourceTileHorizontalInset: CGFloat = 1
+    static let visibleSourceTileCount: CGFloat = 4
+    static let sourceTileWidth: CGFloat =
+        (ControlWindowSizing.sourceAreaWidth
+            - sourceTileHorizontalInset * 2
+            - sourceTileSpacing * (visibleSourceTileCount - 1))
+        / visibleSourceTileCount
+    static let sourceTileHeight: CGFloat = 44
     static let sourceTileVerticalInset: CGFloat = 0
     static let sourceViewportHeight: CGFloat = 44
     static let sourceTileRadius: CGFloat = 9
     static let sourceBadgeIconSize: CGFloat = 12
+    static let sourceApplicationIconSize: CGFloat = 16
+    static let sourceApplicationIconHorizontalOffset: CGFloat = 1
+    static let sourceApplicationIconVerticalOffset: CGFloat = 1
     static let sourceScrollFadeWidth: CGFloat = 14
     static let sourceScrollShadowWidth: CGFloat = 18
     static let sourceScrollCoordinateSpace = "source-scroll"
@@ -89,19 +97,12 @@ struct ControlView: View {
     private var controlBar: some View {
         HStack(spacing: 0) {
             ControlBarButton(
-                systemImage: "gearshape",
-                title: "Settings",
-                help: "Open Settings",
-                isPresented: isSettingsPresented,
-                action: { isSettingsPresented.toggle() }
+                systemImage: "magnifyingglass",
+                title: "Focus spotlight",
+                help: spotlightControlHelp,
+                isOn: manager.spotlightEnabled,
+                action: manager.toggleSpotlight
             )
-            .popover(
-                isPresented: $isSettingsPresented,
-                attachmentAnchor: .rect(.bounds),
-                arrowEdge: .bottom
-            ) {
-                SettingsPopover(manager: manager)
-            }
 
             controlBarDivider
 
@@ -137,6 +138,23 @@ struct ControlView: View {
                 showsPermissionWarning: manager.needsKeystrokeAccessibilityPermission,
                 action: manager.toggleKeystrokeHighlighting
             )
+
+            controlBarDivider
+
+            ControlBarButton(
+                systemImage: "gearshape",
+                title: "Settings",
+                help: "Open Settings",
+                isPresented: isSettingsPresented,
+                action: { isSettingsPresented.toggle() }
+            )
+            .popover(
+                isPresented: $isSettingsPresented,
+                attachmentAnchor: .rect(.bounds),
+                arrowEdge: .bottom
+            ) {
+                SettingsPopover(manager: manager)
+            }
         }
         .padding(.top, ControlWindowSizing.controlBarOverlap)
         .frame(
@@ -197,6 +215,17 @@ struct ControlView: View {
         return manager.isLive
             ? "Draw temporary ink over the selected app window"
             : "Enable annotations for the next shared window"
+    }
+
+    private var spotlightControlHelp: String {
+        if manager.spotlightEnabled {
+            return manager.isLive
+                ? "Move the pointer to focus part of the selected window"
+                : "The spotlight will appear when a window is live"
+        }
+        return manager.isLive
+            ? "Dim and softly blur everything outside the pointer spotlight"
+            : "Enable the spotlight for the next shared window"
     }
 
     private var sourceScroller: some View {

@@ -47,6 +47,10 @@ struct MeetStageApp: App {
             }
 
             CommandMenu("Presentation") {
+                Button(captureManager.spotlightEnabled ? "Turn Off Spotlight" : "Turn On Spotlight") {
+                    captureManager.toggleSpotlight()
+                }
+
                 Button("Toggle Annotations") {
                     captureManager.toggleAnnotations()
                 }

@@ -70,6 +70,8 @@ struct PresentationPreferencesStore {
     static let highlightsKeystrokesKey = "presentation.highlightsKeystrokes"
     static let annotationLifetimeSecondsKey = "presentation.annotationLifetimeSeconds"
     static let annotationColorKey = "presentation.annotationColor"
+    static let spotlightSizeKey = "presentation.spotlightSize"
+    static let spotlightOutsideOpacityKey = "presentation.spotlightOutsideOpacity"
     static let clickHighlightColorKey = "presentation.clickHighlightColor"
     static let clickHighlightSizeKey = "presentation.clickHighlightSize"
     static let keystrokeHighlightSizeKey = "presentation.keystrokeHighlightSize"
@@ -111,6 +113,27 @@ struct PresentationPreferencesStore {
         nonmutating set { defaults.set(newValue.rawValue, forKey: Self.annotationColorKey) }
     }
 
+    var spotlightSize: PresentationSize {
+        get { value(forKey: Self.spotlightSizeKey, default: .medium) }
+        nonmutating set { defaults.set(newValue.rawValue, forKey: Self.spotlightSizeKey) }
+    }
+
+    var spotlightOutsideOpacity: Double {
+        get {
+            double(
+                forKey: Self.spotlightOutsideOpacityKey,
+                default: SpotlightAppearance.defaultOutsideOpacity,
+                range: SpotlightAppearance.outsideOpacityRange
+            )
+        }
+        nonmutating set {
+            defaults.set(
+                SpotlightAppearance.normalizedOutsideOpacity(newValue),
+                forKey: Self.spotlightOutsideOpacityKey
+            )
+        }
+    }
+
     var clickHighlightColor: PresentationColor {
         get { value(forKey: Self.clickHighlightColorKey, default: .orange) }
         nonmutating set { defaults.set(newValue.rawValue, forKey: Self.clickHighlightColorKey) }
@@ -145,5 +168,16 @@ struct PresentationPreferencesStore {
             return defaultValue
         }
         return value
+    }
+
+    private func double(
+        forKey key: String,
+        default defaultValue: Double,
+        range: ClosedRange<Double>
+    ) -> Double {
+        guard let savedValue = defaults.object(forKey: key) as? NSNumber else {
+            return defaultValue
+        }
+        return min(max(savedValue.doubleValue, range.lowerBound), range.upperBound)
     }
 }
