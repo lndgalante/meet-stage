@@ -15,11 +15,14 @@ struct StageView: View {
             if manager.isLive, !manager.clickPresentations.isEmpty {
                 GeometryReader { geometry in
                     ForEach(manager.clickPresentations) { presentation in
-                        ClickRippleGlyph(reducesMotion: reduceMotion)
-                            .position(
-                                x: presentation.location.x * geometry.size.width,
-                                y: presentation.location.y * geometry.size.height
-                            )
+                        ClickRippleGlyph(
+                            presentation: presentation,
+                            reducesMotion: reduceMotion
+                        )
+                        .position(
+                            x: presentation.location.x * geometry.size.width,
+                            y: presentation.location.y * geometry.size.height
+                        )
                     }
                 }
                 .ignoresSafeArea()
@@ -76,17 +79,21 @@ struct StageView: View {
             if manager.isLive,
                 let keystroke = manager.keystrokePresentation
             {
-                KeystrokeBadge(label: keystroke.label)
-                    .id(keystroke.id)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                    .padding(.bottom, 28)
-                    .transition(
-                        reduceMotion
-                            ? .opacity
-                            : .opacity.combined(with: .scale(scale: 0.92, anchor: .bottom))
-                    )
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
+                KeystrokeBadge(
+                    label: keystroke.label,
+                    size: keystroke.size,
+                    appearance: keystroke.appearance
+                )
+                .id(keystroke.id)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                .padding(.bottom, 28)
+                .transition(
+                    reduceMotion
+                        ? .opacity
+                        : .opacity.combined(with: .scale(scale: 0.92, anchor: .bottom))
+                )
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
             }
         }
         .animation(
@@ -180,24 +187,69 @@ private struct IdleStageChrome: View {
     }
 }
 
-private struct KeystrokeBadge: View {
+struct KeystrokeBadge: View {
     let label: String
+    let size: PresentationSize
+    let appearance: KeystrokeAppearance
 
     var body: some View {
         Text(label)
-            .font(.system(size: 18, weight: .semibold, design: .rounded))
-            .foregroundStyle(.white)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 9)
+            .font(.system(size: metrics.fontSize, weight: .semibold, design: .rounded))
+            .foregroundStyle(foregroundColor)
+            .padding(.horizontal, metrics.horizontalPadding)
+            .padding(.vertical, metrics.verticalPadding)
             .background(
-                Color.black.opacity(0.78),
-                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+                backgroundColor,
+                in: RoundedRectangle(cornerRadius: metrics.cornerRadius, style: .continuous)
             )
             .overlay {
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.22), lineWidth: 1)
+                RoundedRectangle(cornerRadius: metrics.cornerRadius, style: .continuous)
+                    .strokeBorder(borderColor, lineWidth: 1)
             }
             .shadow(color: Color.black.opacity(0.32), radius: 8, y: 3)
+    }
+
+    private var metrics: KeystrokeBadgeMetrics {
+        KeystrokeBadgeMetrics(size: size)
+    }
+
+    private var foregroundColor: Color {
+        appearance == .dark ? .white : .black.opacity(0.82)
+    }
+
+    private var backgroundColor: Color {
+        appearance == .dark ? .black.opacity(0.78) : .white.opacity(0.92)
+    }
+
+    private var borderColor: Color {
+        appearance == .dark ? .white.opacity(0.22) : .black.opacity(0.16)
+    }
+}
+
+private struct KeystrokeBadgeMetrics {
+    let fontSize: CGFloat
+    let horizontalPadding: CGFloat
+    let verticalPadding: CGFloat
+    let cornerRadius: CGFloat
+
+    init(size: PresentationSize) {
+        switch size {
+        case .small:
+            fontSize = 14
+            horizontalPadding = 12
+            verticalPadding = 7
+            cornerRadius = 8
+        case .medium:
+            fontSize = 18
+            horizontalPadding = 16
+            verticalPadding = 9
+            cornerRadius = 10
+        case .large:
+            fontSize = 24
+            horizontalPadding = 21
+            verticalPadding = 11
+            cornerRadius = 13
+        }
     }
 }
 

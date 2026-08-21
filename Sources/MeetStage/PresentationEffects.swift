@@ -11,6 +11,8 @@ struct NormalizedWindowPoint: Equatable, Sendable {
 struct ClickPresentation: Equatable, Identifiable, Sendable {
     let id = UUID()
     let location: NormalizedWindowPoint
+    let color: PresentationColor
+    let size: PresentationSize
 }
 
 struct GlobalClickLocation: Equatable, Sendable {
@@ -31,6 +33,8 @@ struct GlobalClickLocation: Equatable, Sendable {
 struct KeystrokePresentation: Equatable, Identifiable, Sendable {
     let id = UUID()
     let label: String
+    let size: PresentationSize
+    let appearance: KeystrokeAppearance
 }
 
 enum PresentationEffectFocusPolicy {
@@ -77,10 +81,11 @@ enum ClickPresentationGeometry {
 
 enum WindowFrameResolver {
     static func currentFrame(for windowID: CGWindowID, fallback: CGRect) -> CGRect {
-        guard let windowInfo = CGWindowListCopyWindowInfo(
-            [.optionIncludingWindow, .excludeDesktopElements],
-            windowID
-        ) as? [[CFString: Any]],
+        guard
+            let windowInfo = CGWindowListCopyWindowInfo(
+                [.optionIncludingWindow, .excludeDesktopElements],
+                windowID
+            ) as? [[CFString: Any]],
             let bounds = windowInfo.first?[kCGWindowBounds] as? NSDictionary,
             let frame = CGRect(dictionaryRepresentation: bounds),
             frame.width > 0,
@@ -216,11 +221,14 @@ private struct SourceClickRippleSurface: View {
 
     var body: some View {
         GeometryReader { geometry in
-            ClickRippleGlyph(reducesMotion: reducesMotion)
-                .position(
-                    x: presentation.location.x * geometry.size.width,
-                    y: presentation.location.y * geometry.size.height
-                )
+            ClickRippleGlyph(
+                presentation: presentation,
+                reducesMotion: reducesMotion
+            )
+            .position(
+                x: presentation.location.x * geometry.size.width,
+                y: presentation.location.y * geometry.size.height
+            )
         }
         .clipped()
         .allowsHitTesting(false)
@@ -229,35 +237,72 @@ private struct SourceClickRippleSurface: View {
 }
 
 struct ClickRippleGlyph: View {
+    let presentation: ClickPresentation
     let reducesMotion: Bool
 
     @State private var isReceding = false
 
-    private let color = Color(red: 1, green: 0.47, blue: 0.14)
-
     var body: some View {
+        let metrics = ClickRippleMetrics(size: presentation.size)
+        let color = presentation.color.color
+
         ZStack {
             Circle()
                 .stroke(color, lineWidth: isReceding ? 1.5 : 3)
                 .frame(
-                    width: reducesMotion ? 24 : (isReceding ? 54 : 12),
-                    height: reducesMotion ? 24 : (isReceding ? 54 : 12)
+                    width: reducesMotion
+                        ? metrics.reducedMotionDiameter
+                        : (isReceding ? metrics.expandedDiameter : metrics.initialDiameter),
+                    height: reducesMotion
+                        ? metrics.reducedMotionDiameter
+                        : (isReceding ? metrics.expandedDiameter : metrics.initialDiameter)
                 )
                 .opacity(isReceding ? 0 : 0.95)
 
             Circle()
                 .fill(color)
-                .frame(width: 8, height: 8)
+                .frame(width: metrics.dotDiameter, height: metrics.dotDiameter)
                 .scaleEffect(isReceding ? 0.75 : 1)
                 .opacity(isReceding ? 0 : 1)
         }
-        .frame(width: 58, height: 58)
+        .frame(width: metrics.canvasDiameter, height: metrics.canvasDiameter)
         .shadow(color: .black.opacity(0.34), radius: 2, y: 1)
         .task {
             await Task.yield()
             withAnimation(.easeOut(duration: reducesMotion ? 0.22 : 0.46)) {
                 isReceding = true
             }
+        }
+    }
+}
+
+struct ClickRippleMetrics: Equatable, Sendable {
+    let initialDiameter: CGFloat
+    let reducedMotionDiameter: CGFloat
+    let expandedDiameter: CGFloat
+    let dotDiameter: CGFloat
+    let canvasDiameter: CGFloat
+
+    init(size: PresentationSize) {
+        switch size {
+        case .small:
+            initialDiameter = 10
+            reducedMotionDiameter = 19
+            expandedDiameter = 42
+            dotDiameter = 7
+            canvasDiameter = 46
+        case .medium:
+            initialDiameter = 12
+            reducedMotionDiameter = 24
+            expandedDiameter = 54
+            dotDiameter = 8
+            canvasDiameter = 58
+        case .large:
+            initialDiameter = 14
+            reducedMotionDiameter = 30
+            expandedDiameter = 68
+            dotDiameter = 10
+            canvasDiameter = 72
         }
     }
 }

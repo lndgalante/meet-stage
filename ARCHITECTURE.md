@@ -21,7 +21,14 @@ to follow while keeping the parts that do not require macOS services testable.
   queue.
 - `AnnotationSession` owns normalized temporary ink shared by the selected
   source overlay and `StageView`. `CaptureManager` owns annotation lifecycle,
-  persistence, and source-switch cleanup.
+  persistence, and source-switch cleanup. Annotation intent is independent from
+  the active overlay so it can remain armed through idle, paused, switching, and
+  source-focus changes. The source overlay is non-activating and only exists while
+  the selected source app is frontmost, preventing drawing mode from changing
+  BetterDemos' window order or intercepting another app.
+- `PresentationPreferences` defines the typed appearance choices shared by
+  settings, source overlays, and the Demo Stage. `CaptureManager` persists the
+  selected values and snapshots them into each click or keystroke presentation.
 
 ## Capture lifecycle
 

@@ -51,13 +51,12 @@ struct MeetStageApp: App {
                     captureManager.toggleAnnotations()
                 }
                 .keyboardShortcut("a", modifiers: [.command, .shift])
-                .disabled(!captureManager.isLive)
 
                 Button("Finish Annotating") {
                     captureManager.finishAnnotations()
                 }
                 .keyboardShortcut(.escape, modifiers: [])
-                .disabled(!captureManager.isAnnotating)
+                .disabled(!captureManager.annotationsEnabled)
 
                 Button("Clear Annotations") {
                     captureManager.clearAnnotations()

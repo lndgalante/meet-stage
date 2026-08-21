@@ -12,6 +12,11 @@ final class CaptureManager: ObservableObject {
     private static let highlightsMouseClicksKey = "presentation.highlightsMouseClicks"
     private static let highlightsKeystrokesKey = "presentation.highlightsKeystrokes"
     private static let annotationLifetimeSecondsKey = "presentation.annotationLifetimeSeconds"
+    private static let annotationColorKey = "presentation.annotationColor"
+    private static let clickHighlightColorKey = "presentation.clickHighlightColor"
+    private static let clickHighlightSizeKey = "presentation.clickHighlightSize"
+    private static let keystrokeHighlightSizeKey = "presentation.keystrokeHighlightSize"
+    private static let keystrokeAppearanceKey = "presentation.keystrokeAppearance"
     private static let firstFrameTimeout: Duration = .seconds(3)
     private static let unavailableSourceMessage =
         "Window unavailable. Restore it or choose another window."
@@ -31,8 +36,14 @@ final class CaptureManager: ObservableObject {
     @Published private(set) var needsKeystrokeAccessibilityPermission = false
     @Published private(set) var keystrokePresentation: KeystrokePresentation?
     @Published private(set) var clickPresentations: [ClickPresentation] = []
+    @Published private(set) var annotationsEnabled = false
     @Published private(set) var isAnnotating = false
     @Published private(set) var annotationLifetimeSeconds: Int
+    @Published private(set) var annotationColor: PresentationColor
+    @Published private(set) var clickHighlightColor: PresentationColor
+    @Published private(set) var clickHighlightSize: PresentationSize
+    @Published private(set) var keystrokeHighlightSize: PresentationSize
+    @Published private(set) var keystrokeAppearance: KeystrokeAppearance
     @Published private var shortcutPins: [Int: PinnedWindow] = [:]
     @Published private var shortcutExclusions: Set<PinnedWindow> = []
 
@@ -110,8 +121,27 @@ final class CaptureManager: ObservableObject {
         let annotationLifetimeSeconds = AnnotationTiming.normalizedLifetimeSeconds(
             savedAnnotationLifetime?.intValue ?? AnnotationTiming.defaultLifetimeSeconds
         )
+        let annotationColor =
+            defaults.string(forKey: Self.annotationColorKey)
+            .flatMap(PresentationColor.init(rawValue:)) ?? .orange
         self.annotationLifetimeSeconds = annotationLifetimeSeconds
-        annotations = AnnotationSession(lifetimeSeconds: annotationLifetimeSeconds)
+        self.annotationColor = annotationColor
+        clickHighlightColor =
+            defaults.string(forKey: Self.clickHighlightColorKey)
+            .flatMap(PresentationColor.init(rawValue:)) ?? .orange
+        clickHighlightSize =
+            defaults.string(forKey: Self.clickHighlightSizeKey)
+            .flatMap(PresentationSize.init(rawValue:)) ?? .medium
+        keystrokeHighlightSize =
+            defaults.string(forKey: Self.keystrokeHighlightSizeKey)
+            .flatMap(PresentationSize.init(rawValue:)) ?? .medium
+        keystrokeAppearance =
+            defaults.string(forKey: Self.keystrokeAppearanceKey)
+            .flatMap(KeystrokeAppearance.init(rawValue:)) ?? .dark
+        annotations = AnnotationSession(
+            lifetimeSeconds: annotationLifetimeSeconds,
+            inkColor: annotationColor
+        )
         highlightsMouseClicks = defaults.bool(forKey: Self.highlightsMouseClicksKey)
         highlightsKeystrokes =
             defaults.bool(forKey: Self.highlightsKeystrokesKey)
@@ -597,26 +627,13 @@ final class CaptureManager: ObservableObject {
     }
 
     func toggleAnnotations() {
-        if isAnnotating {
-            disableAnnotations(clearStrokes: true)
-            return
+        annotationsEnabled.toggle()
+        if annotationsEnabled {
+            focusSelectedSourceForAnnotationsIfPossible()
+            activateAnnotationsIfPossible()
+        } else {
+            deactivateAnnotations(clearStrokes: true)
         }
-
-        guard isLive, let source = activeCaptureSource else {
-            NSSound.beep()
-            return
-        }
-
-        isAnnotating = true
-        clearClickPresentations()
-        sourceAnnotationPresenter.show(
-            session: annotations,
-            sourceWindowID: source.id,
-            fallbackSourceFrame: source.window.frame,
-            onFinish: { [weak self] in
-                self?.disableAnnotations(clearStrokes: true)
-            }
-        )
     }
 
     func clearAnnotations() {
@@ -624,8 +641,9 @@ final class CaptureManager: ObservableObject {
     }
 
     func finishAnnotations() {
-        guard isAnnotating else { return }
-        disableAnnotations(clearStrokes: true)
+        guard annotationsEnabled || isAnnotating else { return }
+        annotationsEnabled = false
+        deactivateAnnotations(clearStrokes: true)
     }
 
     func setAnnotationLifetimeSeconds(_ value: Int) {
@@ -633,6 +651,32 @@ final class CaptureManager: ObservableObject {
         annotationLifetimeSeconds = normalizedValue
         annotations.setLifetimeSeconds(normalizedValue)
         preferencesDefaults.set(normalizedValue, forKey: Self.annotationLifetimeSecondsKey)
+    }
+
+    func setAnnotationColor(_ value: PresentationColor) {
+        annotationColor = value
+        annotations.setInkColor(value)
+        preferencesDefaults.set(value.rawValue, forKey: Self.annotationColorKey)
+    }
+
+    func setClickHighlightColor(_ value: PresentationColor) {
+        clickHighlightColor = value
+        preferencesDefaults.set(value.rawValue, forKey: Self.clickHighlightColorKey)
+    }
+
+    func setClickHighlightSize(_ value: PresentationSize) {
+        clickHighlightSize = value
+        preferencesDefaults.set(value.rawValue, forKey: Self.clickHighlightSizeKey)
+    }
+
+    func setKeystrokeHighlightSize(_ value: PresentationSize) {
+        keystrokeHighlightSize = value
+        preferencesDefaults.set(value.rawValue, forKey: Self.keystrokeHighlightSizeKey)
+    }
+
+    func setKeystrokeAppearance(_ value: KeystrokeAppearance) {
+        keystrokeAppearance = value
+        preferencesDefaults.set(value.rawValue, forKey: Self.keystrokeAppearanceKey)
     }
 
     func toggleKeystrokeHighlighting() {
@@ -809,7 +853,7 @@ final class CaptureManager: ObservableObject {
 
     private func switchCapture(to source: WindowSource) async throws {
         isSwitchingStream = true
-        disableAnnotations(clearStrokes: true)
+        deactivateAnnotations(clearStrokes: true)
         clearClickPresentations()
         defer {
             isSwitchingStream = false
@@ -940,9 +984,12 @@ final class CaptureManager: ObservableObject {
 
     private func updatePresentationFocus(_ selectedSourceIsFocused: Bool) {
         desiredCursorVisibility = selectedSourceIsFocused
-        if !selectedSourceIsFocused {
+        if selectedSourceIsFocused {
+            activateAnnotationsIfPossible()
+        } else {
             clearKeystrokePresentation()
             clearClickPresentations()
+            deactivateAnnotations(clearStrokes: false)
         }
         scheduleCaptureConfigurationUpdateIfNeeded()
     }
@@ -1006,7 +1053,7 @@ final class CaptureManager: ObservableObject {
         desiredCursorVisibility = false
         clearKeystrokePresentation()
         clearClickPresentations()
-        disableAnnotations(clearStrokes: true)
+        deactivateAnnotations(clearStrokes: true)
         isSwitchingStream = false
     }
 
@@ -1040,7 +1087,11 @@ final class CaptureManager: ObservableObject {
             )
         else { return }
 
-        let presentation = ClickPresentation(location: normalizedLocation)
+        let presentation = ClickPresentation(
+            location: normalizedLocation,
+            color: clickHighlightColor,
+            size: clickHighlightSize
+        )
         clickPresentations.append(presentation)
         sourceClickRipplePresenter.show(
             presentation,
@@ -1069,7 +1120,42 @@ final class CaptureManager: ObservableObject {
         sourceClickRipplePresenter.dismissAll()
     }
 
-    private func disableAnnotations(clearStrokes: Bool) {
+    private func activateAnnotationsIfPossible() {
+        guard annotationsEnabled,
+            !isAnnotating,
+            isLive,
+            let source = activeCaptureSource,
+            PresentationEffectFocusPolicy.shouldPresent(
+                isEnabled: true,
+                selectedSourceIsFocused: shouldCaptureCursor(for: source)
+            )
+        else { return }
+
+        isAnnotating = true
+        clearClickPresentations()
+        sourceAnnotationPresenter.show(
+            session: annotations,
+            sourceWindowID: source.id,
+            fallbackSourceFrame: source.window.frame,
+            onFinish: { [weak self] in
+                self?.finishAnnotations()
+            }
+        )
+    }
+
+    private func focusSelectedSourceForAnnotationsIfPossible() {
+        guard isLive,
+            let source = activeCaptureSource,
+            !shouldCaptureCursor(for: source),
+            let application = NSRunningApplication(
+                processIdentifier: source.processIdentifier
+            )
+        else { return }
+
+        application.activate()
+    }
+
+    private func deactivateAnnotations(clearStrokes: Bool) {
         isAnnotating = false
         sourceAnnotationPresenter.dismiss()
         if clearStrokes {
@@ -1095,7 +1181,11 @@ final class CaptureManager: ObservableObject {
             )
         else { return }
         keystrokeDismissTask?.cancel()
-        let presentation = KeystrokePresentation(label: label)
+        let presentation = KeystrokePresentation(
+            label: label,
+            size: keystrokeHighlightSize,
+            appearance: keystrokeAppearance
+        )
         keystrokePresentation = presentation
         keystrokeDismissTask = Task { [weak self] in
             try? await Task.sleep(for: .seconds(1.2))
@@ -1135,6 +1225,7 @@ final class CaptureManager: ObservableObject {
             state = pendingWindowID == nil ? .capturing : .switching
             if state == .capturing {
                 errorMessage = nil
+                activateAnnotationsIfPossible()
             }
         }
     }

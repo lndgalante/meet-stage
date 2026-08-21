@@ -5,6 +5,7 @@ import SwiftUI
 struct AnnotationStroke: Equatable, Identifiable, Sendable {
     let id: UUID
     var points: [NormalizedWindowPoint]
+    let color: PresentationColor
     var opacity: Double
     var fadeDuration: TimeInterval
 }
@@ -60,17 +61,20 @@ enum AnnotationGeometry {
 final class AnnotationSession: ObservableObject {
     @Published private(set) var strokes: [AnnotationStroke] = []
     @Published private(set) var lifetimeSeconds: Int
+    @Published private(set) var inkColor: PresentationColor
 
     private var fadeTasks: [UUID: Task<Void, Never>] = [:]
     private let sleep: @Sendable (Duration) async throws -> Void
 
     init(
         lifetimeSeconds: Int = AnnotationTiming.defaultLifetimeSeconds,
+        inkColor: PresentationColor = .orange,
         sleep: @escaping @Sendable (Duration) async throws -> Void = { duration in
             try await Task.sleep(for: duration)
         }
     ) {
         self.lifetimeSeconds = AnnotationTiming.normalizedLifetimeSeconds(lifetimeSeconds)
+        self.inkColor = inkColor
         self.sleep = sleep
     }
 
@@ -87,6 +91,7 @@ final class AnnotationSession: ObservableObject {
         let stroke = AnnotationStroke(
             id: UUID(),
             points: [point],
+            color: inkColor,
             opacity: 1,
             fadeDuration: AnnotationTiming.standardFadeDuration
         )
@@ -146,6 +151,10 @@ final class AnnotationSession: ObservableObject {
         lifetimeSeconds = AnnotationTiming.normalizedLifetimeSeconds(value)
     }
 
+    func setInkColor(_ value: PresentationColor) {
+        inkColor = value
+    }
+
     private func beginFade(for id: UUID, duration: TimeInterval) {
         guard let index = strokes.firstIndex(where: { $0.id == id }) else { return }
         strokes[index].fadeDuration = duration
@@ -167,8 +176,6 @@ struct AnnotationInkLayer: View {
     @State private var activeStrokeID: UUID?
     @State private var isUsingCrosshairCursor = false
 
-    private let inkColor = Color(red: 1, green: 0.36, blue: 0.14)
-
     var body: some View {
         GeometryReader { geometry in
             ZStack {
@@ -189,7 +196,7 @@ struct AnnotationInkLayer: View {
 
                         shape
                             .stroke(
-                                inkColor,
+                                stroke.color.color,
                                 style: StrokeStyle(
                                     lineWidth: lineWidth,
                                     lineCap: .round,
@@ -348,7 +355,6 @@ final class SourceAnnotationPresenter {
         )
         self.panel = panel
         panel.orderFrontRegardless()
-        panel.makeKey()
 
         frameTrackingTask = Task { [weak self] in
             while !Task.isCancelled {

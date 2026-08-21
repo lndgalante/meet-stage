@@ -44,12 +44,20 @@ pause sharing. Repeat the same action to resume it.
 Use the attached control bar below the strip to draw temporary annotations,
 highlight mouse clicks, or show keystrokes on the Demo Stage. Annotation mode
 places its drawing surface over the selected app window and mirrors that ink on
-the shared Demo Stage; the Demo Stage itself stays draggable and does not accept
-drawing input. Each stroke fades automatically after the delay selected in
-Settings. Press Escape, choose Done, or click the pencil again to leave
-annotation mode. Click highlighting uses ScreenCaptureKit on macOS 15 and later.
+the shared Demo Stage. Drawing is limited to that selected window: its input
+overlay suspends whenever another app, including BetterDemos, becomes active and
+resumes when the selected source app returns. This keeps the Demo Stage draggable
+and lets it move normally in front of or behind other windows. Enabling Draw with
+a live source returns focus to that source app so drawing can begin immediately.
+Each stroke fades automatically after the delay selected in Settings. The tabbed
+Settings popover also lets you choose the annotation color, click-ripple color
+and size, and the size and light or dark appearance of keystroke badges. Press
+Escape, choose Done, or click the pencil again to leave annotation mode. Click
+highlighting uses ScreenCaptureKit on macOS 15 and later.
 Keystroke highlighting asks for Accessibility access the first time you enable
-it so BetterDemos can observe keys pressed in the app you are presenting.
+it so BetterDemos can observe keys pressed in the app you are presenting. All
+three presentation controls can be enabled before sharing or while sharing is
+paused; annotations attach automatically when a live source becomes available.
 
 ## Requirements
 
@@ -146,6 +154,7 @@ inside it.
 | `Sources/MeetStage/WindowConfiguration.swift` | AppKit window behavior used by SwiftUI scenes |
 | `Sources/MeetStage/GlobalHotKeyManager.swift` | Option+1 through Option+9 registration |
 | `Sources/MeetStage/Annotations.swift` | Temporary ink model, source overlay, stage rendering, and fade timing |
+| `Sources/MeetStage/PresentationPreferences.swift` | Shared color, size, and keystroke appearance options |
 | `Tests/MeetStageTests/` | Shortcut, persistence, and stage-sizing tests |
 | `Resources/Info.plist` | Bundle name, version, permissions, and icon metadata |
 | `Brand/` | BetterDemos icon masters and brand guidance |

@@ -100,11 +100,8 @@ struct ControlView: View {
             ControlBarButton(
                 systemImage: "pencil.and.outline",
                 title: "Annotate",
-                help: manager.isLive
-                    ? "Draw temporary ink over the selected app window"
-                    : "Select a live window to annotate",
-                isOn: manager.isAnnotating,
-                isEnabled: manager.isLive,
+                help: annotationControlHelp,
+                isOn: manager.annotationsEnabled,
                 activeTint: ControlMetrics.demoCyan,
                 action: manager.toggleAnnotations
             )
@@ -179,6 +176,20 @@ struct ControlView: View {
     private var sourcePanel: some View {
         sourceScroller
             .frame(width: ControlWindowSizing.contentWidth, height: ControlMetrics.contentHeight)
+    }
+
+    private var annotationControlHelp: String {
+        if manager.isAnnotating {
+            return "Draw temporary ink over the selected app window"
+        }
+        if manager.annotationsEnabled {
+            return manager.state == .paused
+                ? "Annotations will resume when sharing resumes"
+                : "Annotations will start when a window is live"
+        }
+        return manager.isLive
+            ? "Draw temporary ink over the selected app window"
+            : "Enable annotations for the next shared window"
     }
 
     private var sourceScroller: some View {
@@ -340,40 +351,328 @@ struct ControlView: View {
 
 private struct SettingsPopover: View {
     @ObservedObject var manager: CaptureManager
+    @State private var selectedTab: SettingsTab = .annotations
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Label("Annotations", systemImage: "pencil.and.outline")
-                .font(.headline)
-
-            Text("Drawings fade after")
-                .font(.callout)
-
+        VStack(spacing: 16) {
             Picker(
-                "Drawing lifetime",
-                selection: Binding(
-                    get: { manager.annotationLifetimeSeconds },
-                    set: { newValue in
-                        manager.setAnnotationLifetimeSeconds(newValue)
-                    }
-                )
+                "Settings section",
+                selection: $selectedTab
             ) {
-                ForEach(AnnotationTiming.supportedLifetimeSeconds, id: \.self) { seconds in
-                    Text("\(seconds)s")
-                        .tag(seconds)
+                ForEach(SettingsTab.allCases) { tab in
+                    Text(tab.title)
+                        .tag(tab)
                 }
             }
             .labelsHidden()
             .pickerStyle(.segmented)
+            .frame(width: 330)
 
-            Text("The timer starts when you lift the pointer.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
+            Group {
+                switch selectedTab {
+                case .annotations:
+                    annotationSettings
+                case .clicks:
+                    clickSettings
+                case .keystrokes:
+                    keystrokeSettings
+                }
+            }
+            .frame(height: 196, alignment: .top)
         }
-        .padding(16)
-        .frame(width: 260, alignment: .leading)
+        .padding(18)
+        .frame(width: 420)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Settings")
+    }
+
+    private var annotationSettings: some View {
+        VStack(spacing: 12) {
+            SettingsPreviewWell {
+                ZStack {
+                    AnnotationPreviewStroke()
+                        .stroke(
+                            Color.black.opacity(0.42),
+                            style: StrokeStyle(lineWidth: 7, lineCap: .round, lineJoin: .round)
+                        )
+                    AnnotationPreviewStroke()
+                        .stroke(
+                            manager.annotationColor.color,
+                            style: StrokeStyle(lineWidth: 4, lineCap: .round, lineJoin: .round)
+                        )
+                }
+                .frame(width: 124, height: 34)
+            }
+
+            SettingsFormRow(title: "Pen color") {
+                PresentationColorPicker(
+                    selection: manager.annotationColor,
+                    onSelect: { manager.setAnnotationColor($0) }
+                )
+            }
+
+            SettingsFormRow(title: "Fade after") {
+                Picker(
+                    "Fade after",
+                    selection: Binding(
+                        get: { manager.annotationLifetimeSeconds },
+                        set: { manager.setAnnotationLifetimeSeconds($0) }
+                    )
+                ) {
+                    ForEach(AnnotationTiming.supportedLifetimeSeconds, id: \.self) { seconds in
+                        Text("\(seconds)s")
+                            .tag(seconds)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+            }
+
+            SettingsCaption("The timer starts when you lift the pointer.")
+        }
+    }
+
+    private var clickSettings: some View {
+        VStack(spacing: 12) {
+            SettingsPreviewWell {
+                ClickRipplePreview(
+                    color: manager.clickHighlightColor,
+                    size: manager.clickHighlightSize
+                )
+            }
+
+            SettingsFormRow(title: "Ripple size") {
+                Picker(
+                    "Ripple size",
+                    selection: Binding(
+                        get: { manager.clickHighlightSize },
+                        set: { manager.setClickHighlightSize($0) }
+                    )
+                ) {
+                    ForEach(PresentationSize.allCases) { size in
+                        Text(size.label)
+                            .tag(size)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+            }
+
+            SettingsFormRow(title: "Ripple color") {
+                PresentationColorPicker(
+                    selection: manager.clickHighlightColor,
+                    onSelect: { manager.setClickHighlightColor($0) }
+                )
+            }
+
+            SettingsCaption("Ripples appear on the source and Demo Stage.")
+        }
+    }
+
+    private var keystrokeSettings: some View {
+        VStack(spacing: 12) {
+            SettingsPreviewWell {
+                KeystrokeBadge(
+                    label: "⌘ K",
+                    size: manager.keystrokeHighlightSize,
+                    appearance: manager.keystrokeAppearance
+                )
+            }
+
+            SettingsFormRow(title: "Key size") {
+                Picker(
+                    "Key size",
+                    selection: Binding(
+                        get: { manager.keystrokeHighlightSize },
+                        set: { manager.setKeystrokeHighlightSize($0) }
+                    )
+                ) {
+                    ForEach(PresentationSize.allCases) { size in
+                        Text(size.label)
+                            .tag(size)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+            }
+
+            SettingsFormRow(title: "Appearance") {
+                Picker(
+                    "Appearance",
+                    selection: Binding(
+                        get: { manager.keystrokeAppearance },
+                        set: { manager.setKeystrokeAppearance($0) }
+                    )
+                ) {
+                    ForEach(KeystrokeAppearance.allCases) { appearance in
+                        Text(appearance.label)
+                            .tag(appearance)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+            }
+
+            SettingsCaption("Keystrokes appear on the Demo Stage.")
+        }
+    }
+}
+
+private enum SettingsTab: String, CaseIterable, Identifiable {
+    case annotations
+    case clicks
+    case keystrokes
+
+    var id: Self { self }
+
+    var title: String {
+        rawValue.capitalized
+    }
+}
+
+private struct SettingsFormRow<Content: View>: View {
+    let title: String
+    let content: Content
+
+    init(title: String, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.content = content()
+    }
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Text(title)
+                .font(.callout.weight(.medium))
+                .frame(width: 92, alignment: .trailing)
+
+            content
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(minHeight: 30)
+    }
+}
+
+private struct SettingsCaption: View {
+    let text: String
+
+    init(_ text: String) {
+        self.text = text
+    }
+
+    var body: some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.leading, 106)
+    }
+}
+
+private struct SettingsPreviewWell<Content: View>: View {
+    let content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    var body: some View {
+        content
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(
+                Color.primary.opacity(0.045),
+                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
+            }
+            .frame(height: 72)
+            .accessibilityHidden(true)
+    }
+}
+
+private struct PresentationColorPicker: View {
+    let selection: PresentationColor
+    let onSelect: (PresentationColor) -> Void
+
+    var body: some View {
+        HStack(spacing: 7) {
+            ForEach(PresentationColor.allCases) { color in
+                Button {
+                    onSelect(color)
+                } label: {
+                    ZStack {
+                        if selection == color {
+                            Circle()
+                                .strokeBorder(Color.primary.opacity(0.88), lineWidth: 2)
+                                .frame(width: 28, height: 28)
+                        }
+
+                        Circle()
+                            .fill(color.color)
+                            .frame(width: 22, height: 22)
+                            .overlay {
+                                Circle()
+                                    .strokeBorder(Color.black.opacity(0.16), lineWidth: 1)
+                            }
+
+                        if selection == color {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(color.contrastingColor)
+                        }
+                    }
+                    .frame(width: 30, height: 30)
+                    .contentShape(Circle())
+                }
+                .buttonStyle(ColorSwatchButtonStyle())
+                .help(color.label)
+                .accessibilityLabel(color.label)
+                .accessibilityValue(selection == color ? "Selected" : "Not selected")
+            }
+        }
+    }
+}
+
+private struct ColorSwatchButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1)
+            .animation(.easeOut(duration: 0.1), value: configuration.isPressed)
+    }
+}
+
+private struct ClickRipplePreview: View {
+    let color: PresentationColor
+    let size: PresentationSize
+
+    var body: some View {
+        let metrics = ClickRippleMetrics(size: size)
+
+        ZStack {
+            Circle()
+                .stroke(color.color, lineWidth: 3)
+                .frame(width: metrics.expandedDiameter, height: metrics.expandedDiameter)
+                .opacity(0.78)
+
+            Circle()
+                .fill(color.color)
+                .frame(width: metrics.dotDiameter, height: metrics.dotDiameter)
+        }
+        .shadow(color: .black.opacity(0.26), radius: 2, y: 1)
+    }
+}
+
+private struct AnnotationPreviewStroke: Shape {
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX + 2, y: rect.midY + 8))
+        path.addCurve(
+            to: CGPoint(x: rect.maxX - 2, y: rect.midY - 6),
+            control1: CGPoint(x: rect.minX + rect.width * 0.28, y: rect.minY - 2),
+            control2: CGPoint(x: rect.minX + rect.width * 0.64, y: rect.maxY + 3)
+        )
+        return path
     }
 }
 
