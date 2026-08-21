@@ -376,7 +376,6 @@ private struct SettingsPopover: View {
                     keystrokeSettings
                 }
             }
-            .frame(height: 196, alignment: .top)
         }
         .padding(18)
         .frame(width: 420)
@@ -426,7 +425,6 @@ private struct SettingsPopover: View {
                 .pickerStyle(.segmented)
             }
 
-            SettingsCaption("The timer starts when you lift the pointer.")
         }
     }
 
@@ -463,7 +461,6 @@ private struct SettingsPopover: View {
                 )
             }
 
-            SettingsCaption("Ripples appear on the source and Demo Stage.")
         }
     }
 
@@ -511,7 +508,6 @@ private struct SettingsPopover: View {
                 .pickerStyle(.segmented)
             }
 
-            SettingsCaption("Keystrokes appear on the Demo Stage.")
         }
     }
 }
@@ -547,22 +543,6 @@ private struct SettingsFormRow<Content: View>: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .frame(minHeight: 30)
-    }
-}
-
-private struct SettingsCaption: View {
-    let text: String
-
-    init(_ text: String) {
-        self.text = text
-    }
-
-    var body: some View {
-        Text(text)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.leading, 106)
     }
 }
 
