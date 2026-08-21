@@ -102,6 +102,7 @@ struct WindowConfigurator: NSViewRepresentable {
         window.hasShadow = false
         window.titleVisibility = .hidden
         window.titlebarAppearsTransparent = true
+        window.titlebarSeparatorStyle = .none
         window.toolbar = nil
         [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].forEach {
             window.standardWindowButton($0)?.isHidden = true

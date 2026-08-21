@@ -73,10 +73,6 @@ struct StageView: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .strokeBorder(Color.white.opacity(0.10), lineWidth: 1)
-                }
                 .allowsHitTesting(false)
                 .accessibilityElement(children: .combine)
                 .accessibilityLabel(stageAccessibilityLabel)
@@ -102,6 +98,7 @@ struct StageView: View {
                 .accessibilityHidden(true)
             }
         }
+        .ignoresSafeArea()
         .animation(
             reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 1),
             value: manager.keystrokePresentation?.id
@@ -176,7 +173,6 @@ private struct IdleStageChrome: View {
                         shaderLibrary.idleStageChrome(
                             .boundingRect,
                             .float(20),
-                            .float(0.5),
                             .float(34),
                             .float(1),
                             .float(1),
@@ -185,7 +181,6 @@ private struct IdleStageChrome: View {
                             .float(1),
                             .float2(0.5, 0),
                             .color(.black),
-                            .color(.white),
                             .color(.white),
                             .color(Color(red: 214 / 255, green: 226 / 255, blue: 242 / 255)),
                             .color(Color(red: 196 / 255, green: 212 / 255, blue: 235 / 255)),

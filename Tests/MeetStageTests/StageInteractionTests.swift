@@ -110,6 +110,7 @@ struct StageInteractionTests {
             to: frameView
         )
 
+        #expect(window.titlebarSeparatorStyle == .none)
         #expect(dragSurface.bounds.width > 0)
         #expect(dragSurface.bounds.height > 0)
         #expect(frameView.hitTest(center) === dragSurface)

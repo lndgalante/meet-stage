@@ -8,9 +8,6 @@ constant float chromeEdgeSoftness = 2.104;
 constant float chromeReferenceHalfWidth = 160.0;
 constant float chromeReferenceHalfHeight = 210.0;
 
-constant float chromeRimDistance = 1.0;
-constant float chromeRimSigma = 0.5;
-
 constant float2 chromeHaloExtent = float2(230.4, 130.2);
 constant float2 chromeHaloCenter = float2(0.0, -205.8);
 constant float chromeHaloStop1 = 0.44;
@@ -46,29 +43,6 @@ static inline float chromeSoftRamp(float value, float antialiasing) {
     return 2.0 * width
         * (progress * progress * progress - 0.5 * progress * progress * progress * progress)
         + max(value - width, 0.0);
-}
-
-static inline float chromeInsetBand(
-    float2 point,
-    float2 extent,
-    float radius,
-    float2 lightDirection,
-    float scale
-) {
-    float2 offset = -lightDirection * chromeRimDistance * scale;
-    float shiftedDistance = chromeRoundedBoxDistance(point - offset, extent, radius);
-    float sigma = max(chromeRimSigma * scale, 0.0001);
-    float innerCoverage = smoothstep(
-        -chromeEdgeSoftness * sigma,
-        chromeEdgeSoftness * sigma,
-        -chromeRoundedBoxDistance(point, extent, radius)
-    );
-    float shiftedCoverage = smoothstep(
-        -chromeEdgeSoftness * sigma,
-        chromeEdgeSoftness * sigma,
-        -shiftedDistance
-    );
-    return max(innerCoverage - shiftedCoverage, 0.0);
 }
 
 static inline float4 chromeCSSMix(
@@ -147,7 +121,6 @@ static inline float3 chromeComposite(float3 destination, float3 source, float al
     half4 sourceColor,
     float4 boundingRect,
     float radius,
-    float rimAmount,
     float haloBlur,
     float haloSize,
     float washAmount,
@@ -156,7 +129,6 @@ static inline float3 chromeComposite(float3 destination, float3 source, float al
     float intensity,
     float2 light,
     half4 backgroundColor,
-    half4 rimColor,
     half4 haloColor,
     half4 haloMidColor,
     half4 washTopColor,
@@ -278,15 +250,6 @@ static inline float3 chromeComposite(float3 destination, float3 source, float al
     float cardDistance = chromeRoundedBoxDistance(point, halfExtent, cornerRadius);
     float coverage = 1.0 - smoothstep(-1.0, 1.0, cardDistance);
     float3 color = chromeComposite(float3(sourceColor.rgb), cardColor, coverage);
-
-    float rimAlpha = chromeInsetBand(
-        point,
-        halfExtent,
-        cornerRadius,
-        lightDirection,
-        scale
-    ) * rimAmount * safeIntensity;
-    color = chromeComposite(color, float3(rimColor.rgb), rimAlpha);
 
     float dither = (
         fract(sin(dot(position, float2(12.9898, 78.233))) * 43758.5453) - 0.5
