@@ -4,6 +4,18 @@ import Testing
 
 @Suite("Presentation effects")
 struct PresentationEffectsTests {
+    @Test("Observes clicks delivered to the annotation panel")
+    @MainActor
+    func observesLocalAnnotationClicks() {
+        let monitor = GlobalMouseClickMonitor { _ in }
+
+        monitor.start()
+        #expect(monitor.observesLocalApplicationEvents)
+
+        monitor.stop()
+        #expect(!monitor.observesLocalApplicationEvents)
+    }
+
     @Test("Only presents enabled effects while the selected source is focused")
     func gatesEffectsBySelectedSourceFocus() {
         #expect(

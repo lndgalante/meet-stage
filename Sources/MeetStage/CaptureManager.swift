@@ -1067,8 +1067,7 @@ final class CaptureManager: ObservableObject {
     }
 
     private func showMouseClick(at clickLocation: GlobalClickLocation) {
-        guard !isAnnotating,
-            let source = activeCaptureSource,
+        guard let source = activeCaptureSource,
             selectedWindowID == source.id,
             PresentationEffectFocusPolicy.shouldPresent(
                 isEnabled: highlightsMouseClicks,
@@ -1132,7 +1131,6 @@ final class CaptureManager: ObservableObject {
         else { return }
 
         isAnnotating = true
-        clearClickPresentations()
         sourceAnnotationPresenter.show(
             session: annotations,
             sourceWindowID: source.id,

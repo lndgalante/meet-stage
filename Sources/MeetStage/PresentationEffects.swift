@@ -107,40 +107,73 @@ final class GlobalMouseClickMonitor {
         self.handler = handler
     }
 
-    func start() {
-        guard resources.monitor == nil else { return }
-        resources.monitor = NSEvent.addGlobalMonitorForEvents(
-            matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]
-        ) { [weak self] event in
-            guard let cgEvent = event.cgEvent else { return }
-            let quartzPoint = cgEvent.location
-            let appKitPoint = cgEvent.unflippedLocation
-            let location = GlobalClickLocation(
-                quartzX: quartzPoint.x,
-                quartzY: quartzPoint.y,
-                appKitX: appKitPoint.x,
-                appKitY: appKitPoint.y
-            )
+    var observesLocalApplicationEvents: Bool {
+        resources.localMonitor != nil
+    }
 
-            Task { @MainActor [weak self] in
-                self?.handler(location)
-            }
+    func start() {
+        guard resources.globalMonitor == nil,
+            resources.localMonitor == nil
+        else { return }
+
+        let eventMask: NSEvent.EventTypeMask = [
+            .leftMouseDown,
+            .rightMouseDown,
+            .otherMouseDown
+        ]
+        resources.globalMonitor = NSEvent.addGlobalMonitorForEvents(
+            matching: eventMask
+        ) { [weak self] event in
+            self?.dispatch(event)
+        }
+        // Drawing is hosted by BetterDemos' non-activating panel, so those
+        // clicks are local even while the selected source app stays focused.
+        resources.localMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: eventMask
+        ) { [weak self] event in
+            self?.dispatch(event)
+            return event
         }
     }
 
     func stop() {
-        guard let monitor = resources.monitor else { return }
-        NSEvent.removeMonitor(monitor)
-        resources.monitor = nil
+        if let globalMonitor = resources.globalMonitor {
+            NSEvent.removeMonitor(globalMonitor)
+            resources.globalMonitor = nil
+        }
+        if let localMonitor = resources.localMonitor {
+            NSEvent.removeMonitor(localMonitor)
+            resources.localMonitor = nil
+        }
+    }
+
+    private nonisolated func dispatch(_ event: NSEvent) {
+        guard let cgEvent = event.cgEvent else { return }
+        let quartzPoint = cgEvent.location
+        let appKitPoint = cgEvent.unflippedLocation
+        let location = GlobalClickLocation(
+            quartzX: quartzPoint.x,
+            quartzY: quartzPoint.y,
+            appKitX: appKitPoint.x,
+            appKitY: appKitPoint.y
+        )
+
+        Task { @MainActor [weak self] in
+            self?.handler(location)
+        }
     }
 }
 
 private final class MouseClickMonitorResources: @unchecked Sendable {
-    var monitor: Any?
+    var globalMonitor: Any?
+    var localMonitor: Any?
 
     deinit {
-        if let monitor {
-            NSEvent.removeMonitor(monitor)
+        if let globalMonitor {
+            NSEvent.removeMonitor(globalMonitor)
+        }
+        if let localMonitor {
+            NSEvent.removeMonitor(localMonitor)
         }
     }
 }

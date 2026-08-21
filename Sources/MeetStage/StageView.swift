@@ -12,6 +12,16 @@ struct StageView: View {
             )
             .ignoresSafeArea()
 
+            if manager.isLive {
+                AnnotationInkLayer(
+                    session: manager.annotations,
+                    acceptsInput: false
+                )
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
+            }
+
             if manager.isLive, !manager.clickPresentations.isEmpty {
                 GeometryReader { geometry in
                     ForEach(manager.clickPresentations) { presentation in
@@ -25,16 +35,6 @@ struct StageView: View {
                         )
                     }
                 }
-                .ignoresSafeArea()
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
-            }
-
-            if manager.isLive {
-                AnnotationInkLayer(
-                    session: manager.annotations,
-                    acceptsInput: false
-                )
                 .ignoresSafeArea()
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)

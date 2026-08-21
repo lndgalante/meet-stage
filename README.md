@@ -58,6 +58,8 @@ Keystroke highlighting asks for Accessibility access the first time you enable
 it so BetterDemos can observe keys pressed in the app you are presenting. All
 three presentation controls can be enabled before sharing or while sharing is
 paused; annotations attach automatically when a live source becomes available.
+Draw and click highlighting can remain enabled together, with click ripples
+appearing above the temporary ink.
 
 ## Requirements
 
