@@ -133,7 +133,8 @@ struct StageView: View {
         case let .failed(message):
             guidance = message
         default:
-            guidance = "Choose a window in BetterMeets"
+            guidance =
+                "Choose a window in BetterMeets, then share this Demo Stage window in Google Meet or Zoom"
         }
 
         return guidance.hasSuffix(".") ? String(guidance.dropLast()) : guidance
