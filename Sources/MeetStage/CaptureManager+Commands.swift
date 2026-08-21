@@ -162,7 +162,7 @@ extension CaptureManager {
             if let currentPointerLocation = CGEvent(source: nil)?.location {
                 moveSpotlight(to: currentPointerLocation)
             }
-            focusSelectedSourceForSpotlightIfPossible()
+            focusSelectedSourceIfPossible()
             activateSpotlightIfPossible()
         } else {
             spotlightPointerMonitor?.stop()
@@ -184,7 +184,7 @@ extension CaptureManager {
     func toggleAnnotations() {
         annotationsEnabled.toggle()
         if annotationsEnabled {
-            focusSelectedSourceForAnnotationsIfPossible()
+            focusSelectedSourceIfPossible()
             activateAnnotationsIfPossible()
         } else {
             deactivateAnnotations(clearStrokes: true)

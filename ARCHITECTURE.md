@@ -22,6 +22,14 @@ to follow while keeping the parts that do not require macOS services testable.
 - `PresentationPreferencesStore` is the typed persistence boundary for drawing,
   click, and keystroke settings. Views and capture orchestration must not read
   or write its raw `UserDefaults` keys directly.
+- `WindowCoordinateGeometry` is the canonical coordinate-conversion boundary
+  for every presentation effect. `SourceOverlayGeometry` and
+  `SourceOverlayFrameTracker` own Quartz-to-AppKit conversion and live overlay
+  alignment; effect-specific modules must not reach through one another for
+  window geometry.
+- `GlobalLocalEventMonitor` owns the paired AppKit monitor lifecycle used by
+  pointer-based effects. Domain-specific initializers copy `NSEvent` data into
+  Sendable click or pointer values before returning to the main actor.
 - `GlobalHotKeyManager` owns Carbon resources and reports registration failures
   instead of changing capture state itself.
 - `SampleBufferRenderer` is the only cross-thread rendering bridge. Its lock
@@ -37,6 +45,10 @@ to follow while keeping the parts that do not require macOS services testable.
   source-focus changes. The source overlay is non-activating and only exists while
   the selected source app is frontmost, preventing drawing mode from changing
   BetterMeets' window order or intercepting another app.
+- `ClickHighlights`, `KeystrokeHighlights`, and `SpotlightEffect` each own one
+  presentation effect from domain value through platform monitor or overlay and
+  SwiftUI rendering. `ControlSettingsPreviews` owns preview-only rendering; it
+  does not mutate preferences directly.
 - `PresentationPreferences` defines the typed appearance choices shared by
   settings, source overlays, and the Demo Stage. `CaptureManager` persists the
   selected values and snapshots them into each click or keystroke presentation.
@@ -86,6 +98,9 @@ compatibility, presentation and annotation policies, geometry calculations,
 and AppKit window interaction. ScreenCaptureKit streams, Carbon hotkeys,
 permission prompts, and end-to-end window-server behavior require the packaged
 app and are verified manually with the checklist in `README.md`.
+
+See [TESTING.md](TESTING.md) for the test-layer map, contributor conventions,
+and the manual verification matrix for platform-only behavior.
 
 `.github/workflows/ci.yml` enforces strict Swift formatting, validates metadata
 and shell syntax, runs the complete test suite with warnings as errors, and

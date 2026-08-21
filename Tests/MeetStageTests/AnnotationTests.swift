@@ -8,20 +8,20 @@ struct AnnotationTests {
     @Test("Normalizes canvas points and clamps pointer overshoot")
     func normalizesCanvasPoints() {
         #expect(
-            AnnotationGeometry.normalizedPoint(
-                for: CGPoint(x: 320, y: 90),
+            WindowCoordinateGeometry.normalizedPoint(
+                clamping: CGPoint(x: 320, y: 90),
                 in: CGSize(width: 640, height: 360)
             ) == NormalizedWindowPoint(x: 0.5, y: 0.25)
         )
         #expect(
-            AnnotationGeometry.normalizedPoint(
-                for: CGPoint(x: -20, y: 400),
+            WindowCoordinateGeometry.normalizedPoint(
+                clamping: CGPoint(x: -20, y: 400),
                 in: CGSize(width: 640, height: 360)
             ) == NormalizedWindowPoint(x: 0, y: 1)
         )
         #expect(
-            AnnotationGeometry.normalizedPoint(
-                for: .zero,
+            WindowCoordinateGeometry.normalizedPoint(
+                clamping: .zero,
                 in: .zero
             ) == nil
         )
@@ -29,8 +29,8 @@ struct AnnotationTests {
 
     @Test("Converts Quartz source bounds into AppKit overlay coordinates")
     func resolvesSourceOverlayFrame() {
-        let frame = AnnotationGeometry.appKitOverlayFrame(
-            sourceFrame: CGRect(x: 100, y: 200, width: 300, height: 200),
+        let frame = SourceOverlayGeometry.appKitFrame(
+            forQuartzFrame: CGRect(x: 100, y: 200, width: 300, height: 200),
             primaryScreenFrame: CGRect(x: 0, y: 0, width: 1440, height: 900)
         )
 

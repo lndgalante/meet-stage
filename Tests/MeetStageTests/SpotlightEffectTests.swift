@@ -62,9 +62,9 @@ struct SpotlightEffectTests {
 
     @Test("Maps the global pointer into the selected window")
     func normalizesPointerLocation() {
-        let location = SpotlightGeometry.normalizedLocation(
-            for: CGPoint(x: 250, y: 250),
-            in: CGRect(x: 100, y: 200, width: 300, height: 200)
+        let location = WindowCoordinateGeometry.normalizedPoint(
+            inside: CGPoint(x: 250, y: 250),
+            sourceFrame: CGRect(x: 100, y: 200, width: 300, height: 200)
         )
 
         #expect(location == NormalizedWindowPoint(x: 0.5, y: 0.25))
@@ -72,9 +72,9 @@ struct SpotlightEffectTests {
 
     @Test("Rejects pointer movement outside the selected window")
     func rejectsOutOfBoundsPointer() {
-        let location = SpotlightGeometry.normalizedLocation(
-            for: CGPoint(x: 401, y: 250),
-            in: CGRect(x: 100, y: 200, width: 300, height: 200)
+        let location = WindowCoordinateGeometry.normalizedPoint(
+            inside: CGPoint(x: 401, y: 250),
+            sourceFrame: CGRect(x: 100, y: 200, width: 300, height: 200)
         )
 
         #expect(location == nil)
@@ -152,7 +152,7 @@ struct SpotlightEffectTests {
     @Test("Observes pointer movement delivered inside BetterMeets")
     @MainActor
     func observesLocalPointerMovement() {
-        let monitor = GlobalPointerMonitor { _ in }
+        let monitor = GlobalPointerMonitor(pointerMovements: { _ in })
 
         monitor.start()
         #expect(monitor.observesLocalApplicationEvents)

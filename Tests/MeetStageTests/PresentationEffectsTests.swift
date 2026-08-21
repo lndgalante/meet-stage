@@ -7,7 +7,7 @@ struct PresentationEffectsTests {
     @Test("Observes clicks delivered to the annotation panel")
     @MainActor
     func observesLocalAnnotationClicks() {
-        let monitor = GlobalMouseClickMonitor { _ in }
+        let monitor = GlobalMouseClickMonitor(mouseClicks: { _ in })
 
         monitor.start()
         #expect(monitor.observesLocalApplicationEvents)
@@ -16,33 +16,11 @@ struct PresentationEffectsTests {
         #expect(!monitor.observesLocalApplicationEvents)
     }
 
-    @Test("Only presents enabled effects while the selected source is focused")
-    func gatesEffectsBySelectedSourceFocus() {
-        #expect(
-            PresentationEffectFocusPolicy.shouldPresent(
-                isEnabled: true,
-                selectedSourceIsFocused: true
-            )
-        )
-        #expect(
-            !PresentationEffectFocusPolicy.shouldPresent(
-                isEnabled: true,
-                selectedSourceIsFocused: false
-            )
-        )
-        #expect(
-            !PresentationEffectFocusPolicy.shouldPresent(
-                isEnabled: false,
-                selectedSourceIsFocused: true
-            )
-        )
-    }
-
     @Test("Maps global clicks into the selected window")
     func normalizesClickLocation() {
-        let location = ClickPresentationGeometry.normalizedLocation(
-            for: CGPoint(x: 250, y: 250),
-            in: CGRect(x: 100, y: 200, width: 300, height: 200)
+        let location = WindowCoordinateGeometry.normalizedPoint(
+            inside: CGPoint(x: 250, y: 250),
+            sourceFrame: CGRect(x: 100, y: 200, width: 300, height: 200)
         )
 
         #expect(location == NormalizedWindowPoint(x: 0.5, y: 0.25))
@@ -50,9 +28,9 @@ struct PresentationEffectsTests {
 
     @Test("Rejects clicks outside the selected window")
     func rejectsOutOfBoundsClicks() {
-        let location = ClickPresentationGeometry.normalizedLocation(
-            for: CGPoint(x: 99, y: 250),
-            in: CGRect(x: 100, y: 200, width: 300, height: 200)
+        let location = WindowCoordinateGeometry.normalizedPoint(
+            inside: CGPoint(x: 99, y: 250),
+            sourceFrame: CGRect(x: 100, y: 200, width: 300, height: 200)
         )
 
         #expect(location == nil)

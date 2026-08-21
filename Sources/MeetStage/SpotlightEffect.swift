@@ -23,29 +23,10 @@ enum SpotlightAppearance {
     static func normalizedOutsideOpacity(_ value: Double) -> Double {
         min(max(value, outsideOpacityRange.lowerBound), outsideOpacityRange.upperBound)
     }
-
 }
 
 enum SpotlightGeometry {
     static let maximumWindowCoverage: CGFloat = 0.82
-
-    static func normalizedLocation(
-        for globalLocation: CGPoint,
-        in sourceFrame: CGRect
-    ) -> NormalizedWindowPoint? {
-        guard sourceFrame.width > 0,
-            sourceFrame.height > 0,
-            globalLocation.x >= sourceFrame.minX,
-            globalLocation.x <= sourceFrame.maxX,
-            globalLocation.y >= sourceFrame.minY,
-            globalLocation.y <= sourceFrame.maxY
-        else { return nil }
-
-        return NormalizedWindowPoint(
-            x: (globalLocation.x - sourceFrame.minX) / sourceFrame.width,
-            y: (globalLocation.y - sourceFrame.minY) / sourceFrame.height
-        )
-    }
 
     static func apertureDiameter(
         in viewportSize: CGSize,
@@ -135,7 +116,6 @@ final class SpotlightSession: ObservableObject {
     func setOutsideOpacity(_ value: Double) {
         outsideOpacity = SpotlightAppearance.normalizedOutsideOpacity(value)
     }
-
 }
 
 struct SpotlightSurface: View {
@@ -204,87 +184,10 @@ private struct SpotlightOutsideShape: Shape {
 }
 
 @MainActor
-final class GlobalPointerMonitor {
-    typealias Handler = @MainActor (CGPoint) -> Void
-
-    private let handler: Handler
-    private let resources = PointerMonitorResources()
-
-    init(handler: @escaping Handler) {
-        self.handler = handler
-    }
-
-    var observesLocalApplicationEvents: Bool {
-        resources.localMonitor != nil
-    }
-
-    func start() {
-        guard resources.globalMonitor == nil,
-            resources.localMonitor == nil
-        else { return }
-
-        let eventMask: NSEvent.EventTypeMask = [
-            .mouseMoved,
-            .leftMouseDragged,
-            .rightMouseDragged,
-            .otherMouseDragged
-        ]
-        resources.globalMonitor = NSEvent.addGlobalMonitorForEvents(
-            matching: eventMask
-        ) { [weak self] event in
-            self?.dispatch(event)
-        }
-        resources.localMonitor = NSEvent.addLocalMonitorForEvents(
-            matching: eventMask
-        ) { [weak self] event in
-            self?.dispatch(event)
-            return event
-        }
-    }
-
-    func stop() {
-        if let globalMonitor = resources.globalMonitor {
-            NSEvent.removeMonitor(globalMonitor)
-            resources.globalMonitor = nil
-        }
-        if let localMonitor = resources.localMonitor {
-            NSEvent.removeMonitor(localMonitor)
-            resources.localMonitor = nil
-        }
-    }
-
-    private nonisolated func dispatch(_ event: NSEvent) {
-        guard let location = event.cgEvent?.location else { return }
-        Task { @MainActor [weak self] in
-            self?.handler(location)
-        }
-    }
-}
-
-private final class PointerMonitorResources: @unchecked Sendable {
-    var globalMonitor: Any?
-    var localMonitor: Any?
-
-    deinit {
-        if let globalMonitor {
-            NSEvent.removeMonitor(globalMonitor)
-        }
-        if let localMonitor {
-            NSEvent.removeMonitor(localMonitor)
-        }
-    }
-}
-
-@MainActor
 final class SourceSpotlightPresenter {
     private var panel: SpotlightPanel?
-    private var frameTrackingTask: Task<Void, Never>?
+    private let frameTracker = SourceOverlayFrameTracker()
     private var sourceWindowID: CGWindowID?
-    private var fallbackSourceFrame = CGRect.zero
-
-    deinit {
-        frameTrackingTask?.cancel()
-    }
 
     func show(
         session: SpotlightSession,
@@ -297,10 +200,12 @@ final class SourceSpotlightPresenter {
         dismiss()
 
         self.sourceWindowID = sourceWindowID
-        self.fallbackSourceFrame = fallbackSourceFrame
 
         let panel = SpotlightPanel(
-            contentRect: overlayFrame(),
+            contentRect: SourceOverlayGeometry.currentAppKitFrame(
+                for: sourceWindowID,
+                fallbackSourceFrame: fallbackSourceFrame
+            ),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -312,46 +217,20 @@ final class SourceSpotlightPresenter {
         self.panel = panel
         panel.orderFrontRegardless()
 
-        frameTrackingTask = Task { [weak self] in
-            while !Task.isCancelled {
-                do {
-                    try await Task.sleep(for: .milliseconds(100))
-                } catch {
-                    return
-                }
-                guard !Task.isCancelled else { return }
-                self?.updatePanelFrame()
-            }
+        frameTracker.start(
+            sourceWindowID: sourceWindowID,
+            fallbackSourceFrame: fallbackSourceFrame
+        ) { [weak panel] frame in
+            guard let panel, panel.frame != frame else { return }
+            panel.setFrame(frame, display: true)
         }
     }
 
     func dismiss() {
-        frameTrackingTask?.cancel()
-        frameTrackingTask = nil
+        frameTracker.stop()
         sourceWindowID = nil
         panel?.close()
         panel = nil
-    }
-
-    private func updatePanelFrame() {
-        guard let panel else { return }
-        let frame = overlayFrame()
-        guard frame != panel.frame else { return }
-        panel.setFrame(frame, display: true)
-    }
-
-    private func overlayFrame() -> CGRect {
-        let sourceFrame =
-            sourceWindowID.map {
-                WindowFrameResolver.currentFrame(for: $0, fallback: fallbackSourceFrame)
-            } ?? fallbackSourceFrame
-        let primaryScreenFrame =
-            NSScreen.screens.first?.frame
-            ?? CGRect(x: 0, y: 0, width: sourceFrame.width, height: sourceFrame.maxY)
-        return AnnotationGeometry.appKitOverlayFrame(
-            sourceFrame: sourceFrame,
-            primaryScreenFrame: primaryScreenFrame
-        )
     }
 }
 

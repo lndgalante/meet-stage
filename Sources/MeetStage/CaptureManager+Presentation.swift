@@ -30,8 +30,11 @@ extension CaptureManager {
     }
 
     func synchronizeDesiredCursorVisibility() {
-        let selectedSourceIsFocused = activeCaptureSource.map(shouldCaptureCursor(for:)) ?? false
-        updatePresentationFocus(selectedSourceIsFocused)
+        updatePresentationFocus(isSelectedSourceFocused)
+    }
+
+    var isSelectedSourceFocused: Bool {
+        activeCaptureSource.map(shouldCaptureCursor(for:)) ?? false
     }
 
     func updatePresentationFocus(_ selectedSourceIsFocused: Bool) {
@@ -118,9 +121,9 @@ extension CaptureManager {
 
     func startMouseClickMonitor() {
         if mouseClickMonitor == nil {
-            mouseClickMonitor = GlobalMouseClickMonitor { [weak self] location in
+            mouseClickMonitor = GlobalMouseClickMonitor(mouseClicks: { [weak self] location in
                 self?.showMouseClick(at: location)
-            }
+            })
         }
         mouseClickMonitor?.start()
     }
@@ -128,10 +131,8 @@ extension CaptureManager {
     func showMouseClick(at clickLocation: GlobalClickLocation) {
         guard let source = activeCaptureSource,
             selectedWindowID == source.id,
-            PresentationEffectFocusPolicy.shouldPresent(
-                isEnabled: highlightsMouseClicks,
-                selectedSourceIsFocused: shouldCaptureCursor(for: source)
-            )
+            highlightsMouseClicks,
+            isSelectedSourceFocused
         else { return }
 
         let sourceFrame = WindowFrameResolver.currentFrame(
@@ -139,9 +140,9 @@ extension CaptureManager {
             fallback: source.window.frame
         )
         guard
-            let normalizedLocation = ClickPresentationGeometry.normalizedLocation(
-                for: clickLocation.quartzPoint,
-                in: sourceFrame
+            let normalizedLocation = WindowCoordinateGeometry.normalizedPoint(
+                inside: clickLocation.quartzPoint,
+                sourceFrame: sourceFrame
             )
         else { return }
 
@@ -160,7 +161,7 @@ extension CaptureManager {
         clickDismissTasks[presentation.id]?.cancel()
         clickDismissTasks[presentation.id] = Task { [weak self] in
             do {
-                try await Task.sleep(for: PresentationEffectTiming.clickDuration)
+                try await Task.sleep(for: ClickPresentation.duration)
             } catch {
                 return
             }
@@ -184,9 +185,9 @@ extension CaptureManager {
 
     func startSpotlightPointerMonitor() {
         if spotlightPointerMonitor == nil {
-            spotlightPointerMonitor = GlobalPointerMonitor { [weak self] location in
+            spotlightPointerMonitor = GlobalPointerMonitor(pointerMovements: { [weak self] location in
                 self?.moveSpotlight(to: location)
-            }
+            })
         }
         spotlightPointerMonitor?.start()
     }
@@ -202,9 +203,9 @@ extension CaptureManager {
             fallback: source.window.frame
         )
         guard
-            let location = SpotlightGeometry.normalizedLocation(
-                for: globalLocation,
-                in: sourceFrame
+            let location = WindowCoordinateGeometry.normalizedPoint(
+                inside: globalLocation,
+                sourceFrame: sourceFrame
             )
         else { return }
 
@@ -214,10 +215,7 @@ extension CaptureManager {
     func activateSpotlightIfPossible() {
         guard isSpotlightVisible,
             let source = activeCaptureSource,
-            PresentationEffectFocusPolicy.shouldPresent(
-                isEnabled: true,
-                selectedSourceIsFocused: shouldCaptureCursor(for: source)
-            )
+            isSelectedSourceFocused
         else { return }
 
         sourceSpotlightPresenter.show(
@@ -227,7 +225,7 @@ extension CaptureManager {
         )
     }
 
-    func focusSelectedSourceForSpotlightIfPossible() {
+    func focusSelectedSourceIfPossible() {
         guard isLive,
             let source = activeCaptureSource,
             !shouldCaptureCursor(for: source),
@@ -248,10 +246,7 @@ extension CaptureManager {
             !isAnnotating,
             isLive,
             let source = activeCaptureSource,
-            PresentationEffectFocusPolicy.shouldPresent(
-                isEnabled: true,
-                selectedSourceIsFocused: shouldCaptureCursor(for: source)
-            )
+            isSelectedSourceFocused
         else { return }
 
         isAnnotating = true
@@ -263,18 +258,6 @@ extension CaptureManager {
                 self?.finishAnnotations()
             }
         )
-    }
-
-    func focusSelectedSourceForAnnotationsIfPossible() {
-        guard isLive,
-            let source = activeCaptureSource,
-            !shouldCaptureCursor(for: source),
-            let application = NSRunningApplication(
-                processIdentifier: source.processIdentifier
-            )
-        else { return }
-
-        application.activate()
     }
 
     func deactivateAnnotations(clearStrokes: Bool) {
@@ -295,13 +278,7 @@ extension CaptureManager {
     }
 
     func showKeystroke(_ label: String) {
-        let selectedSourceIsFocused = activeCaptureSource.map(shouldCaptureCursor(for:)) ?? false
-        guard
-            PresentationEffectFocusPolicy.shouldPresent(
-                isEnabled: highlightsKeystrokes,
-                selectedSourceIsFocused: selectedSourceIsFocused
-            )
-        else { return }
+        guard highlightsKeystrokes, isSelectedSourceFocused else { return }
         keystrokeDismissTask?.cancel()
         let presentation = KeystrokePresentation(
             label: label,
@@ -311,7 +288,7 @@ extension CaptureManager {
         keystrokePresentation = presentation
         keystrokeDismissTask = Task { [weak self] in
             do {
-                try await Task.sleep(for: PresentationEffectTiming.keystrokeDuration)
+                try await Task.sleep(for: KeystrokePresentation.duration)
             } catch {
                 return
             }

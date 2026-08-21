@@ -147,17 +147,20 @@ inside it.
 | Path | Purpose |
 | --- | --- |
 | `Sources/MeetStage/MeetStageApp.swift` | SwiftUI app entry point and windows |
-| `Sources/MeetStage/ControlView.swift` and `Control*.swift` | Floating controller composition, settings, reusable controls, and source-picker views |
+| `Sources/MeetStage/ControlView.swift` and `Control*.swift` | Floating controller composition, settings, reusable controls, preview rendering, and source-picker views |
 | `Sources/MeetStage/CaptureManager.swift` and `CaptureManager+*.swift` | Main-actor state plus responsibility-focused discovery, command, lifecycle, presentation, and callback extensions |
 | `Sources/MeetStage/Diagnostics.swift` | Categorized, privacy-aware unified logging |
 | `Sources/MeetStage/WindowSourceDiscovery.swift` | Source eligibility, ScreenCaptureKit discovery, and thumbnails |
+| `Sources/MeetStage/WindowGeometry.swift` | Canonical source coordinates, window-frame resolution, and overlay tracking |
+| `Sources/MeetStage/GlobalLocalEventMonitor.swift` | Shared global/local AppKit event-monitor lifecycle for pointer effects |
 | `Sources/MeetStage/ShortcutAssignments.swift` | Deterministic shortcut-assignment policy |
 | `Sources/MeetStage/ShortcutPreferencesStore.swift` | Backward-compatible shortcut persistence |
 | `Sources/MeetStage/SampleBufferRenderer.swift` | High-resolution frame rendering |
 | `Sources/MeetStage/StageWindowSizing.swift` | Demo Stage geometry and aspect-ratio handling |
 | `Sources/MeetStage/WindowConfiguration.swift` | AppKit window behavior used by SwiftUI scenes |
 | `Sources/MeetStage/GlobalHotKeyManager.swift` | Option+1 through Option+9 registration |
-| `Sources/MeetStage/Annotations.swift` | Temporary ink model, source overlay, stage rendering, and fade timing |
+| `Sources/MeetStage/Annotations.swift` and `AnnotationOverlay.swift` | Temporary ink model and rendering plus AppKit source-overlay presentation |
+| `Sources/MeetStage/ClickHighlights.swift`, `KeystrokeHighlights.swift`, and `SpotlightEffect.swift` | Effect-specific models, monitoring, overlays, and rendering |
 | `Sources/MeetStage/PresentationPreferences.swift` | Shared color, size, and keystroke appearance options |
 | `Sources/MeetStage/WorkspaceObservationBag.swift` | App lifecycle observation and notification-token ownership |
 | `Tests/MeetStageTests/` | Policy, persistence, geometry, and AppKit interaction tests |
@@ -171,7 +174,8 @@ inside it.
 The Swift package and executable retain the internal name `MeetStage`. The app
 bundle and every user-facing surface use the BetterMeets product name.
 See [ARCHITECTURE.md](ARCHITECTURE.md) for ownership boundaries, lifecycle
-invariants, and guidance for extending the app.
+invariants, and guidance for extending the app. See [TESTING.md](TESTING.md) for
+the automated and manual verification strategy.
 
 ## Screen Recording permission
 

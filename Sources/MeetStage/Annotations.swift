@@ -1,5 +1,4 @@
 import AppKit
-import Carbon.HIToolbox
 import Foundation
 import SwiftUI
 
@@ -24,30 +23,6 @@ enum AnnotationTiming {
 }
 
 enum AnnotationGeometry {
-    static func normalizedPoint(
-        for location: CGPoint,
-        in size: CGSize
-    ) -> NormalizedWindowPoint? {
-        guard size.width > 0, size.height > 0 else { return nil }
-
-        return NormalizedWindowPoint(
-            x: min(max(location.x / size.width, 0), 1),
-            y: min(max(location.y / size.height, 0), 1)
-        )
-    }
-
-    static func appKitOverlayFrame(
-        sourceFrame: CGRect,
-        primaryScreenFrame: CGRect
-    ) -> CGRect {
-        CGRect(
-            x: sourceFrame.minX,
-            y: primaryScreenFrame.maxY - sourceFrame.maxY,
-            width: sourceFrame.width,
-            height: sourceFrame.height
-        )
-    }
-
     static func shouldAppend(
         _ point: NormalizedWindowPoint,
         after previousPoint: NormalizedWindowPoint
@@ -182,8 +157,8 @@ struct AnnotationInputController {
         session: AnnotationSession
     ) {
         guard
-            let point = AnnotationGeometry.normalizedPoint(
-                for: location,
+            let point = WindowCoordinateGeometry.normalizedPoint(
+                clamping: location,
                 in: canvasSize
             )
         else { return }
@@ -342,184 +317,5 @@ private struct AnnotationStrokeShape: Shape {
             path.addLine(to: lastPoint)
         }
         return path
-    }
-}
-
-@MainActor
-final class SourceAnnotationPresenter {
-    private var panel: AnnotationPanel?
-    private var frameTrackingTask: Task<Void, Never>?
-    private var sourceWindowID: CGWindowID?
-    private var fallbackSourceFrame = CGRect.zero
-
-    deinit {
-        frameTrackingTask?.cancel()
-    }
-
-    func show(
-        session: AnnotationSession,
-        sourceWindowID: CGWindowID,
-        fallbackSourceFrame: CGRect,
-        onFinish: @escaping @MainActor () -> Void
-    ) {
-        dismiss()
-
-        self.sourceWindowID = sourceWindowID
-        self.fallbackSourceFrame = fallbackSourceFrame
-
-        let panel = AnnotationPanel(
-            contentRect: overlayFrame(),
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered,
-            defer: false
-        )
-        AnnotationWindowPolicy.configure(panel)
-        panel.onCancel = onFinish
-        panel.contentView = NSHostingView(
-            rootView: SourceAnnotationSurface(
-                session: session,
-                onFinish: onFinish
-            )
-        )
-        self.panel = panel
-        panel.orderFrontRegardless()
-
-        frameTrackingTask = Task { [weak self] in
-            while !Task.isCancelled {
-                do {
-                    try await Task.sleep(for: .milliseconds(100))
-                } catch {
-                    return
-                }
-                guard !Task.isCancelled else { return }
-                self?.updatePanelFrame()
-            }
-        }
-    }
-
-    func dismiss() {
-        frameTrackingTask?.cancel()
-        frameTrackingTask = nil
-        sourceWindowID = nil
-        panel?.close()
-        panel = nil
-    }
-
-    private func updatePanelFrame() {
-        guard let panel else { return }
-        let frame = overlayFrame()
-        guard frame != panel.frame else { return }
-        panel.setFrame(frame, display: true)
-    }
-
-    private func overlayFrame() -> CGRect {
-        let sourceFrame =
-            sourceWindowID.map {
-                WindowFrameResolver.currentFrame(for: $0, fallback: fallbackSourceFrame)
-            } ?? fallbackSourceFrame
-        let primaryScreenFrame =
-            NSScreen.screens.first?.frame
-            ?? CGRect(x: 0, y: 0, width: sourceFrame.width, height: sourceFrame.maxY)
-        return AnnotationGeometry.appKitOverlayFrame(
-            sourceFrame: sourceFrame,
-            primaryScreenFrame: primaryScreenFrame
-        )
-    }
-}
-
-enum AnnotationWindowPolicy {
-    // The selected source windows are normal-level, while BetterMeets' compact
-    // controller is floating. This slot keeps ink above the source without
-    // making the controller unreachable when the two overlap.
-    static let sourceOverlayLevel = NSWindow.Level(
-        rawValue: NSWindow.Level.normal.rawValue + 2
-    )
-
-    @MainActor
-    static func configure(_ panel: AnnotationPanel) {
-        panel.backgroundColor = .clear
-        panel.isOpaque = false
-        panel.hasShadow = false
-        panel.hidesOnDeactivate = false
-        panel.animationBehavior = .none
-        panel.ignoresMouseEvents = false
-        panel.acceptsMouseMovedEvents = true
-        panel.becomesKeyOnlyIfNeeded = false
-        panel.level = sourceOverlayLevel
-        panel.collectionBehavior = [
-            .canJoinAllSpaces,
-            .fullScreenAuxiliary,
-            .ignoresCycle,
-            .transient
-        ]
-    }
-}
-
-final class AnnotationPanel: NSPanel {
-    var onCancel: (@MainActor () -> Void)?
-
-    override var canBecomeKey: Bool { true }
-    override var canBecomeMain: Bool { false }
-
-    override func keyDown(with event: NSEvent) {
-        if event.keyCode == UInt16(kVK_Escape) {
-            onCancel?()
-        } else {
-            super.keyDown(with: event)
-        }
-    }
-}
-
-struct SourceAnnotationSurface: View {
-    @ObservedObject var session: AnnotationSession
-    let onFinish: @MainActor () -> Void
-
-    var body: some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .top) {
-                AnnotationInkLayer(
-                    session: session,
-                    acceptsInput: true
-                )
-
-                if geometry.size.width >= 320, geometry.size.height >= 160 {
-                    annotationModeIndicator
-                        .padding(.top, 12)
-                }
-            }
-        }
-        .background(Color.clear)
-    }
-
-    private var annotationModeIndicator: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "pencil.tip")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(Color(red: 0.21, green: 0.84, blue: 1))
-
-            Text("Drawing")
-                .font(.caption.weight(.semibold))
-
-            Text("Esc")
-                .font(.system(.caption2, design: .rounded, weight: .medium))
-                .foregroundStyle(.secondary)
-                .padding(.horizontal, 5)
-                .padding(.vertical, 2)
-                .background(.quaternary, in: RoundedRectangle(cornerRadius: 4, style: .continuous))
-
-            Button("Done", action: onFinish)
-                .buttonStyle(.borderless)
-                .font(.caption.weight(.semibold))
-        }
-        .padding(.leading, 10)
-        .padding(.trailing, 8)
-        .padding(.vertical, 6)
-        .background(.regularMaterial, in: Capsule())
-        .overlay {
-            Capsule()
-                .strokeBorder(Color.white.opacity(0.18), lineWidth: 1)
-        }
-        .shadow(color: Color.black.opacity(0.28), radius: 8, y: 3)
-        .accessibilityElement(children: .contain)
     }
 }

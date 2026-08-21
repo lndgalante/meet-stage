@@ -10,7 +10,7 @@ struct WindowSource: Identifiable {
     let bundleIdentifier: String
     let processIdentifier: pid_t
     var thumbnail: NSImage?
-    var applicationIcon: NSImage?
+    let applicationIcon: NSImage?
 
     init(window: SCWindow, reusing presentation: WindowSource? = nil) {
         id = window.windowID
