@@ -24,6 +24,8 @@ enum ControlMetrics {
     static let sourceScrollFadeWidth: CGFloat = 14
     static let sourceScrollShadowWidth: CGFloat = 18
     static let sourceScrollCoordinateSpace = "source-scroll"
+    static let dragHandleIndicatorWidth: CGFloat = 2
+    static let dragHandleIndicatorHeight: CGFloat = 18
     static let controlBarButtonHeight: CGFloat = 30
     static let controlBarIconSize: CGFloat = 12
     static let clickHighlightGlyphOffset = CGSize(width: -0.5, height: -0.5)
@@ -199,8 +201,12 @@ struct ControlView: View {
     }
 
     private var sourcePanel: some View {
-        sourceScroller
-            .frame(width: ControlWindowSizing.contentWidth, height: ControlMetrics.contentHeight)
+        HStack(spacing: 0) {
+            WindowDragHandle()
+            sourceScroller
+            WindowDragHandle()
+        }
+        .frame(width: ControlWindowSizing.contentWidth, height: ControlMetrics.contentHeight)
     }
 
     private var annotationControlHelp: String {
@@ -376,4 +382,27 @@ struct ControlView: View {
         }
     }
 
+}
+
+private struct WindowDragHandle: View {
+    @State private var isHovered = false
+
+    var body: some View {
+        ZStack {
+            WindowDragSurface()
+
+            Capsule(style: .continuous)
+                .fill(Color.white.opacity(isHovered ? 0.48 : 0.24))
+                .frame(
+                    width: ControlMetrics.dragHandleIndicatorWidth,
+                    height: ControlMetrics.dragHandleIndicatorHeight
+                )
+                .allowsHitTesting(false)
+        }
+        .frame(width: ControlWindowSizing.dragHandleWidth, height: ControlMetrics.contentHeight)
+        .contentShape(Rectangle())
+        .onHover { isHovered = $0 }
+        .help("Drag to move BetterMeets")
+        .accessibilityHidden(true)
+    }
 }

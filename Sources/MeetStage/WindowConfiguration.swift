@@ -2,7 +2,10 @@ import AppKit
 import SwiftUI
 
 enum ControlWindowSizing {
-    static let captureSurfaceSize = NSSize(width: 206, height: 54)
+    static let sourceAreaWidth: CGFloat = 196
+    static let dragHandleWidth: CGFloat = 10
+    static let contentWidth = sourceAreaWidth + dragHandleWidth * 2
+    static let captureSurfaceSize = NSSize(width: contentWidth + 10, height: 54)
     static let controlBarWidth: CGFloat = 184
     static let controlBarHeight: CGFloat = 36
     static let controlBarOverlap: CGFloat = 6
@@ -10,8 +13,6 @@ enum ControlWindowSizing {
         width: captureSurfaceSize.width,
         height: captureSurfaceSize.height + controlBarHeight - controlBarOverlap
     )
-    static let contentWidth: CGFloat = 196
-    static let sourceAreaWidth: CGFloat = 196
 }
 
 /// Applies AppKit-only window behavior that SwiftUI scenes cannot express.
@@ -33,7 +34,7 @@ struct WindowConfigurator: NSViewRepresentable {
 
     final class Coordinator {
         var lastStageAspectRatio: CGFloat?
-        var stageDragView: StageWindowDragView?
+        var stageDragView: WindowDragView?
     }
 
     func makeCoordinator() -> Coordinator {
@@ -139,14 +140,14 @@ struct WindowConfigurator: NSViewRepresentable {
             let frameView = contentView.superview
         else { return }
 
-        let dragView: StageWindowDragView
+        let dragView: WindowDragView
         if let existingDragView = coordinator.stageDragView,
             existingDragView.superview === frameView
         {
             dragView = existingDragView
         } else {
             coordinator.stageDragView?.removeFromSuperview()
-            dragView = StageWindowDragView()
+            dragView = WindowDragView()
             dragView.autoresizingMask = [.width, .height]
             frameView.addSubview(dragView, positioned: .above, relativeTo: contentView)
             coordinator.stageDragView = dragView
@@ -172,8 +173,21 @@ struct WindowConfigurator: NSViewRepresentable {
     }
 }
 
-final class StageWindowDragView: NSView {
+struct WindowDragSurface: NSViewRepresentable {
+    func makeNSView(context: Context) -> WindowDragView {
+        WindowDragView()
+    }
+
+    func updateNSView(_ nsView: WindowDragView, context: Context) {}
+}
+
+final class WindowDragView: NSView {
     override var mouseDownCanMoveWindow: Bool { true }
+
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        addCursorRect(bounds, cursor: .openHand)
+    }
 
     override func mouseDown(with event: NSEvent) {
         guard let window else {

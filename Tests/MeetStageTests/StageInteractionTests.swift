@@ -14,7 +14,7 @@ struct StageInteractionTests {
             backing: .buffered,
             defer: false
         )
-        let surface = StageWindowDragView(frame: window.contentView?.bounds ?? .zero)
+        let surface = WindowDragView(frame: window.contentView?.bounds ?? .zero)
         window.contentView = surface
 
         let event = try #require(
@@ -35,6 +35,35 @@ struct StageInteractionTests {
 
         #expect(surface.mouseDownCanMoveWindow)
         #expect(window.didPerformDrag)
+    }
+
+    @Test("A SwiftUI drag handle keeps the native drag surface interactive")
+    @MainActor
+    func swiftUIDragHandleWinsHitTesting() throws {
+        let hostingView = NSHostingView(
+            rootView: WindowDragSurface()
+                .frame(width: ControlWindowSizing.dragHandleWidth, height: 44)
+        )
+        let window = DragTrackingWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 10, height: 44),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.contentView = hostingView
+        window.contentView?.layoutSubtreeIfNeeded()
+
+        let dragSurface = try #require(
+            hostingView.firstDescendant(ofType: WindowDragView.self)
+        )
+        let center = dragSurface.convert(
+            NSPoint(x: dragSurface.bounds.midX, y: dragSurface.bounds.midY),
+            to: hostingView
+        )
+
+        #expect(dragSurface.bounds.width == ControlWindowSizing.dragHandleWidth)
+        #expect(dragSurface.bounds.height == 44)
+        #expect(hostingView.hitTest(center) === dragSurface)
     }
 
     @Test("The stage keeps standard macOS window semantics")
@@ -74,7 +103,7 @@ struct StageInteractionTests {
 
         let frameView = try #require(window.contentView?.superview)
         let dragSurface = try #require(
-            frameView.firstDescendant(ofType: StageWindowDragView.self)
+            frameView.firstDescendant(ofType: WindowDragView.self)
         )
         let center = dragSurface.convert(
             NSPoint(x: dragSurface.bounds.midX, y: dragSurface.bounds.midY),
