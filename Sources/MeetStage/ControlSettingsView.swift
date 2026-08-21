@@ -90,6 +90,13 @@ struct SettingsPopover: View {
                 )
             }
 
+            SettingsFormRow(title: "Ripple color") {
+                PresentationColorPicker(
+                    selection: manager.clickHighlightColor,
+                    onSelect: { manager.setClickHighlightColor($0) }
+                )
+            }
+
             SettingsFormRow(title: "Ripple size") {
                 Picker(
                     "Ripple size",
@@ -105,13 +112,6 @@ struct SettingsPopover: View {
                 }
                 .labelsHidden()
                 .pickerStyle(.segmented)
-            }
-
-            SettingsFormRow(title: "Ripple color") {
-                PresentationColorPicker(
-                    selection: manager.clickHighlightColor,
-                    onSelect: { manager.setClickHighlightColor($0) }
-                )
             }
 
         }

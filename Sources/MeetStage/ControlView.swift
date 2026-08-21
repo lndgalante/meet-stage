@@ -8,7 +8,7 @@ enum ControlMetrics {
     static let sourceTileWidth: CGFloat = 44
     static let sourceTileHeight: CGFloat = 44
     static let sourceTileSpacing: CGFloat = 4
-    static let sourceTileHorizontalInset: CGFloat = 4
+    static let sourceTileHorizontalInset: CGFloat = 1
     static let sourceTileVerticalInset: CGFloat = 0
     static let sourceViewportHeight: CGFloat = 44
     static let sourceTileRadius: CGFloat = 9
@@ -70,6 +70,15 @@ struct ControlView: View {
             .regularMaterial,
             in: RoundedRectangle(cornerRadius: ControlMetrics.cornerRadius, style: .continuous)
         )
+        .overlay {
+            if !manager.needsScreenRecordingPermission {
+                SourceScrollEdgeShadow(
+                    leadingStrength: leadingSourceFadeStrength,
+                    trailingStrength: trailingSourceFadeStrength
+                )
+                .allowsHitTesting(false)
+            }
+        }
         .overlay {
             RoundedRectangle(cornerRadius: ControlMetrics.cornerRadius, style: .continuous)
                 .strokeBorder(Color.white.opacity(0.20), lineWidth: 1)
@@ -236,13 +245,6 @@ struct ControlView: View {
                     leadingStrength: leadingSourceFadeStrength,
                     trailingStrength: trailingSourceFadeStrength
                 )
-            }
-            .overlay {
-                SourceScrollEdgeShadow(
-                    leadingStrength: leadingSourceFadeStrength,
-                    trailingStrength: trailingSourceFadeStrength
-                )
-                .allowsHitTesting(false)
             }
             .accessibilityLabel("Available windows")
             .accessibilityHint("Scroll horizontally to browse windows")
