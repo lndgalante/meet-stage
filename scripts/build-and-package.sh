@@ -15,6 +15,7 @@ esac
 
 APP_DIR="$PROJECT_DIR/dist/BetterMeets.app"
 CONTENTS_DIR="$APP_DIR/Contents"
+SIGNING_IDENTITY="${BETTERMEETS_CODESIGN_IDENTITY:-}"
 SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
 BUNDLE_IDENTIFIER="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$PROJECT_DIR/Resources/Info.plist")"
 METAL_SOURCE="$PROJECT_DIR/Sources/MeetStage/IdleStageChrome.metal"
@@ -60,11 +61,23 @@ cp "$PROJECT_DIR/Resources/Info.plist" "$CONTENTS_DIR/Info.plist"
 cp "$PROJECT_DIR/Resources/BetterMeets.icns" "$CONTENTS_DIR/Resources/BetterMeets.icns"
 cp "$METAL_LIBRARY" "$CONTENTS_DIR/Resources/IdleStageChrome.metallib"
 
-# A stable designated requirement keeps Screen Recording approval valid across
-# debug and release builds even though the ad-hoc binary hash changes.
-codesign \
-    --force \
-    --deep \
-    --sign - \
-    --requirements "=designated => identifier \"$BUNDLE_IDENTIFIER\"" \
-    "$APP_DIR"
+if [[ -n "$SIGNING_IDENTITY" ]]; then
+    # Developer ID builds need the hardened runtime and a trusted timestamp
+    # before Apple will accept them for notarization.
+    codesign \
+        --force \
+        --options runtime \
+        --timestamp \
+        --sign "$SIGNING_IDENTITY" \
+        "$APP_DIR"
+else
+    # A stable designated requirement keeps Screen Recording approval valid
+    # across local builds even though the ad-hoc binary hash changes.
+    codesign \
+        --force \
+        --sign - \
+        --requirements "=designated => identifier \"$BUNDLE_IDENTIFIER\"" \
+        "$APP_DIR"
+fi
+
+codesign --verify --strict --verbose=2 "$APP_DIR"

@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Quality
+    runs-on: macos-15
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Report Swift toolchain
+        run: swift --version
+
+      - name: Lint Swift formatting
+        run: >-
+          swift format lint --strict --recursive
+          Sources Tests Package.swift scripts/generate-app-icon.swift
+
+      - name: Validate metadata and shell scripts
+        run: |
+          plutil -lint Resources/Info.plist
+          zsh -n build-app.sh dev-app.sh scripts/build-and-package.sh scripts/notarize-app.sh
+
+      - name: Test with compiler warnings as errors
+        run: swift test -Xswiftc -warnings-as-errors
+
+      - name: Compile optimized build with compiler warnings as errors
+        run: swift build -c release -Xswiftc -warnings-as-errors

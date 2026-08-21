@@ -135,6 +135,15 @@ struct PresentationPreferencesStore {
         forKey key: String,
         default defaultValue: Value
     ) -> Value where Value: RawRepresentable, Value.RawValue == String {
-        defaults.string(forKey: key).flatMap(Value.init(rawValue:)) ?? defaultValue
+        guard let rawValue = defaults.string(forKey: key) else {
+            return defaultValue
+        }
+        guard let value = Value(rawValue: rawValue) else {
+            AppLog.preferences.warning(
+                "Ignoring invalid value for \(key, privacy: .public): \(rawValue, privacy: .private)"
+            )
+            return defaultValue
+        }
+        return value
     }
 }

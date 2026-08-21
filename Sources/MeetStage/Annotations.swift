@@ -1,4 +1,5 @@
 import AppKit
+import Carbon.HIToolbox
 import Foundation
 import SwiftUI
 
@@ -168,12 +169,48 @@ final class AnnotationSession: ObservableObject {
     }
 }
 
+/// Converts pointer updates into annotation-domain operations without relying
+/// on window-server event delivery. Keeping this small state machine outside
+/// the SwiftUI view makes drag behavior deterministic and directly testable.
+@MainActor
+struct AnnotationInputController {
+    private(set) var activeStrokeID: UUID?
+
+    mutating func update(
+        location: CGPoint,
+        canvasSize: CGSize,
+        session: AnnotationSession
+    ) {
+        guard
+            let point = AnnotationGeometry.normalizedPoint(
+                for: location,
+                in: canvasSize
+            )
+        else { return }
+
+        if let activeStrokeID {
+            session.append(point, to: activeStrokeID)
+        } else {
+            activeStrokeID = session.beginStroke(at: point)
+        }
+    }
+
+    mutating func finish(
+        session: AnnotationSession,
+        reducesMotion: Bool
+    ) {
+        guard let activeStrokeID else { return }
+        session.endStroke(activeStrokeID, reducesMotion: reducesMotion)
+        self.activeStrokeID = nil
+    }
+}
+
 struct AnnotationInkLayer: View {
     @ObservedObject var session: AnnotationSession
     let acceptsInput: Bool
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var activeStrokeID: UUID?
+    @State private var inputController = AnnotationInputController()
     @State private var isUsingCrosshairCursor = false
 
     var body: some View {
@@ -233,18 +270,11 @@ struct AnnotationInkLayer: View {
     private func drawingGesture(in size: CGSize) -> some Gesture {
         DragGesture(minimumDistance: 0, coordinateSpace: .local)
             .onChanged { value in
-                guard
-                    let point = AnnotationGeometry.normalizedPoint(
-                        for: value.location,
-                        in: size
-                    )
-                else { return }
-
-                if let activeStrokeID {
-                    session.append(point, to: activeStrokeID)
-                } else {
-                    activeStrokeID = session.beginStroke(at: point)
-                }
+                inputController.update(
+                    location: value.location,
+                    canvasSize: size,
+                    session: session
+                )
             }
             .onEnded { _ in
                 finishActiveStroke()
@@ -252,12 +282,10 @@ struct AnnotationInkLayer: View {
     }
 
     private func finishActiveStroke() {
-        guard let activeStrokeID else { return }
-        session.endStroke(
-            activeStrokeID,
+        inputController.finish(
+            session: session,
             reducesMotion: reduceMotion
         )
-        self.activeStrokeID = nil
     }
 
     private func updateCursor(_ isHovering: Bool) {
@@ -434,7 +462,7 @@ final class AnnotationPanel: NSPanel {
     override var canBecomeMain: Bool { false }
 
     override func keyDown(with event: NSEvent) {
-        if event.keyCode == 53 {
+        if event.keyCode == UInt16(kVK_Escape) {
             onCancel?()
         } else {
             super.keyDown(with: event)

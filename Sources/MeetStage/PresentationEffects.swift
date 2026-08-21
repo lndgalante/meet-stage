@@ -1,7 +1,13 @@
 import AppKit
 import ApplicationServices
+import Carbon.HIToolbox
 import Foundation
 import SwiftUI
+
+enum PresentationEffectTiming {
+    static let clickDuration = Duration.milliseconds(560)
+    static let keystrokeDuration = Duration.milliseconds(1_200)
+}
 
 struct NormalizedWindowPoint: Equatable, Sendable {
     let x: CGFloat
@@ -223,7 +229,11 @@ final class SourceClickRipplePresenter {
 
         dismissTasks[presentation.id]?.cancel()
         dismissTasks[presentation.id] = Task { [weak self] in
-            try? await Task.sleep(for: .milliseconds(560))
+            do {
+                try await Task.sleep(for: PresentationEffectTiming.clickDuration)
+            } catch {
+                return
+            }
             guard !Task.isCancelled else { return }
             self?.dismiss(presentation.id)
         }
@@ -395,22 +405,22 @@ private final class KeystrokeMonitorResources: @unchecked Sendable {
 
 enum KeystrokeFormatter {
     private static let specialKeys: [UInt16: String] = [
-        36: "Return",
-        48: "Tab",
-        49: "Space",
-        51: "Delete",
-        53: "Esc",
-        71: "Clear",
-        76: "Enter",
-        115: "Home",
-        116: "Page Up",
-        117: "Forward Delete",
-        119: "End",
-        121: "Page Down",
-        123: "←",
-        124: "→",
-        125: "↓",
-        126: "↑"
+        UInt16(kVK_Return): "Return",
+        UInt16(kVK_Tab): "Tab",
+        UInt16(kVK_Space): "Space",
+        UInt16(kVK_Delete): "Delete",
+        UInt16(kVK_Escape): "Esc",
+        UInt16(kVK_ANSI_KeypadClear): "Clear",
+        UInt16(kVK_ANSI_KeypadEnter): "Enter",
+        UInt16(kVK_Home): "Home",
+        UInt16(kVK_PageUp): "Page Up",
+        UInt16(kVK_ForwardDelete): "Forward Delete",
+        UInt16(kVK_End): "End",
+        UInt16(kVK_PageDown): "Page Down",
+        UInt16(kVK_LeftArrow): "←",
+        UInt16(kVK_RightArrow): "→",
+        UInt16(kVK_DownArrow): "↓",
+        UInt16(kVK_UpArrow): "↑"
     ]
 
     static func label(for event: NSEvent) -> String? {

@@ -15,9 +15,16 @@ struct ShortcutPreferencesStore {
     }
 
     func loadPins() -> [Int: PinnedWindow] {
-        guard let data = defaults.data(forKey: Self.pinsKey),
-            let pins = try? JSONDecoder().decode([ShortcutPin].self, from: data)
-        else {
+        guard let data = defaults.data(forKey: Self.pinsKey) else {
+            return [:]
+        }
+        let pins: [ShortcutPin]
+        do {
+            pins = try JSONDecoder().decode([ShortcutPin].self, from: data)
+        } catch {
+            AppLog.preferences.warning(
+                "Ignoring invalid shortcut pins: \(error.localizedDescription, privacy: .public)"
+            )
             return [:]
         }
         return Dictionary(
@@ -27,12 +34,17 @@ struct ShortcutPreferencesStore {
     }
 
     func loadExclusions() -> Set<PinnedWindow> {
-        guard let data = defaults.data(forKey: Self.exclusionsKey),
-            let exclusions = try? JSONDecoder().decode([PinnedWindow].self, from: data)
-        else {
+        guard let data = defaults.data(forKey: Self.exclusionsKey) else {
             return []
         }
-        return Set(exclusions)
+        do {
+            return Set(try JSONDecoder().decode([PinnedWindow].self, from: data))
+        } catch {
+            AppLog.preferences.warning(
+                "Ignoring invalid shortcut exclusions: \(error.localizedDescription, privacy: .public)"
+            )
+            return []
+        }
     }
 
     func savePins(_ pins: [Int: PinnedWindow]) {
@@ -40,21 +52,27 @@ struct ShortcutPreferencesStore {
             pins
             .map { ShortcutPin(slot: $0.key, window: $0.value) }
             .sorted { $0.slot < $1.slot }
-        guard let data = try? JSONEncoder().encode(values) else {
+        do {
+            defaults.set(try JSONEncoder().encode(values), forKey: Self.pinsKey)
+        } catch {
+            AppLog.preferences.fault(
+                "Could not encode shortcut pins: \(error.localizedDescription, privacy: .public)"
+            )
             assertionFailure("Shortcut pins must remain JSON encodable")
-            return
         }
-        defaults.set(data, forKey: Self.pinsKey)
     }
 
     func saveExclusions(_ exclusions: Set<PinnedWindow>) {
         let values = exclusions.sorted {
             $0.description.localizedCaseInsensitiveCompare($1.description) == .orderedAscending
         }
-        guard let data = try? JSONEncoder().encode(values) else {
+        do {
+            defaults.set(try JSONEncoder().encode(values), forKey: Self.exclusionsKey)
+        } catch {
+            AppLog.preferences.fault(
+                "Could not encode shortcut exclusions: \(error.localizedDescription, privacy: .public)"
+            )
             assertionFailure("Shortcut exclusions must remain JSON encodable")
-            return
         }
-        defaults.set(data, forKey: Self.exclusionsKey)
     }
 }

@@ -17,8 +17,8 @@ BetterMeets has two windows:
 
 The Demo Stage follows the selected window's aspect ratio and capture dimensions
 to avoid unnecessary black padding. A source appears as **Live** only after
-ScreenCaptureKit delivers a complete video frame. The controller keeps the name
-of the current live window visible below the source strip. The pointer appears
+ScreenCaptureKit delivers a complete video frame. The active source tile is
+marked **Live** in the controller. The pointer appears
 on the Demo Stage only while the selected source application is active, so
 moving through a different app does not leak its cursor position into the demo.
 Idle, paused, permission, and error screens all use the same default stage size.
@@ -124,7 +124,7 @@ identity.
 | `pnpm install` | No equivalent; there are no external dependencies |
 | `pnpm dev` | `./dev-app.sh` |
 | Compile check | `swift build` |
-| Production build | `./build-app.sh` |
+| Optimized local build | `./build-app.sh` |
 | Build artifacts | `.build/` and `dist/` |
 
 ## First run
@@ -147,8 +147,9 @@ inside it.
 | Path | Purpose |
 | --- | --- |
 | `Sources/MeetStage/MeetStageApp.swift` | SwiftUI app entry point and windows |
-| `Sources/MeetStage/ControlView.swift` | Floating controller and source picker |
-| `Sources/MeetStage/CaptureManager.swift` | Main-actor capture lifecycle and observable UI state |
+| `Sources/MeetStage/ControlView.swift` and `Control*.swift` | Floating controller composition, settings, reusable controls, and source-picker views |
+| `Sources/MeetStage/CaptureManager.swift` and `CaptureManager+*.swift` | Main-actor state plus responsibility-focused discovery, command, lifecycle, presentation, and callback extensions |
+| `Sources/MeetStage/Diagnostics.swift` | Categorized, privacy-aware unified logging |
 | `Sources/MeetStage/WindowSourceDiscovery.swift` | Source eligibility, ScreenCaptureKit discovery, and thumbnails |
 | `Sources/MeetStage/ShortcutAssignments.swift` | Deterministic shortcut-assignment policy |
 | `Sources/MeetStage/ShortcutPreferencesStore.swift` | Backward-compatible shortcut persistence |
@@ -164,6 +165,8 @@ inside it.
 | `Brand/` | BetterMeets icon masters and brand guidance |
 | `dev-app.sh` | Debug build, package, sign, and relaunch workflow |
 | `build-app.sh` | Release build and packaging workflow |
+| `scripts/notarize-app.sh` | Developer ID notarization, stapling, and Gatekeeper verification |
+| `.github/workflows/ci.yml` | Formatting, metadata, tests, and strict debug/release compilation |
 
 The Swift package and executable retain the internal name `MeetStage`. The app
 bundle and every user-facing surface use the BetterMeets product name.
@@ -216,6 +219,10 @@ codesign --verify --deep --strict "dist/BetterMeets.app"
 git diff --check
 ```
 
+GitHub Actions repeats formatting, metadata, tests, and warnings-as-errors
+debug/release compilation for every push and pull request on an Apple Silicon
+macOS runner.
+
 The automated suite covers window eligibility, deterministic shortcut
 assignment, persisted preference compatibility, corrupt preference recovery,
 presentation and annotation policies, stage sizing, and AppKit stage
@@ -223,7 +230,7 @@ interaction. For ScreenCaptureKit, global-hotkey, or controller changes, also
 test the complete flow manually in a meeting because those APIs require real
 windows and macOS privacy consent.
 
-## Release build
+## Release builds
 
 Create the optimized local build with:
 
@@ -233,6 +240,30 @@ Create the optimized local build with:
 
 The result is `dist/BetterMeets.app`. It is ad-hoc signed for local use and is
 not notarized for public distribution.
+
+For a public build, provide a Developer ID Application identity. The packaging
+script enables the hardened runtime and trusted timestamp automatically:
+
+```bash
+BETTERMEETS_CODESIGN_IDENTITY="Developer ID Application: Example Corp (TEAMID)" \
+    ./build-app.sh
+```
+
+Store App Store Connect credentials in the Keychain once, using Apple's
+`notarytool store-credentials` command. Then submit, wait for acceptance, staple
+the ticket, run Gatekeeper verification, and create a distributable
+`dist/BetterMeets.zip` with:
+
+```bash
+BETTERMEETS_NOTARY_PROFILE="bettermeets-notary" \
+    ./scripts/notarize-app.sh
+```
+
+Before publishing, increment both version fields in `Resources/Info.plist`, run
+the complete verification commands above, and manually exercise first-run
+permissions, capture switching, pause/resume, all presentation effects, and
+global shortcuts on a clean macOS user account. Apple signing credentials and
+notarization are intentionally external to the repository.
 
 ## Known limitations
 

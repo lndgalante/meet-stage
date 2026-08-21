@@ -60,10 +60,6 @@ struct PinnedWindow: Codable, Hashable {
         )
     }
 
-    func matches(_ source: WindowSource) -> Bool {
-        matches(PinnedWindow(source: source))
-    }
-
     func matches(_ candidate: PinnedWindow) -> Bool {
         let sameApplication =
             bundleIdentifier.isEmpty
@@ -90,23 +86,4 @@ enum CaptureState: Equatable {
     case paused
     case permissionRequired
     case failed(String)
-
-    var label: String {
-        switch self {
-        case .idle:
-            return "Choose a window"
-        case .loading:
-            return "Finding windows…"
-        case .switching:
-            return "Switching…"
-        case .capturing:
-            return "Live"
-        case .paused:
-            return "Paused"
-        case .permissionRequired:
-            return "Permission needed"
-        case .failed:
-            return "Needs attention"
-        }
-    }
 }

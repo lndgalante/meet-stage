@@ -8,8 +8,10 @@ to follow while keeping the parts that do not require macOS services testable.
 
 - `MeetStageApp`, `ControlView`, and `StageView` own SwiftUI composition only.
   AppKit window mutations live in `WindowConfigurator`.
-- `CaptureManager` is the main-actor coordinator. It owns observable state,
-  capture tasks, cursor policy, and the active `SCStream`.
+- `CaptureManager` is the main-actor coordinator. Its root file owns observable
+  state and dependencies; responsibility-focused extensions own discovery,
+  commands, lifecycle, presentation integration, and stream callbacks. The
+  coordinator remains internal to the executable target.
 - `WindowSourceDiscovery` owns ScreenCaptureKit enumeration and thumbnails.
   `WindowDiscoveryPolicy` contains the platform-independent picker eligibility
   rules and is tested without requiring screen-recording permission.
@@ -38,6 +40,9 @@ to follow while keeping the parts that do not require macOS services testable.
 - `PresentationPreferences` defines the typed appearance choices shared by
   settings, source overlays, and the Demo Stage. `CaptureManager` persists the
   selected values and snapshots them into each click or keystroke presentation.
+- `AppLog` owns unified-log categories. Recoverable background failures are
+  logged with privacy annotations; user-actionable capture failures also move
+  `CaptureState` to `.failed` so the Demo Stage explains what happened.
 
 ## Capture lifecycle
 
@@ -82,7 +87,13 @@ and AppKit window interaction. ScreenCaptureKit streams, Carbon hotkeys,
 permission prompts, and end-to-end window-server behavior require the packaged
 app and are verified manually with the checklist in `README.md`.
 
+`.github/workflows/ci.yml` enforces strict Swift formatting, validates metadata
+and shell syntax, runs the complete test suite with warnings as errors, and
+compiles an optimized build on every push and pull request.
+
 The `build-app.sh` and `dev-app.sh` entry points share
 `scripts/build-and-package.sh`. The helper derives the signing identifier from
 `Resources/Info.plist`; keep that metadata stable so macOS preserves Screen
-Recording consent.
+Recording consent. Local builds use a stable ad-hoc designated requirement.
+Developer ID builds enable the hardened runtime and trusted timestamp, then
+`scripts/notarize-app.sh` performs submission, stapling, and Gatekeeper checks.

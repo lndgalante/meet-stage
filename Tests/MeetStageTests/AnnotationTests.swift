@@ -48,6 +48,8 @@ struct AnnotationTests {
         )
 
         AnnotationWindowPolicy.configure(panel)
+        panel.orderFrontRegardless()
+        defer { panel.close() }
 
         #expect(panel.level.rawValue > NSWindow.Level.normal.rawValue)
         #expect(panel.level.rawValue < NSWindow.Level.floating.rawValue)
@@ -56,69 +58,41 @@ struct AnnotationTests {
         #expect(!panel.becomesKeyOnlyIfNeeded)
         #expect(panel.canBecomeKey)
         #expect(!panel.canBecomeMain)
+        #expect(!panel.isKeyWindow)
     }
 
-    @Test("Source overlay waits for engagement before taking key focus")
+    @Test("Source pointer drags create one normalized stroke")
     @MainActor
-    func capturesSourcePointerDrag() async throws {
+    func capturesSourcePointerDrag() {
         let session = AnnotationSession(lifetimeSeconds: 10)
-        let panel = AnnotationPanel(
-            contentRect: CGRect(x: 0, y: 0, width: 640, height: 360),
-            styleMask: [.borderless, .nonactivatingPanel],
-            backing: .buffered,
-            defer: false
-        )
-        AnnotationWindowPolicy.configure(panel)
-        panel.contentView = NSHostingView(
-            rootView: SourceAnnotationSurface(
-                session: session,
-                onFinish: {}
-            )
-            .frame(width: 640, height: 360)
-        )
-        panel.contentView?.layoutSubtreeIfNeeded()
-        panel.orderFrontRegardless()
-        #expect(!panel.isKeyWindow)
-        // Window Server makes a non-activating panel key on the user's first
-        // interaction. Synthetic events do not perform that transition.
-        panel.makeKey()
-        defer {
-            session.clear()
-            panel.close()
-        }
+        var inputController = AnnotationInputController()
+        let canvasSize = CGSize(width: 640, height: 360)
 
-        let mouseDown = try #require(
-            pointerEvent(
-                type: .leftMouseDown,
-                at: CGPoint(x: 100, y: 100),
-                in: panel,
-                eventNumber: 1
-            )
+        inputController.update(
+            location: CGPoint(x: 100, y: 100),
+            canvasSize: canvasSize,
+            session: session
         )
-        let mouseDragged = try #require(
-            pointerEvent(
-                type: .leftMouseDragged,
-                at: CGPoint(x: 220, y: 180),
-                in: panel,
-                eventNumber: 2
-            )
+        inputController.update(
+            location: CGPoint(x: 220, y: 180),
+            canvasSize: canvasSize,
+            session: session
         )
-        let mouseUp = try #require(
-            pointerEvent(
-                type: .leftMouseUp,
-                at: CGPoint(x: 220, y: 180),
-                in: panel,
-                eventNumber: 3
-            )
+        inputController.finish(
+            session: session,
+            reducesMotion: false
         )
 
-        panel.sendEvent(mouseDown)
-        panel.sendEvent(mouseDragged)
-        panel.sendEvent(mouseUp)
-
-        await waitUntil { !session.strokes.isEmpty }
         #expect(session.strokes.count == 1)
-        #expect((session.strokes.first?.points.count ?? 0) >= 2)
+        #expect(
+            session.strokes.first?.points == [
+                NormalizedWindowPoint(x: 0.156_25, y: 0.277_777_777_777_777_8),
+                NormalizedWindowPoint(x: 0.343_75, y: 0.5)
+            ]
+        )
+        #expect(inputController.activeStrokeID == nil)
+
+        session.clear()
     }
 
     @Test("Drops sub-pixel duplicate points")
@@ -258,25 +232,6 @@ struct AnnotationTests {
         #expect(condition())
     }
 
-    @MainActor
-    private func pointerEvent(
-        type: NSEvent.EventType,
-        at location: CGPoint,
-        in window: NSWindow,
-        eventNumber: Int
-    ) -> NSEvent? {
-        NSEvent.mouseEvent(
-            with: type,
-            location: location,
-            modifierFlags: [],
-            timestamp: TimeInterval(eventNumber) / 100,
-            windowNumber: window.windowNumber,
-            context: nil,
-            eventNumber: eventNumber,
-            clickCount: 1,
-            pressure: type == .leftMouseUp ? 0 : 1
-        )
-    }
 }
 
 private final class ControlledAnnotationSleeper: @unchecked Sendable {
