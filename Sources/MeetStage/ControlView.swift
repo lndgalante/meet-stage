@@ -24,8 +24,8 @@ enum ControlMetrics {
     static let sourceScrollFadeWidth: CGFloat = 14
     static let sourceScrollShadowWidth: CGFloat = 18
     static let sourceScrollCoordinateSpace = "source-scroll"
-    static let dragHandleIndicatorWidth: CGFloat = 2
-    static let dragHandleIndicatorHeight: CGFloat = 18
+    static let dragHandleWidth: CGFloat = 40
+    static let dragHandleHeight: CGFloat = 3
     static let controlBarButtonHeight: CGFloat = 30
     static let controlBarIconSize: CGFloat = 12
     static let clickHighlightGlyphOffset = CGSize(width: -0.5, height: -0.5)
@@ -46,6 +46,10 @@ struct ControlView: View {
                     y: ControlWindowSizing.captureSurfaceSize.height
                         - ControlWindowSizing.controlBarOverlap
                 )
+
+            bottomDragHandle
+                .offset(y: ControlWindowSizing.joinedSurfaceHeight)
+                .zIndex(0.5)
 
             captureSurface
                 .zIndex(1)
@@ -201,12 +205,12 @@ struct ControlView: View {
     }
 
     private var sourcePanel: some View {
-        HStack(spacing: 0) {
-            WindowDragHandle()
-            sourceScroller
-            WindowDragHandle()
-        }
-        .frame(width: ControlWindowSizing.contentWidth, height: ControlMetrics.contentHeight)
+        sourceScroller
+            .frame(width: ControlWindowSizing.contentWidth, height: ControlMetrics.contentHeight)
+    }
+
+    private var bottomDragHandle: some View {
+        BottomDragHandle()
     }
 
     private var annotationControlHelp: String {
@@ -384,24 +388,38 @@ struct ControlView: View {
 
 }
 
-private struct WindowDragHandle: View {
-    @State private var isHovered = false
-
+struct BottomDragHandle: View {
+    @ViewBuilder
     var body: some View {
+        if #available(macOS 15.0, *) {
+            handle
+                .gesture(WindowDragGesture())
+        } else {
+            ZStack {
+                WindowDragSurface()
+                handle.allowsHitTesting(false)
+            }
+        }
+    }
+
+    private var handle: some View {
         ZStack {
-            WindowDragSurface()
+            // Keep the full hit target in the composited window region while
+            // preserving the minimal line treatment.
+            Color.white.opacity(0.001)
 
             Capsule(style: .continuous)
-                .fill(Color.white.opacity(isHovered ? 0.48 : 0.24))
+                .fill(Color.white.opacity(0.30))
                 .frame(
-                    width: ControlMetrics.dragHandleIndicatorWidth,
-                    height: ControlMetrics.dragHandleIndicatorHeight
+                    width: ControlMetrics.dragHandleWidth,
+                    height: ControlMetrics.dragHandleHeight
                 )
-                .allowsHitTesting(false)
         }
-        .frame(width: ControlWindowSizing.dragHandleWidth, height: ControlMetrics.contentHeight)
+        .frame(
+            width: ControlWindowSizing.dragHandleHitWidth,
+            height: ControlWindowSizing.dragHandleAreaHeight
+        )
         .contentShape(Rectangle())
-        .onHover { isHovered = $0 }
         .help("Drag to move BetterMeets")
         .accessibilityHidden(true)
     }

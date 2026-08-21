@@ -179,13 +179,6 @@ struct CompactWindowButton: View {
                 .padding(4)
             }
             .frame(width: ControlMetrics.sourceTileWidth, height: ControlMetrics.sourceTileHeight)
-            .clipShape(
-                RoundedRectangle(cornerRadius: ControlMetrics.sourceTileRadius, style: .continuous)
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: ControlMetrics.sourceTileRadius, style: .continuous)
-                    .strokeBorder(borderColor, lineWidth: borderWidth)
-            }
             .overlay(alignment: .bottomTrailing) {
                 if let icon = source.applicationIcon {
                     Image(nsImage: icon)
@@ -200,6 +193,13 @@ struct CompactWindowButton: View {
                             y: ControlMetrics.sourceApplicationIconVerticalOffset
                         )
                 }
+            }
+            .clipShape(
+                RoundedRectangle(cornerRadius: ControlMetrics.sourceTileRadius, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: ControlMetrics.sourceTileRadius, style: .continuous)
+                    .strokeBorder(borderColor, lineWidth: borderWidth)
             }
             .animation(
                 reduceMotion ? nil : .easeOut(duration: 0.14),

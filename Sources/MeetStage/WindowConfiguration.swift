@@ -3,15 +3,18 @@ import SwiftUI
 
 enum ControlWindowSizing {
     static let sourceAreaWidth: CGFloat = 196
-    static let dragHandleWidth: CGFloat = 10
-    static let contentWidth = sourceAreaWidth + dragHandleWidth * 2
+    static let contentWidth = sourceAreaWidth
     static let captureSurfaceSize = NSSize(width: contentWidth + 10, height: 54)
     static let controlBarWidth: CGFloat = 184
     static let controlBarHeight: CGFloat = 36
     static let controlBarOverlap: CGFloat = 6
+    static let joinedSurfaceHeight =
+        captureSurfaceSize.height + controlBarHeight - controlBarOverlap
+    static let dragHandleHitWidth: CGFloat = 72
+    static let dragHandleAreaHeight: CGFloat = 12
     static let size = NSSize(
         width: captureSurfaceSize.width,
-        height: captureSurfaceSize.height + controlBarHeight - controlBarOverlap
+        height: joinedSurfaceHeight + dragHandleAreaHeight
     )
 }
 
@@ -72,6 +75,7 @@ struct WindowConfigurator: NSViewRepresentable {
             window.isOpaque = false
             window.backgroundColor = .clear
             window.hasShadow = true
+            window.isMovable = true
             window.isMovableByWindowBackground = true
             window.setContentSize(compactSize)
             window.minSize = compactSize
@@ -183,7 +187,16 @@ struct WindowDragSurface: NSViewRepresentable {
 }
 
 final class WindowDragView: NSView {
-    override var mouseDownCanMoveWindow: Bool { true }
+    private var dragStartPointerLocation: NSPoint?
+    private var dragStartWindowOrigin: NSPoint?
+
+    // Keep AppKit from consuming the gesture as a background-window drag.
+    // This view tracks the pointer itself so movement stays 1:1 and testable.
+    override var mouseDownCanMoveWindow: Bool { false }
+
+    override func acceptsFirstMouse(for event: NSEvent?) -> Bool {
+        true
+    }
 
     override func resetCursorRects() {
         super.resetCursorRects()
@@ -195,12 +208,43 @@ final class WindowDragView: NSView {
     }
 
     override func mouseDown(with event: NSEvent) {
-        guard let window else {
+        guard let window,
+            let pointerLocation = pointerLocationOnScreen(for: event)
+        else {
             super.mouseDown(with: event)
             return
         }
-        NSCursor.closedHand.push()
-        defer { NSCursor.pop() }
-        window.performDrag(with: event)
+
+        dragStartPointerLocation = pointerLocation
+        dragStartWindowOrigin = window.frame.origin
+        NSCursor.closedHand.set()
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        guard let window,
+            let dragStartPointerLocation,
+            let dragStartWindowOrigin,
+            let pointerLocation = pointerLocationOnScreen(for: event)
+        else {
+            super.mouseDragged(with: event)
+            return
+        }
+
+        window.setFrameOrigin(
+            NSPoint(
+                x: dragStartWindowOrigin.x + pointerLocation.x - dragStartPointerLocation.x,
+                y: dragStartWindowOrigin.y + pointerLocation.y - dragStartPointerLocation.y
+            )
+        )
+    }
+
+    override func mouseUp(with event: NSEvent) {
+        dragStartPointerLocation = nil
+        dragStartWindowOrigin = nil
+        NSCursor.openHand.set()
+    }
+
+    private func pointerLocationOnScreen(for event: NSEvent) -> NSPoint? {
+        window?.convertPoint(toScreen: event.locationInWindow)
     }
 }

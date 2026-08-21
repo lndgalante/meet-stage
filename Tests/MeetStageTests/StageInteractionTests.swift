@@ -5,47 +5,52 @@ import Testing
 
 @Suite("Stage interaction")
 struct StageInteractionTests {
-    @Test("The topmost stage surface starts a native window drag")
+    @Test("The topmost stage surface tracks pointer movement 1:1")
     @MainActor
     func renderingSurfaceStartsWindowDrag() throws {
-        let window = DragTrackingWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 640, height: 360),
+        let window = NSWindow(
+            contentRect: NSRect(x: 100, y: 100, width: 640, height: 360),
             styleMask: [.borderless, .resizable],
             backing: .buffered,
             defer: false
         )
         let surface = WindowDragView(frame: window.contentView?.bounds ?? .zero)
         window.contentView = surface
+        let initialOrigin = window.frame.origin
 
-        let event = try #require(
-            NSEvent.mouseEvent(
-                with: .leftMouseDown,
+        surface.mouseDown(
+            with: try mouseEvent(
+                type: .leftMouseDown,
                 location: NSPoint(x: 320, y: 180),
-                modifierFlags: [],
-                timestamp: 0,
-                windowNumber: window.windowNumber,
-                context: nil,
-                eventNumber: 1,
-                clickCount: 1,
-                pressure: 1
+                in: window
+            )
+        )
+        surface.mouseDragged(
+            with: try mouseEvent(
+                type: .leftMouseDragged,
+                location: NSPoint(x: 344, y: 167),
+                in: window
             )
         )
 
-        surface.mouseDown(with: event)
-
-        #expect(surface.mouseDownCanMoveWindow)
-        #expect(window.didPerformDrag)
+        #expect(!surface.mouseDownCanMoveWindow)
+        #expect(window.frame.origin.x == initialOrigin.x + 24)
+        #expect(window.frame.origin.y == initialOrigin.y - 13)
     }
 
-    @Test("A SwiftUI drag handle keeps the native drag surface interactive")
+    @Test("The bottom grabber owns its complete visible hit region")
     @MainActor
-    func swiftUIDragHandleWinsHitTesting() throws {
+    func bottomGrabberWinsHitTesting() {
         let hostingView = NSHostingView(
-            rootView: WindowDragSurface()
-                .frame(width: ControlWindowSizing.dragHandleWidth, height: 44)
+            rootView: BottomDragHandle()
         )
-        let window = DragTrackingWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 10, height: 44),
+        let window = NSWindow(
+            contentRect: NSRect(
+                x: 0,
+                y: 0,
+                width: ControlWindowSizing.dragHandleHitWidth,
+                height: ControlWindowSizing.dragHandleAreaHeight
+            ),
             styleMask: [.borderless],
             backing: .buffered,
             defer: false
@@ -53,17 +58,19 @@ struct StageInteractionTests {
         window.contentView = hostingView
         window.contentView?.layoutSubtreeIfNeeded()
 
-        let dragSurface = try #require(
-            hostingView.firstDescendant(ofType: WindowDragView.self)
+        #expect(hostingView.bounds.width == ControlWindowSizing.dragHandleHitWidth)
+        #expect(hostingView.bounds.height == ControlWindowSizing.dragHandleAreaHeight)
+        #expect(hostingView.hitTest(NSPoint(x: 1, y: 1)) != nil)
+        #expect(
+            hostingView.hitTest(
+                NSPoint(x: hostingView.bounds.midX, y: hostingView.bounds.midY)
+            ) != nil
         )
-        let center = dragSurface.convert(
-            NSPoint(x: dragSurface.bounds.midX, y: dragSurface.bounds.midY),
-            to: hostingView
+        #expect(
+            hostingView.hitTest(
+                NSPoint(x: hostingView.bounds.maxX - 1, y: hostingView.bounds.maxY - 1)
+            ) != nil
         )
-
-        #expect(dragSurface.bounds.width == ControlWindowSizing.dragHandleWidth)
-        #expect(dragSurface.bounds.height == 44)
-        #expect(hostingView.hitTest(center) === dragSurface)
     }
 
     @Test("The stage keeps standard macOS window semantics")
@@ -118,12 +125,24 @@ struct StageInteractionTests {
 }
 
 @MainActor
-private final class DragTrackingWindow: NSWindow {
-    private(set) var didPerformDrag = false
-
-    override func performDrag(with event: NSEvent) {
-        didPerformDrag = true
-    }
+private func mouseEvent(
+    type: NSEvent.EventType,
+    location: NSPoint,
+    in window: NSWindow
+) throws -> NSEvent {
+    try #require(
+        NSEvent.mouseEvent(
+            with: type,
+            location: location,
+            modifierFlags: [],
+            timestamp: 0,
+            windowNumber: window.windowNumber,
+            context: nil,
+            eventNumber: 1,
+            clickCount: 1,
+            pressure: 1
+        )
+    )
 }
 
 @MainActor
