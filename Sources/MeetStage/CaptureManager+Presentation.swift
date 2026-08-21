@@ -3,7 +3,7 @@ import AppKit
 extension CaptureManager {
     // MARK: - Focus and cursor capture
 
-    func shouldCaptureCursor(for source: WindowSource) -> Bool {
+    func isSourceApplicationFocused(_ source: WindowSource) -> Bool {
         guard source.processIdentifier != 0,
             let frontmostApplication = NSWorkspace.shared.frontmostApplication
         else {
@@ -12,12 +12,16 @@ extension CaptureManager {
         return frontmostApplication.processIdentifier == source.processIdentifier
     }
 
+    func shouldCaptureCursor(for source: WindowSource) -> Bool {
+        isSourceApplicationFocused(source) && !autoPresentationEnabled
+    }
+
     func handleApplicationActivation(_ application: NSRunningApplication) {
         refreshWindowsAutomatically()
         guard let source = activeCaptureSource else { return }
         let selectedSourceIsFocused =
             application.processIdentifier == source.processIdentifier
-            && shouldCaptureCursor(for: source)
+            && isSourceApplicationFocused(source)
         updatePresentationFocus(selectedSourceIsFocused)
     }
 
@@ -34,19 +38,23 @@ extension CaptureManager {
     }
 
     var isSelectedSourceFocused: Bool {
-        activeCaptureSource.map(shouldCaptureCursor(for:)) ?? false
+        activeCaptureSource.map(isSourceApplicationFocused) ?? false
     }
 
     func updatePresentationFocus(_ selectedSourceIsFocused: Bool) {
-        desiredCursorVisibility = selectedSourceIsFocused
+        desiredCursorVisibility = selectedSourceIsFocused && !autoPresentationEnabled
         if selectedSourceIsFocused {
             activateSpotlightIfPossible()
             activateAnnotationsIfPossible()
+            activateAutoPresentationIfPossible()
         } else {
+            autoPresentationPointerMonitor?.stop()
             clearKeystrokePresentation()
             clearClickPresentations()
             deactivateSpotlight()
             deactivateAnnotations(clearStrokes: false)
+            autoPresentation.updatePointer(nil, zoomScale: autoZoomSize.autoZoomScale)
+            autoPresentation.cancelZoom()
         }
         scheduleCaptureConfigurationUpdateIfNeeded()
     }
@@ -103,6 +111,7 @@ extension CaptureManager {
     }
 
     func resetCursorTracking() {
+        handleAutoPresentationSourceChange()
         cancelFirstFrameTimeout()
         captureConfigurationUpdateTask?.cancel()
         captureConfigurationUpdateTask = nil
@@ -122,30 +131,17 @@ extension CaptureManager {
     func startMouseClickMonitor() {
         if mouseClickMonitor == nil {
             mouseClickMonitor = GlobalMouseClickMonitor(mouseClicks: { [weak self] location in
-                self?.showMouseClick(at: location)
+                self?.handlePresentationClick(at: location)
             })
         }
         mouseClickMonitor?.start()
     }
 
-    func showMouseClick(at clickLocation: GlobalClickLocation) {
-        guard let source = activeCaptureSource,
-            selectedWindowID == source.id,
-            highlightsMouseClicks,
-            isSelectedSourceFocused
-        else { return }
-
-        let sourceFrame = WindowFrameResolver.currentFrame(
-            for: source.id,
-            fallback: source.window.frame
-        )
-        guard
-            let normalizedLocation = WindowCoordinateGeometry.normalizedPoint(
-                inside: clickLocation.quartzPoint,
-                sourceFrame: sourceFrame
-            )
-        else { return }
-
+    func showMouseClick(
+        at clickLocation: GlobalClickLocation,
+        normalizedLocation: NormalizedWindowPoint,
+        sourceFrame: CGRect
+    ) {
         let presentation = ClickPresentation(
             location: normalizedLocation,
             color: clickHighlightColor,
@@ -228,7 +224,7 @@ extension CaptureManager {
     func focusSelectedSourceIfPossible() {
         guard isLive,
             let source = activeCaptureSource,
-            !shouldCaptureCursor(for: source),
+            !isSourceApplicationFocused(source),
             let application = NSRunningApplication(
                 processIdentifier: source.processIdentifier
             )

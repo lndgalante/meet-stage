@@ -2,7 +2,7 @@ import SwiftUI
 
 struct SettingsPopover: View {
     @ObservedObject var manager: CaptureManager
-    @State private var selectedTab: SettingsTab = .spotlight
+    @State private var selectedTab: SettingsTab = .stage
 
     var body: some View {
         VStack(spacing: 16) {
@@ -17,10 +17,12 @@ struct SettingsPopover: View {
             }
             .labelsHidden()
             .pickerStyle(.segmented)
-            .frame(width: 384)
+            .frame(width: 432)
 
             Group {
                 switch selectedTab {
+                case .stage:
+                    stageSettings
                 case .spotlight:
                     spotlightSettings
                 case .annotations:
@@ -33,9 +35,103 @@ struct SettingsPopover: View {
             }
         }
         .padding(18)
-        .frame(width: 456)
+        .frame(width: 504)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Settings")
+    }
+
+    private var stageSettings: some View {
+        VStack(spacing: 12) {
+            SettingsPreviewWell(height: 144) {
+                StageFrameSettingsPreview(
+                    style: manager.stageFrameStyle,
+                    padding: manager.stageFramePadding,
+                    cornerRadius: manager.stageFrameCornerRadius,
+                    blur: manager.stageFrameBlur,
+                    shadow: manager.stageFrameShadow
+                )
+                .frame(width: 224, height: 126)
+            }
+
+            SettingsFormRow(title: "Backdrop") {
+                Picker(
+                    "Stage backdrop",
+                    selection: Binding(
+                        get: { manager.stageFrameStyle },
+                        set: { manager.setStageFrameStyle($0) }
+                    )
+                ) {
+                    ForEach(StageFrameStyle.allCases) { style in
+                        Text(style.label)
+                            .tag(style)
+                    }
+                }
+                .labelsHidden()
+            }
+
+            SettingsFormRow(title: "Frame padding") {
+                SettingsPercentageSlider(
+                    label: "Frame padding",
+                    value: Binding(
+                        get: { manager.stageFramePadding },
+                        set: { manager.setStageFramePadding($0) }
+                    ),
+                    range: StageFrameAppearance.paddingRange,
+                    step: 0.01
+                )
+            }
+
+            SettingsFormRow(title: "Corners") {
+                SettingsPointSlider(
+                    label: "Frame corner radius",
+                    value: Binding(
+                        get: { manager.stageFrameCornerRadius },
+                        set: { manager.setStageFrameCornerRadius($0) }
+                    ),
+                    range: StageFrameAppearance.cornerRadiusRange
+                )
+            }
+
+            SettingsFormRow(title: "Backdrop blur") {
+                SettingsPercentageSlider(
+                    label: "Backdrop blur",
+                    value: Binding(
+                        get: { manager.stageFrameBlur },
+                        set: { manager.setStageFrameBlur($0) }
+                    ),
+                    range: StageFrameAppearance.blurRange
+                )
+            }
+
+            SettingsFormRow(title: "Frame shadow") {
+                SettingsPercentageSlider(
+                    label: "Frame shadow",
+                    value: Binding(
+                        get: { manager.stageFrameShadow },
+                        set: { manager.setStageFrameShadow($0) }
+                    ),
+                    range: StageFrameAppearance.shadowRange
+                )
+            }
+
+            SettingsFormRow(title: "Auto zoom") {
+                Picker(
+                    "Auto zoom strength",
+                    selection: Binding(
+                        get: { manager.autoZoomSize },
+                        set: { manager.setAutoZoomSize($0) }
+                    )
+                ) {
+                    ForEach(PresentationSize.allCases) { size in
+                        Text(size.label)
+                            .tag(size)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+            }
+
+        }
     }
 
     private var spotlightSettings: some View {
@@ -208,6 +304,7 @@ struct SettingsPopover: View {
 }
 
 private enum SettingsTab: String, CaseIterable, Identifiable {
+    case stage
     case spotlight
     case annotations
     case clicks
@@ -216,7 +313,13 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
     var id: Self { self }
 
     var title: String {
-        rawValue.capitalized
+        switch self {
+        case .stage: "Stage"
+        case .spotlight: "Focus"
+        case .annotations: "Draw"
+        case .clicks: "Clicks"
+        case .keystrokes: "Keys"
+        }
     }
 }
 
@@ -246,13 +349,14 @@ private struct SettingsPercentageSlider: View {
     let label: String
     @Binding var value: Double
     let range: ClosedRange<Double>
+    var step = 0.05
 
     var body: some View {
         HStack(spacing: 10) {
             Slider(
                 value: $value,
                 in: range,
-                step: 0.05
+                step: step
             )
             .labelsHidden()
             .accessibilityLabel(label)
@@ -268,6 +372,31 @@ private struct SettingsPercentageSlider: View {
 
     private var percentageLabel: String {
         "\(Int((value * 100).rounded()))%"
+    }
+}
+
+private struct SettingsPointSlider: View {
+    let label: String
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Slider(value: $value, in: range, step: 1)
+                .labelsHidden()
+                .accessibilityLabel(label)
+                .accessibilityValue(valueLabel)
+
+            Text(valueLabel)
+                .font(.callout.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .frame(width: 42, alignment: .trailing)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private var valueLabel: String {
+        "\(Int(value.rounded())) pt"
     }
 }
 

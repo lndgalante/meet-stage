@@ -26,6 +26,7 @@ extension CaptureManager {
             if state == .capturing {
                 activateSpotlightIfPossible()
                 activateAnnotationsIfPossible()
+                activateAutoPresentationIfPossible()
             }
         }
     }

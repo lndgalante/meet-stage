@@ -129,6 +129,7 @@ extension CaptureManager {
 
     func switchCapture(to source: WindowSource) async throws {
         isSwitchingStream = true
+        handleAutoPresentationSourceChange()
         deactivateSpotlight()
         deactivateAnnotations(clearStrokes: true)
         clearClickPresentations()

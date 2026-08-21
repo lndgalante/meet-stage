@@ -76,13 +76,16 @@ struct SpotlightSettingsPreview: View {
 /// Gives each presentation preview consistent framing and accessibility.
 struct SettingsPreviewWell<Content: View>: View {
     let hidesContentFromAccessibility: Bool
+    let height: CGFloat
     let content: Content
 
     init(
         hidesContentFromAccessibility: Bool = true,
+        height: CGFloat = 72,
         @ViewBuilder content: () -> Content
     ) {
         self.hidesContentFromAccessibility = hidesContentFromAccessibility
+        self.height = height
         self.content = content()
     }
 
@@ -97,7 +100,7 @@ struct SettingsPreviewWell<Content: View>: View {
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
                     .strokeBorder(Color.primary.opacity(0.08), lineWidth: 1)
             }
-            .frame(height: 72)
+            .frame(height: height)
             .accessibilityHidden(hidesContentFromAccessibility)
     }
 }

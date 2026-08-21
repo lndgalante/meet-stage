@@ -60,6 +60,31 @@ enum KeystrokeAppearance: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+enum StageFrameStyle: String, CaseIterable, Identifiable, Sendable {
+    case none
+    case midnight
+    case ocean
+    case sunset
+    case graphite
+
+    var id: Self { self }
+
+    var label: String {
+        rawValue.capitalized
+    }
+}
+
+enum StageFrameAppearance {
+    static let paddingRange = 0.02...0.14
+    static let defaultPadding = 0.06
+    static let cornerRadiusRange = 0.0...36.0
+    static let defaultCornerRadius = 18.0
+    static let blurRange = 0.0...1.0
+    static let defaultBlur = 0.25
+    static let shadowRange = 0.0...1.0
+    static let defaultShadow = 0.68
+}
+
 /// Persists presentation settings behind typed properties.
 ///
 /// The raw keys are compatibility contracts with existing BetterMeets
@@ -76,6 +101,12 @@ struct PresentationPreferencesStore {
     static let clickHighlightSizeKey = "presentation.clickHighlightSize"
     static let keystrokeHighlightSizeKey = "presentation.keystrokeHighlightSize"
     static let keystrokeAppearanceKey = "presentation.keystrokeAppearance"
+    static let stageFrameStyleKey = "presentation.stageFrameStyle"
+    static let stageFramePaddingKey = "presentation.stageFramePadding"
+    static let stageFrameCornerRadiusKey = "presentation.stageFrameCornerRadius"
+    static let stageFrameBlurKey = "presentation.stageFrameBlur"
+    static let stageFrameShadowKey = "presentation.stageFrameShadow"
+    static let autoZoomSizeKey = "presentation.autoZoomSize"
 
     private let defaults: UserDefaults
 
@@ -154,6 +185,80 @@ struct PresentationPreferencesStore {
         nonmutating set { defaults.set(newValue.rawValue, forKey: Self.keystrokeAppearanceKey) }
     }
 
+    var stageFrameStyle: StageFrameStyle {
+        get { value(forKey: Self.stageFrameStyleKey, default: .midnight) }
+        nonmutating set { defaults.set(newValue.rawValue, forKey: Self.stageFrameStyleKey) }
+    }
+
+    var stageFramePadding: Double {
+        get {
+            double(
+                forKey: Self.stageFramePaddingKey,
+                default: StageFrameAppearance.defaultPadding,
+                range: StageFrameAppearance.paddingRange
+            )
+        }
+        nonmutating set {
+            defaults.set(
+                clamped(newValue, to: StageFrameAppearance.paddingRange),
+                forKey: Self.stageFramePaddingKey
+            )
+        }
+    }
+
+    var stageFrameCornerRadius: Double {
+        get {
+            double(
+                forKey: Self.stageFrameCornerRadiusKey,
+                default: StageFrameAppearance.defaultCornerRadius,
+                range: StageFrameAppearance.cornerRadiusRange
+            )
+        }
+        nonmutating set {
+            defaults.set(
+                clamped(newValue, to: StageFrameAppearance.cornerRadiusRange),
+                forKey: Self.stageFrameCornerRadiusKey
+            )
+        }
+    }
+
+    var stageFrameBlur: Double {
+        get {
+            double(
+                forKey: Self.stageFrameBlurKey,
+                default: StageFrameAppearance.defaultBlur,
+                range: StageFrameAppearance.blurRange
+            )
+        }
+        nonmutating set {
+            defaults.set(
+                clamped(newValue, to: StageFrameAppearance.blurRange),
+                forKey: Self.stageFrameBlurKey
+            )
+        }
+    }
+
+    var stageFrameShadow: Double {
+        get {
+            double(
+                forKey: Self.stageFrameShadowKey,
+                default: StageFrameAppearance.defaultShadow,
+                range: StageFrameAppearance.shadowRange
+            )
+        }
+        nonmutating set {
+            defaults.set(
+                clamped(newValue, to: StageFrameAppearance.shadowRange),
+                forKey: Self.stageFrameShadowKey
+            )
+        }
+    }
+
+    var autoZoomSize: PresentationSize {
+        get { value(forKey: Self.autoZoomSizeKey, default: .medium) }
+        nonmutating set { defaults.set(newValue.rawValue, forKey: Self.autoZoomSizeKey) }
+    }
+
     private func value<Value>(
         forKey key: String,
         default defaultValue: Value
@@ -179,5 +284,9 @@ struct PresentationPreferencesStore {
             return defaultValue
         }
         return min(max(savedValue.doubleValue, range.lowerBound), range.upperBound)
+    }
+
+    private func clamped(_ value: Double, to range: ClosedRange<Double>) -> Double {
+        min(max(value, range.lowerBound), range.upperBound)
     }
 }

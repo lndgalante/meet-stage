@@ -47,6 +47,14 @@ struct MeetStageApp: App {
             }
 
             CommandMenu("Presentation") {
+                Button(
+                    captureManager.autoPresentationEnabled
+                        ? "Turn Off Auto Polish"
+                        : "Turn On Auto Polish"
+                ) {
+                    captureManager.toggleAutoPresentation()
+                }
+
                 Button(captureManager.spotlightEnabled ? "Turn Off Spotlight" : "Turn On Spotlight") {
                     captureManager.toggleSpotlight()
                 }

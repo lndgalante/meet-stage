@@ -34,6 +34,13 @@ final class CaptureManager: ObservableObject {
     @Published var spotlightEnabled = false
     @Published var spotlightSize: PresentationSize
     @Published var spotlightOutsideOpacity: Double
+    @Published var autoPresentationEnabled = false
+    @Published var stageFrameStyle: StageFrameStyle
+    @Published var stageFramePadding: Double
+    @Published var stageFrameCornerRadius: Double
+    @Published var stageFrameBlur: Double
+    @Published var stageFrameShadow: Double
+    @Published var autoZoomSize: PresentationSize
     @Published var annotationLifetimeSeconds: Int
     @Published var annotationColor: PresentationColor
     @Published var clickHighlightColor: PresentationColor
@@ -46,6 +53,7 @@ final class CaptureManager: ObservableObject {
     let renderer = SampleBufferRenderer()
     let annotations: AnnotationSession
     let spotlight: SpotlightSession
+    let autoPresentation = AutoPresentationSession()
 
     var displayedStageAspectRatio: CGFloat {
         StageWindowAspectRatioPolicy.displayedAspectRatio(
@@ -91,6 +99,7 @@ final class CaptureManager: ObservableObject {
     var keystrokeMonitor: GlobalKeystrokeMonitor?
     var mouseClickMonitor: GlobalMouseClickMonitor?
     var spotlightPointerMonitor: GlobalPointerMonitor?
+    var autoPresentationPointerMonitor: GlobalPointerMonitor?
     let sourceClickRipplePresenter = SourceClickRipplePresenter()
     let sourceSpotlightPresenter = SourceSpotlightPresenter()
     lazy var sourceAnnotationPresenter = SourceAnnotationPresenter()
@@ -128,6 +137,12 @@ final class CaptureManager: ObservableObject {
         clickHighlightSize = presentationStore.clickHighlightSize
         keystrokeHighlightSize = presentationStore.keystrokeHighlightSize
         keystrokeAppearance = presentationStore.keystrokeAppearance
+        stageFrameStyle = presentationStore.stageFrameStyle
+        stageFramePadding = presentationStore.stageFramePadding
+        stageFrameCornerRadius = presentationStore.stageFrameCornerRadius
+        stageFrameBlur = presentationStore.stageFrameBlur
+        stageFrameShadow = presentationStore.stageFrameShadow
+        autoZoomSize = presentationStore.autoZoomSize
         annotations = AnnotationSession(
             lifetimeSeconds: annotationLifetimeSeconds,
             inkColor: annotationColor

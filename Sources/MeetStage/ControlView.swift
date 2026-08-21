@@ -148,6 +148,16 @@ struct ControlView: View {
             controlBarDivider
 
             ControlBarButton(
+                systemImage: "wand.and.sparkles",
+                title: "Auto polish",
+                help: autoPresentationControlHelp,
+                isOn: manager.autoPresentationEnabled,
+                action: manager.toggleAutoPresentation
+            )
+
+            controlBarDivider
+
+            ControlBarButton(
                 systemImage: "gearshape",
                 title: "Settings",
                 help: "Open Settings",
@@ -236,6 +246,12 @@ struct ControlView: View {
         return manager.isLive
             ? "Dim and softly blur everything outside the pointer spotlight"
             : "Enable the spotlight for the next shared window"
+    }
+
+    private var autoPresentationControlHelp: String {
+        manager.autoPresentationEnabled
+            ? "Auto-zoom clicks, mirror the system pointer at 3×, and apply the selected frame"
+            : "Polish the Demo Stage with activity zooms, a 3× system pointer, and a styled frame"
     }
 
     private var sourceScroller: some View {
@@ -389,17 +405,9 @@ struct ControlView: View {
 }
 
 struct BottomDragHandle: View {
-    @ViewBuilder
     var body: some View {
-        if #available(macOS 15.0, *) {
-            handle
-                .gesture(WindowDragGesture())
-        } else {
-            ZStack {
-                WindowDragSurface()
-                handle.allowsHitTesting(false)
-            }
-        }
+        handle
+            .gesture(WindowDragGesture())
     }
 
     private var handle: some View {

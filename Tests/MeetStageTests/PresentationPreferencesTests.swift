@@ -19,6 +19,12 @@ struct PresentationPreferencesTests {
         #expect(manager.clickHighlightSize == .medium)
         #expect(manager.keystrokeHighlightSize == .medium)
         #expect(manager.keystrokeAppearance == .dark)
+        #expect(manager.stageFrameStyle == .midnight)
+        #expect(manager.stageFramePadding == StageFrameAppearance.defaultPadding)
+        #expect(manager.stageFrameCornerRadius == StageFrameAppearance.defaultCornerRadius)
+        #expect(manager.stageFrameBlur == StageFrameAppearance.defaultBlur)
+        #expect(manager.stageFrameShadow == StageFrameAppearance.defaultShadow)
+        #expect(manager.autoZoomSize == .medium)
     }
 
     @Test("Persists every presentation appearance setting")
@@ -35,6 +41,12 @@ struct PresentationPreferencesTests {
         manager.setClickHighlightSize(.large)
         manager.setKeystrokeHighlightSize(.small)
         manager.setKeystrokeAppearance(.light)
+        manager.setStageFrameStyle(.sunset)
+        manager.setStageFramePadding(0.11)
+        manager.setStageFrameCornerRadius(28)
+        manager.setStageFrameBlur(0.7)
+        manager.setStageFrameShadow(0.4)
+        manager.setAutoZoomSize(.large)
 
         let restoredManager = CaptureManager(defaults: fixture.defaults)
         #expect(restoredManager.annotationColor == .purple)
@@ -47,6 +59,12 @@ struct PresentationPreferencesTests {
         #expect(restoredManager.clickHighlightSize == .large)
         #expect(restoredManager.keystrokeHighlightSize == .small)
         #expect(restoredManager.keystrokeAppearance == .light)
+        #expect(restoredManager.stageFrameStyle == .sunset)
+        #expect(restoredManager.stageFramePadding == 0.11)
+        #expect(restoredManager.stageFrameCornerRadius == 28)
+        #expect(restoredManager.stageFrameBlur == 0.7)
+        #expect(restoredManager.stageFrameShadow == 0.4)
+        #expect(restoredManager.autoZoomSize == .large)
     }
 
     @Test("Ignores unsupported persisted appearance values")
@@ -70,6 +88,10 @@ struct PresentationPreferencesTests {
             "transparent",
             forKey: PresentationPreferencesStore.keystrokeAppearanceKey
         )
+        fixture.defaults.set(
+            "rainbow",
+            forKey: PresentationPreferencesStore.stageFrameStyleKey
+        )
 
         let manager = CaptureManager(defaults: fixture.defaults)
 
@@ -77,6 +99,7 @@ struct PresentationPreferencesTests {
         #expect(manager.spotlightSize == .medium)
         #expect(manager.clickHighlightSize == .medium)
         #expect(manager.keystrokeAppearance == .dark)
+        #expect(manager.stageFrameStyle == .midnight)
     }
 
     @Test("Clamps spotlight intensity at the persistence boundary")

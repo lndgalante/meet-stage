@@ -220,14 +220,20 @@ final class StageVideoView: NSView, @unchecked Sendable {
         activeFrameGeometry = nil
         activeDisplayLayer.removeAllAnimations()
         activeDisplayLayer.opacity = 1
-        activeDisplayLayer.flushAndRemoveImage()
+        activeDisplayLayer.sampleBufferRenderer.flush(
+            removingDisplayedImage: true,
+            completionHandler: nil
+        )
     }
 
     func clearForDismantle() {
         removeRetiringLayer()
         activeFrameGeometry = nil
         activeDisplayLayer.removeAllAnimations()
-        activeDisplayLayer.flushAndRemoveImage()
+        activeDisplayLayer.sampleBufferRenderer.flush(
+            removingDisplayedImage: true,
+            completionHandler: nil
+        )
     }
 
     private func transition(
@@ -293,16 +299,20 @@ final class StageVideoView: NSView, @unchecked Sendable {
     }
 
     private func enqueue(_ sampleBuffer: CMSampleBuffer, on displayLayer: AVSampleBufferDisplayLayer) {
-        if displayLayer.status == .failed {
-            displayLayer.flush()
+        let renderer = displayLayer.sampleBufferRenderer
+        if renderer.status == .failed {
+            renderer.flush()
         }
-        displayLayer.enqueue(sampleBuffer)
+        renderer.enqueue(sampleBuffer)
     }
 
     private func removeRetiringLayer() {
         guard let retiringDisplayLayer else { return }
         retiringDisplayLayer.removeAllAnimations()
-        retiringDisplayLayer.flushAndRemoveImage()
+        retiringDisplayLayer.sampleBufferRenderer.flush(
+            removingDisplayedImage: true,
+            completionHandler: nil
+        )
         retiringDisplayLayer.removeFromSuperlayer()
         self.retiringDisplayLayer = nil
         retiringFrameGeometry = nil

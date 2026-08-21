@@ -156,6 +156,7 @@ extension CaptureManager {
     // MARK: - Presentation commands and preferences
 
     func toggleSpotlight() {
+        cancelAutoZoomForManualPresentation()
         spotlightEnabled.toggle()
         if spotlightEnabled {
             startSpotlightPointerMonitor()
@@ -173,15 +174,14 @@ extension CaptureManager {
     func toggleMouseClickHighlighting() {
         highlightsMouseClicks.toggle()
         presentationStore.highlightsMouseClicks = highlightsMouseClicks
-        if highlightsMouseClicks {
-            startMouseClickMonitor()
-        } else {
-            mouseClickMonitor?.stop()
+        updateMouseClickMonitoring()
+        if !highlightsMouseClicks {
             clearClickPresentations()
         }
     }
 
     func toggleAnnotations() {
+        cancelAutoZoomForManualPresentation()
         annotationsEnabled.toggle()
         if annotationsEnabled {
             focusSelectedSourceIfPossible()

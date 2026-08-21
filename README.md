@@ -56,7 +56,6 @@ The tabbed Settings popover also lets you choose the annotation color,
 click-ripple color and size, and the size and light or dark appearance of
 keystroke badges. Press
 Escape, choose Done, or click the pencil again to leave annotation mode. Click
-highlighting uses ScreenCaptureKit on macOS 15 and later.
 Keystroke highlighting asks for Accessibility access the first time you enable
 it so BetterMeets can observe keys pressed in the app you are presenting. All
 three presentation controls can be enabled before sharing or while sharing is
@@ -64,11 +63,27 @@ paused; annotations attach automatically when a live source becomes available.
 Draw and click highlighting can remain enabled together, with click ripples
 appearing above the temporary ink.
 
+Turn on **Auto Polish** (the wand control) to produce a presentation-ready Demo
+Stage without changing how you use the source app. A click starts an immediate,
+temporary zoom around that activity. While zoomed, the camera stays still until
+the pointer leaves a generous safe zone, then moves only enough to keep the
+pointer visible. BetterMeets hides ScreenCaptureKit's embedded cursor and
+mirrors the actual macOS system cursor—arrow, I-beam, pointing hand, resize
+cursor, or another active shape—at exactly 3× in the Demo Stage. It preserves
+the native hotspot, moves smoothly, and never controls the real pointer.
+
+Auto Polish can also place the source in a styled frame. Open Settings → Stage
+to choose a built-in backdrop and adjust padding, corners, background blur,
+shadow, and zoom strength. The framing is applied only to the Demo
+Stage, so the source window remains untouched. Everything runs locally from
+mouse activity; no microphone, transcription model, network request, or AI
+subscription is required.
+
 ## Requirements
 
-- macOS 14 or newer
+- macOS 26 or newer
 - Apple Silicon Mac
-- Swift 6 and the macOS SDK from Xcode or the Command Line Tools
+- Swift 6.2 and the macOS 26 SDK from Xcode 26 or newer
 
 Install the Command Line Tools if needed:
 
@@ -140,6 +155,8 @@ identity.
 5. In your meeting, share **BetterMeets — Demo Stage**.
 6. Switch sources from BetterMeets or your pinned Option shortcuts.
 7. Repeat the current source click or Option shortcut to pause or resume it.
+8. Optional: turn on Auto Polish and choose its framing and motion in Settings
+   → Stage.
 
 The BetterMeets controller is excluded from the source list. Your meeting keeps
 capturing the same Demo Stage window while BetterMeets changes what appears
@@ -160,6 +177,8 @@ inside it.
 | `Sources/MeetStage/ShortcutPreferencesStore.swift` | Backward-compatible shortcut persistence |
 | `Sources/MeetStage/SampleBufferRenderer.swift` | High-resolution frame rendering |
 | `Sources/MeetStage/StageWindowSizing.swift` | Demo Stage geometry and aspect-ratio handling |
+| `Sources/MeetStage/AutoPresentation.swift` and `CaptureManager+AutoPresentation.swift` | Click-driven zoom camera, read-only pointer tracking, and 3× native system-cursor mirroring |
+| `Sources/MeetStage/StageFramePresentation.swift` | Styled-frame layout, built-in backdrops, blur, corners, and shadows |
 | `Sources/MeetStage/WindowConfiguration.swift` | AppKit window behavior used by SwiftUI scenes |
 | `Sources/MeetStage/GlobalHotKeyManager.swift` | Option+1 through Option+9 registration |
 | `Sources/MeetStage/Annotations.swift`, `AnnotationShapeRecognizer.swift`, and `AnnotationOverlay.swift` | Temporary ink, closed-shape recognition and rendering, plus AppKit source-overlay presentation |
@@ -232,8 +251,9 @@ macOS runner.
 
 The automated suite covers window eligibility, deterministic shortcut
 assignment, persisted preference compatibility, corrupt preference recovery,
-presentation and annotation policies, stage sizing, and AppKit stage
-interaction. For ScreenCaptureKit, global-hotkey, or controller changes, also
+auto-zoom and styled-frame geometry, presentation and annotation policies,
+stage sizing, and AppKit stage interaction. For ScreenCaptureKit, global-hotkey,
+or controller changes, also
 test the complete flow manually in a meeting because those APIs require real
 windows and macOS privacy consent.
 
@@ -275,6 +295,10 @@ notarization are intentionally external to the repository.
 ## Known limitations
 
 - Video only; source audio is intentionally not captured.
+- Auto Polish currently starts zooms from clicks; it does not infer semantic
+  importance from page content or speech.
+- Styled frames use built-in gradients and colors; custom image wallpapers are
+  not yet supported.
 - macOS may block protected video surfaces, causing them to appear black.
 - Keep the Demo Stage open while it is being shared.
 - If an app restores two windows with the same title, its pinned shortcut stays

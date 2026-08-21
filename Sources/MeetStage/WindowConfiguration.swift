@@ -178,14 +178,6 @@ struct WindowConfigurator: NSViewRepresentable {
     }
 }
 
-struct WindowDragSurface: NSViewRepresentable {
-    func makeNSView(context: Context) -> WindowDragView {
-        WindowDragView()
-    }
-
-    func updateNSView(_ nsView: WindowDragView, context: Context) {}
-}
-
 final class WindowDragView: NSView {
     private var dragStartPointerLocation: NSPoint?
     private var dragStartWindowOrigin: NSPoint?

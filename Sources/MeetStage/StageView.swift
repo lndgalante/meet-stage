@@ -6,45 +6,11 @@ struct StageView: View {
 
     var body: some View {
         ZStack {
-            StageVideoRepresentable(
-                renderer: manager.renderer,
+            LiveStageSurface(
+                manager: manager,
+                autoPresentation: manager.autoPresentation,
                 reducesMotion: reduceMotion
             )
-            .ignoresSafeArea()
-
-            if manager.isSpotlightVisible {
-                SpotlightSurface(session: manager.spotlight)
-                    .ignoresSafeArea()
-                    .transition(.opacity)
-            }
-
-            if manager.isLive {
-                AnnotationInkLayer(
-                    session: manager.annotations,
-                    acceptsInput: false
-                )
-                .ignoresSafeArea()
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
-            }
-
-            if manager.isLive, !manager.clickPresentations.isEmpty {
-                GeometryReader { geometry in
-                    ForEach(manager.clickPresentations) { presentation in
-                        ClickRippleGlyph(
-                            presentation: presentation,
-                            reducesMotion: reduceMotion
-                        )
-                        .position(
-                            x: presentation.location.x * geometry.size.width,
-                            y: presentation.location.y * geometry.size.height
-                        )
-                    }
-                }
-                .ignoresSafeArea()
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
-            }
 
             if !manager.isLive {
                 ZStack {
@@ -150,6 +116,139 @@ struct StageView: View {
         default:
             return "Nothing is on stage"
         }
+    }
+}
+
+private struct LiveStageSurface: View {
+    @ObservedObject var manager: CaptureManager
+    @ObservedObject var autoPresentation: AutoPresentationSession
+    let reducesMotion: Bool
+
+    var body: some View {
+        GeometryReader { stageGeometry in
+            let frameIsStyled =
+                manager.autoPresentationEnabled
+                && manager.stageFrameStyle != .none
+            let layout = StageFrameLayout.resolve(
+                viewportSize: stageGeometry.size,
+                sourceAspectRatio: manager.stageAspectRatio,
+                paddingFraction: manager.stageFramePadding,
+                cornerRadius: manager.stageFrameCornerRadius,
+                isEnabled: frameIsStyled
+            )
+
+            ZStack {
+                StageFrameBackdrop(
+                    style: frameIsStyled ? manager.stageFrameStyle : .none,
+                    blur: frameIsStyled ? manager.stageFrameBlur : 0
+                )
+
+                GeometryReader { contentGeometry in
+                    let transform = AutoZoomTransform.resolve(
+                        focus: manager.autoPresentationEnabled
+                            ? autoPresentation.zoomFocus
+                            : nil,
+                        requestedScale: manager.autoZoomSize.autoZoomScale,
+                        viewportSize: contentGeometry.size,
+                        reducesMotion: reducesMotion
+                    )
+
+                    ZStack {
+                        StageVideoRepresentable(
+                            renderer: manager.renderer,
+                            reducesMotion: reducesMotion
+                        )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                        if manager.isSpotlightVisible {
+                            SpotlightSurface(session: manager.spotlight)
+                                .transition(.opacity)
+                        }
+
+                        if manager.isLive {
+                            AnnotationInkLayer(
+                                session: manager.annotations,
+                                acceptsInput: false
+                            )
+                            .allowsHitTesting(false)
+                            .accessibilityHidden(true)
+                        }
+
+                        ForEach(manager.clickPresentations) { presentation in
+                            ClickRippleGlyph(
+                                presentation: presentation,
+                                reducesMotion: reducesMotion
+                            )
+                            .position(
+                                x: presentation.location.x * contentGeometry.size.width,
+                                y: presentation.location.y * contentGeometry.size.height
+                            )
+                        }
+
+                        if manager.isLive, manager.autoPresentationEnabled {
+                            EnlargedSystemCursorLayer(
+                                session: autoPresentation,
+                                reducesMotion: reducesMotion
+                            )
+                        }
+                    }
+                    .frame(
+                        width: contentGeometry.size.width,
+                        height: contentGeometry.size.height
+                    )
+                    .scaleEffect(transform.scale, anchor: .topLeading)
+                    .offset(transform.offset)
+                    .animation(
+                        reducesMotion
+                            ? nil
+                            : .spring(response: 0.34, dampingFraction: 1),
+                        value: transform
+                    )
+                }
+                .frame(
+                    width: layout.contentFrame.width,
+                    height: layout.contentFrame.height
+                )
+                .clipped()
+                .clipShape(
+                    RoundedRectangle(
+                        cornerRadius: layout.cornerRadius,
+                        style: .continuous
+                    )
+                )
+                .overlay {
+                    if frameIsStyled {
+                        RoundedRectangle(
+                            cornerRadius: layout.cornerRadius,
+                            style: .continuous
+                        )
+                        .strokeBorder(.white.opacity(0.16), lineWidth: 1)
+                    }
+                }
+                .shadow(
+                    color: .black.opacity(
+                        frameIsStyled ? 0.48 * manager.stageFrameShadow : 0
+                    ),
+                    radius: frameIsStyled ? 28 * manager.stageFrameShadow : 0,
+                    y: frameIsStyled ? 12 * manager.stageFrameShadow : 0
+                )
+                .shadow(
+                    color: .black.opacity(
+                        frameIsStyled ? 0.22 * manager.stageFrameShadow : 0
+                    ),
+                    radius: frameIsStyled ? 5 * manager.stageFrameShadow : 0,
+                    y: frameIsStyled ? 2 * manager.stageFrameShadow : 0
+                )
+                .position(
+                    x: layout.contentFrame.midX,
+                    y: layout.contentFrame.midY
+                )
+            }
+        }
+        .clipped()
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }
 

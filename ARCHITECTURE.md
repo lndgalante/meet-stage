@@ -55,6 +55,19 @@ to follow while keeping the parts that do not require macOS services testable.
 - `PresentationPreferences` defines the typed appearance choices shared by
   settings, source overlays, and the Demo Stage. `CaptureManager` persists the
   selected values and snapshots them into each click or keystroke presentation.
+- `AutoPresentationSession` owns transient pointer and camera state.
+  `AutoZoomCameraPolicy` starts from explicit clicks and uses a normalized safe
+  zone so routine pointer movement does not make the camera chase the presenter.
+  `CaptureManager+AutoPresentation` owns the global read-only mouse monitors,
+  source-coordinate mapping, capture-cursor visibility, and preference updates.
+  It must never synthesize source pointer, click, or keyboard input. Manual
+  spotlight and annotation tools cancel any automatic zoom.
+- `StageFrameLayout` preserves the source aspect ratio inside configurable
+  padding. `StageFrameBackdrop` and `StageView` own the visual composition:
+  backdrop, blur, rounded source surface, layered shadow, auto-zoom transform,
+  and a hotspot-correct 3× mirror of the active macOS system cursor. These
+  effects exist only in the Demo Stage and never modify the selected source
+  window.
 - `AppLog` owns unified-log categories. Recoverable background failures are
   logged with privacy annotations; user-actionable capture failures also move
   `CaptureState` to `.failed` so the Demo Stage explains what happened.
@@ -97,10 +110,11 @@ same commit. Do not spread shortcut branches through `CaptureManager` or views.
 ## Verification strategy
 
 `swift test` exercises source eligibility, shortcut reconciliation, preference
-compatibility, presentation and annotation policies, geometry calculations,
-and AppKit window interaction. ScreenCaptureKit streams, Carbon hotkeys,
-permission prompts, and end-to-end window-server behavior require the packaged
-app and are verified manually with the checklist in `README.md`.
+compatibility, presentation and annotation policies, auto-zoom and frame
+geometry, and AppKit window interaction. ScreenCaptureKit streams, mouse event
+monitoring, Carbon hotkeys, permission prompts, and end-to-end window-server
+behavior require the packaged app and are
+verified manually with the checklist in `README.md`.
 
 See [TESTING.md](TESTING.md) for the test-layer map, contributor conventions,
 and the manual verification matrix for platform-only behavior.

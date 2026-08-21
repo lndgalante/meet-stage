@@ -10,11 +10,11 @@ packaged app.
 
 | Layer | Examples | Expected coverage |
 | --- | --- | --- |
-| Pure policy and geometry | shortcut reconciliation, capture selection, window eligibility, normalized coordinates, stage sizing | Every branch and boundary value |
+| Pure policy and geometry | shortcut reconciliation, capture selection, window eligibility, auto-zoom camera and styled-frame transforms, normalized coordinates, stage sizing | Every branch and boundary value |
 | Persistence | presentation settings, shortcut pins and exclusions, corrupt or legacy data | Defaults, round trips, normalization, and invalid input |
 | Main-actor models | annotation fading, spotlight state, armed presentation effects | State changes and cancellation-sensitive behavior |
 | AppKit integration | overlay window levels, event-monitor ownership, drag surfaces, workspace notifications | Configuration and callback translation that can run without privacy consent |
-| Live macOS integration | ScreenCaptureKit, Accessibility permission, Carbon hotkeys, meeting-app window capture | Manual packaged-app verification |
+| Live macOS integration | ScreenCaptureKit, global mouse monitoring, Accessibility permission, Carbon hotkeys, meeting-app window capture | Manual packaged-app verification |
 
 ## Required local checks
 
@@ -67,6 +67,18 @@ window configuration, or permissions, build the packaged debug app with
    only for the focused selected source and clean up after switching or stopping.
 7. Accessibility and Reduce Motion settings produce the documented fallback
    behavior.
+8. With Auto Polish enabled, clicking the focused source starts a zoom
+   immediately around the click. Small pointer movements leave the camera still;
+   moving outside the safe zone recenters it smoothly. After roughly two seconds
+   without another click, the stage returns to 1×. The Demo Stage mirrors the
+   currently visible macOS cursor at exactly 3× with the same hotspot, while the
+   real source pointer is never moved or blocked.
+9. In Settings → Stage, verify each backdrop and the padding, corner, blur,
+   shadow and zoom-strength controls update the Demo Stage. The
+   source stays aspect-correct and never reveals empty video while zoomed.
+10. Turn on Reduce Motion and confirm zoom is restrained, cursor travel does not
+    animate, and all controls remain usable. Spotlight and Draw cancel the
+    current auto zoom and continue to take input precedence.
 
 Record the macOS version and meeting app when a manual result depends on
 window-server or capture-framework behavior.
