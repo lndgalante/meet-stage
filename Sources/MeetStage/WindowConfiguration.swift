@@ -189,11 +189,17 @@ final class WindowDragView: NSView {
         addCursorRect(bounds, cursor: .openHand)
     }
 
+    override func cursorUpdate(with event: NSEvent) {
+        NSCursor.openHand.set()
+    }
+
     override func mouseDown(with event: NSEvent) {
         guard let window else {
             super.mouseDown(with: event)
             return
         }
+        NSCursor.closedHand.push()
+        defer { NSCursor.pop() }
         window.performDrag(with: event)
     }
 }
