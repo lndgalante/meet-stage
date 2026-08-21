@@ -287,8 +287,8 @@ final class StageVideoView: NSView, @unchecked Sendable {
         }
         newLayer.opacity = 1
         oldLayer.opacity = 0
-        newLayer.add(newOpacity, forKey: "betterDemosSourceIn")
-        oldLayer.add(oldOpacity, forKey: "betterDemosSourceOut")
+        newLayer.add(newOpacity, forKey: "betterMeetsSourceIn")
+        oldLayer.add(oldOpacity, forKey: "betterMeetsSourceOut")
         CATransaction.commit()
     }
 

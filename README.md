@@ -1,18 +1,18 @@
-# BetterDemos
+# BetterMeets
 
 **Stay in flow. Look polished.**
 
-BetterDemos is a lightweight macOS app for smoother live software demos. Share
+BetterMeets is a lightweight macOS app for smoother live software demos. Share
 one stable Demo Stage in your meeting, then switch between app windows without
 reopening the share picker or exposing your desktop.
 
 ## How it works
 
-BetterDemos has two windows:
+BetterMeets has two windows:
 
-- **BetterDemos** is a compact floating controller with four visible previews
+- **BetterMeets** is a compact floating controller with four visible previews
   in a horizontally scrolling window strip, plus global shortcuts.
-- **BetterDemos — Demo Stage** is the clean, high-resolution output window. This
+- **BetterMeets — Demo Stage** is the clean, high-resolution output window. This
   is the only window you share in Google Meet or another meeting app.
 
 The Demo Stage follows the selected window's aspect ratio and capture dimensions
@@ -25,11 +25,11 @@ Idle, paused, permission, and error screens all use the same default stage size.
 The stage keeps standard macOS window semantics beneath its hidden chrome, so it
 can be dragged from its surface and selected by window-capture utilities.
 
-BetterDemos automatically assigns **Option+1** through **Option+9** to the first
+BetterMeets automatically assigns **Option+1** through **Option+9** to the first
 nine available windows. Right-click a source to move it to a specific shortcut
 or unpin it. Manual pins remain stable across refreshes and app launches, and an
 explicitly unpinned window stays unassigned until you pin it again. If the exact
-window for a manual pin is unavailable or ambiguous, BetterDemos keeps the
+window for a manual pin is unavailable or ambiguous, BetterMeets keeps the
 shortcut reserved instead of silently pointing it somewhere else.
 
 Swipe or scroll horizontally over the window strip to browse every available
@@ -37,7 +37,7 @@ source. Newly opened windows appear automatically. Minimized or hidden windows
 temporarily leave the strip and return when restored, while their pinned slots
 stay reserved. Closed windows are removed automatically. The four default
 shortcut slots remain visible even when none currently resolve to a window.
-When you switch with a global shortcut, BetterDemos brings that source into view
+When you switch with a global shortcut, BetterMeets brings that source into view
 automatically. Click the live source, or press its Option shortcut again, to
 pause sharing. Repeat the same action to resume it.
 
@@ -45,7 +45,7 @@ Use the attached control bar below the strip to draw temporary annotations,
 highlight mouse clicks, or show keystrokes on the Demo Stage. Annotation mode
 places its drawing surface over the selected app window and mirrors that ink on
 the shared Demo Stage. Drawing is limited to that selected window: its input
-overlay suspends whenever another app, including BetterDemos, becomes active and
+overlay suspends whenever another app, including BetterMeets, becomes active and
 resumes when the selected source app returns. This keeps the Demo Stage draggable
 and lets it move normally in front of or behind other windows. Enabling Draw with
 a live source returns focus to that source app so drawing can begin immediately.
@@ -55,7 +55,7 @@ and size, and the size and light or dark appearance of keystroke badges. Press
 Escape, choose Done, or click the pencil again to leave annotation mode. Click
 highlighting uses ScreenCaptureKit on macOS 15 and later.
 Keystroke highlighting asks for Accessibility access the first time you enable
-it so BetterDemos can observe keys pressed in the app you are presenting. All
+it so BetterMeets can observe keys pressed in the app you are presenting. All
 three presentation controls can be enabled before sharing or while sharing is
 paused; annotations attach automatically when a live source becomes available.
 Draw and click highlighting can remain enabled together, with click ripples
@@ -79,7 +79,7 @@ Confirm that Swift is available:
 swift --version
 ```
 
-BetterDemos has no third-party dependencies or package-install step.
+BetterMeets has no third-party dependencies or package-install step.
 
 ## Local development
 
@@ -92,9 +92,9 @@ The native equivalent of `pnpm dev` is:
 This command:
 
 1. Builds the Swift package in debug mode.
-2. Creates `dist/BetterDemos.app` with its Info.plist and icon.
+2. Creates `dist/BetterMeets.app` with its Info.plist and icon.
 3. Signs the app with its stable local identity.
-4. Stops the previous BetterDemos process.
+4. Stops the previous BetterMeets process.
 5. Launches the new build.
 
 There is no hot reload. After changing Swift code, run `./dev-app.sh` again. The
@@ -119,7 +119,7 @@ identity.
 
 ### Command map for JavaScript developers
 
-| JavaScript workflow | BetterDemos |
+| JavaScript workflow | BetterMeets |
 | --- | --- |
 | `pnpm install` | No equivalent; there are no external dependencies |
 | `pnpm dev` | `./dev-app.sh` |
@@ -130,16 +130,16 @@ identity.
 ## First run
 
 1. Run `./dev-app.sh`.
-2. Allow Screen & System Audio Recording when macOS asks. BetterDemos captures
+2. Allow Screen & System Audio Recording when macOS asks. BetterMeets captures
    video only.
 3. If macOS asks for a restart, select **Restart** in the controller.
 4. Select a source window.
-5. In your meeting, share **BetterDemos — Demo Stage**.
-6. Switch sources from BetterDemos or your pinned Option shortcuts.
+5. In your meeting, share **BetterMeets — Demo Stage**.
+6. Switch sources from BetterMeets or your pinned Option shortcuts.
 7. Repeat the current source click or Option shortcut to pause or resume it.
 
-The BetterDemos controller is excluded from the source list. Your meeting keeps
-capturing the same Demo Stage window while BetterDemos changes what appears
+The BetterMeets controller is excluded from the source list. Your meeting keeps
+capturing the same Demo Stage window while BetterMeets changes what appears
 inside it.
 
 ## Project structure
@@ -159,12 +159,12 @@ inside it.
 | `Sources/MeetStage/PresentationPreferences.swift` | Shared color, size, and keystroke appearance options |
 | `Tests/MeetStageTests/` | Shortcut, persistence, and stage-sizing tests |
 | `Resources/Info.plist` | Bundle name, version, permissions, and icon metadata |
-| `Brand/` | BetterDemos icon masters and brand guidance |
+| `Brand/` | BetterMeets icon masters and brand guidance |
 | `dev-app.sh` | Debug build, package, sign, and relaunch workflow |
 | `build-app.sh` | Release build and packaging workflow |
 
 The Swift package and executable retain the internal name `MeetStage`. The app
-bundle and every user-facing surface use the BetterDemos product name.
+bundle and every user-facing surface use the BetterMeets product name.
 See [ARCHITECTURE.md](ARCHITECTURE.md) for ownership boundaries, lifecycle
 invariants, and guidance for extending the app.
 
@@ -178,10 +178,10 @@ Screen Recording client.
 If capture permission becomes stuck:
 
 1. Open **System Settings → Privacy & Security → Screen & System Audio Recording**.
-2. Confirm BetterDemos is enabled.
-3. Quit BetterDemos and run `./dev-app.sh` again.
+2. Confirm BetterMeets is enabled.
+3. Quit BetterMeets and run `./dev-app.sh` again.
 
-As a last resort, reset only BetterDemos' Screen Recording decision, then launch
+As a last resort, reset only BetterMeets' Screen Recording decision, then launch
 the app and grant access again:
 
 ```bash
@@ -197,11 +197,11 @@ local development and future rebrands do not discard user preferences.
 Run the packaged debug executable directly when you need Terminal output:
 
 ```bash
-"dist/BetterDemos.app/Contents/MacOS/MeetStage"
+"dist/BetterMeets.app/Contents/MacOS/MeetStage"
 ```
 
-Quit any existing BetterDemos instance first. You can also inspect logs in
-Console.app by filtering for `BetterDemos` or `MeetStage`.
+Quit any existing BetterMeets instance first. You can also inspect logs in
+Console.app by filtering for `BetterMeets` or `MeetStage`.
 
 Run the automated suite and packaging checks before handing off a change:
 
@@ -210,7 +210,7 @@ swift test
 swift format lint --strict --recursive Sources Tests Package.swift
 ./build-app.sh
 plutil -lint Resources/Info.plist
-codesign --verify --deep --strict "dist/BetterDemos.app"
+codesign --verify --deep --strict "dist/BetterMeets.app"
 git diff --check
 ```
 
@@ -228,7 +228,7 @@ Create the optimized local build with:
 ./build-app.sh
 ```
 
-The result is `dist/BetterDemos.app`. It is ad-hoc signed for local use and is
+The result is `dist/BetterMeets.app`. It is ad-hoc signed for local use and is
 not notarized for public distribution.
 
 ## Known limitations

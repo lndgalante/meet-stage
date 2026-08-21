@@ -1,6 +1,6 @@
 import CoreGraphics
 
-/// The global keyboard-shortcut slots supported by BetterDemos.
+/// The global keyboard-shortcut slots supported by BetterMeets.
 enum ShortcutSlot {
     static let all = 1...9
     static let defaultVisible = 1...4

@@ -716,7 +716,7 @@ final class CaptureManager: ObservableObject {
         process.arguments = [
             "-c",
             "sleep 1; /usr/bin/open -n \"$1\"",
-            "betterdemos-restart",
+            "bettermeets-restart",
             Bundle.main.bundleURL.path
         ]
 
@@ -724,7 +724,7 @@ final class CaptureManager: ObservableObject {
             try process.run()
             NSApp.terminate(nil)
         } catch {
-            let message = "Could not restart BetterDemos: \(error.localizedDescription)"
+            let message = "Could not restart BetterMeets: \(error.localizedDescription)"
             errorMessage = message
             state = .failed(message)
         }
@@ -947,7 +947,7 @@ final class CaptureManager: ObservableObject {
         configuration.capturesAudio = false
         configuration.ignoreShadowsSingleWindow = true
         configuration.ignoreGlobalClipSingleWindow = true
-        configuration.streamName = "BetterDemos — Demo Stage"
+        configuration.streamName = "BetterMeets — Demo Stage"
         return configuration
     }
 

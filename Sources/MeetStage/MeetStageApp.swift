@@ -6,7 +6,7 @@ struct MeetStageApp: App {
     @StateObject private var captureManager = CaptureManager()
 
     init() {
-        guard let iconURL = Bundle.main.url(forResource: "BetterDemos", withExtension: "icns"),
+        guard let iconURL = Bundle.main.url(forResource: "BetterMeets", withExtension: "icns"),
             let icon = NSImage(contentsOf: iconURL)
         else { return }
         NSApplication.shared.applicationIconImage = icon
@@ -17,14 +17,14 @@ struct MeetStageApp: App {
     }
 
     var body: some Scene {
-        Window("BetterDemos", id: "control") {
+        Window("BetterMeets", id: "control") {
             ControlView(manager: captureManager)
                 .frame(width: ControlWindowSizing.size.width, height: ControlWindowSizing.size.height)
         }
         .defaultSize(width: ControlWindowSizing.size.width, height: ControlWindowSizing.size.height)
         .windowResizability(.contentSize)
 
-        Window("BetterDemos — Demo Stage", id: "stage") {
+        Window("BetterMeets — Demo Stage", id: "stage") {
             StageView(manager: captureManager)
                 .frame(minWidth: 480, minHeight: 270)
         }

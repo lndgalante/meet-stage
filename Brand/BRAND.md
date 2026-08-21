@@ -1,4 +1,4 @@
-# BetterDemos
+# BetterMeets
 
 ## Positioning
 
@@ -6,19 +6,19 @@
 
 Functional line: **Share once. Switch freely.**
 
-BetterDemos is a lightweight macOS app that removes the awkward parts of live
+BetterMeets is a lightweight macOS app that removes the awkward parts of live
 software demos. It gives presenters one clean stage for every app window, so
 the audience sees intentional transitions while the presenter stays focused on
 the story.
 
 ## Product description
 
-BetterDemos removes the awkward parts of live software demos. Share the Demo
+BetterMeets removes the awkward parts of live software demos. Share the Demo
 Stage once, then switch between app windows from a compact controller or global
 shortcuts—without reopening your meeting's share picker or exposing your
 desktop. Each window is confirmed live before it appears, and the stage adapts
 to its dimensions for a clean, sharp result. You stay focused on the story;
-BetterDemos handles the transitions.
+BetterMeets handles the transitions.
 
 ### Short description
 
@@ -34,7 +34,7 @@ audience focused on the story.
 
 ## Audience
 
-BetterDemos is for founders, product engineers, sales engineers, and anyone who
+BetterMeets is for founders, product engineers, sales engineers, and anyone who
 demos software live.
 
 ## Message pillars
@@ -68,14 +68,14 @@ settings. Reserve Demo cyan for active states inside the product.
 
 ## Naming note
 
-**BetterDemos** expresses the outcome rather than the mechanism: smoother flow
+**BetterMeets** expresses the outcome rather than the mechanism: smoother flow
 for the presenter and a more polished experience for the audience. The phrase
 is also common category language, so complete trademark, company-name, and
 domain clearance before a public commercial launch.
 
 ## Assets
 
-- `BetterDemos-AppIcon-1024.png` — selected 1024px icon master
-- `BetterDemos-sizes/` — 16px through 1024px macOS icon-size exports
-- `../Resources/BetterDemos.icns` — packaged macOS application icon
+- `BetterMeets-AppIcon-1024.png` — selected 1024px icon master
+- `BetterMeets-sizes/` — 16px through 1024px macOS icon-size exports
+- `../Resources/BetterMeets.icns` — packaged macOS application icon
 - `../scripts/generate-app-icon.swift` — deterministic source for all app-icon assets

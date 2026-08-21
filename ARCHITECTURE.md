@@ -1,6 +1,6 @@
-# BetterDemos architecture
+# BetterMeets architecture
 
-BetterDemos deliberately keeps platform integration at the edges and moves
+BetterMeets deliberately keeps platform integration at the edges and moves
 deterministic policy into plain Swift values. This makes capture behavior easy
 to follow while keeping the parts that do not require macOS services testable.
 
@@ -25,7 +25,7 @@ to follow while keeping the parts that do not require macOS services testable.
   the active overlay so it can remain armed through idle, paused, switching, and
   source-focus changes. The source overlay is non-activating and only exists while
   the selected source app is frontmost, preventing drawing mode from changing
-  BetterDemos' window order or intercepting another app.
+  BetterMeets' window order or intercepting another app.
 - `PresentationPreferences` defines the typed appearance choices shared by
   settings, source overlays, and the Demo Stage. `CaptureManager` persists the
   selected values and snapshots them into each click or keystroke presentation.

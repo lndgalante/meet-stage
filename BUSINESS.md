@@ -1,11 +1,11 @@
-# BetterDemos Business Brief
+# BetterMeets Business Brief
 
 > Market and pricing hypotheses as of August 7, 2026. Validate them with paid
 > customer behavior before treating them as facts.
 
 ## Executive view
 
-BetterDemos can be a paid product, particularly for people whose credibility or
+BetterMeets can be a paid product, particularly for people whose credibility or
 revenue depends on frequent live software demos. The strongest initial market is
 not everyone who shares a screen. It is presenters who switch between several
 apps during important calls and experience the cost of a broken flow repeatedly.
@@ -31,7 +31,7 @@ demos**, not as a window switcher.
 
 Functional promise: **Share once. Switch freely.**
 
-BetterDemos gives the presenter one clean Demo Stage to share in a meeting. The
+BetterMeets gives the presenter one clean Demo Stage to share in a meeting. The
 presenter can then move between app windows from the compact controller or global
 shortcuts without reopening the share picker or exposing the desktop.
 
@@ -51,7 +51,7 @@ desktop exposure, or confusion about what is live.
 
 Google's Meet documentation reflects these constraints: feature availability
 varies by sharing mode, window selection is limited to open and non-minimized
-windows, and changing a presented tab has its own workflow. BetterDemos creates
+windows, and changing a presented tab has its own workflow. BetterMeets creates
 one persistent output window above that fragmented workflow.
 
 This problem becomes commercially meaningful when:
@@ -117,9 +117,9 @@ Live demo control software for macOS.
 ### Positioning statement
 
 For technical presenters who move across several apps during important calls,
-BetterDemos is a live demo control layer that keeps one clean stage shared while
+BetterMeets is a live demo control layer that keeps one clean stage shared while
 the presenter switches sources instantly. Unlike sharing individual windows
-directly, BetterDemos preserves the meeting share, hides the desktop, confirms
+directly, BetterMeets preserves the meeting share, hides the desktop, confirms
 what is actually live, and keeps important windows on predictable shortcuts.
 
 ### Suggested headline
@@ -145,7 +145,7 @@ only after each service has been tested in the release QA matrix.
 
 ## Why customers would pay
 
-BetterDemos is inexpensive relative to the value of an important demo. A sales
+BetterMeets is inexpensive relative to the value of an important demo. A sales
 engineer does not need the app to produce revenue on its own; it needs to prevent
 enough hesitation, confusion, or lost credibility to justify a modest utility
 purchase.
@@ -159,14 +159,14 @@ The value calculation is strongest when:
 
 The adjacent Mac software market demonstrates that professionals already pay
 for focused presentation and productivity tools. This is supporting evidence,
-not proof of demand for BetterDemos:
+not proof of demand for BetterMeets:
 
 - CleanShot sells a focused Mac capture utility for **$29 as a one-time
   purchase**, including one year of updates and an optional renewal.
 - Ecamm's broader live production product lists team licenses from roughly
   **$310 to $384 per seat per year** for small teams.
 
-BetterDemos is currently narrower than a production suite and should begin near
+BetterMeets is currently narrower than a production suite and should begin near
 the professional utility end of this range.
 
 ## Pricing and packaging hypothesis
@@ -182,13 +182,13 @@ the professional utility end of this range.
 The initial license should include one year of updates. The purchased version
 should continue working if the customer does not renew updates.
 
-A recurring subscription is difficult to justify while BetterDemos is a local,
+A recurring subscription is difficult to justify while BetterMeets is a local,
 single-user utility. Avoid forcing one merely because the audience is
 professional.
 
 ### Future team product
 
-A team plan becomes credible after BetterDemos adds recurring organizational
+A team plan becomes credible after BetterMeets adds recurring organizational
 value such as:
 
 - Shared demo workspaces and approved source configurations.
@@ -208,7 +208,7 @@ range.
 
 Lead with sales engineers, solutions consultants, developer advocates, and
 founders who demo technical products on macOS. A narrow message will resonate
-more strongly than presenting BetterDemos as a general screen-sharing tool.
+more strongly than presenting BetterMeets as a general screen-sharing tool.
 
 ### Acquisition channels to test
 
@@ -225,7 +225,7 @@ more strongly than presenting BetterDemos as a general screen-sharing tool.
 The product should sell itself visually in under 60 seconds:
 
 1. Show the native workflow interrupting a live demo.
-2. Share the BetterDemos Demo Stage once.
+2. Share the BetterMeets Demo Stage once.
 3. Switch among a browser, terminal, IDE, and slides using shortcuts.
 4. Show that the desktop and unrelated windows never appear.
 5. End with “Share once. Switch freely.”
@@ -248,7 +248,7 @@ Recruit 15 people who conduct at least three live software demos per week:
 
 1. Observe or reconstruct their current demo workflow.
 2. Ask about the most recent share-picker mistake or awkward transition.
-3. Install BetterDemos and get them to a successful first switch within two
+3. Install BetterMeets and get them to a successful first switch within two
    minutes.
 4. Let them use it in real demos for 14 days.
 5. Ask for **$39–49 to keep it** rather than asking a hypothetical pricing
@@ -327,7 +327,7 @@ The product will live or die on reliability. Before a broad paid launch:
 - Team compatibility policies and support.
 
 Avoid expanding into a full broadcasting studio unless customer evidence points
-there. BetterDemos' initial advantage is speed, discretion, and focus.
+there. BetterMeets' initial advantage is speed, discretion, and focus.
 
 ## Metrics
 

@@ -29,7 +29,7 @@ private let outputRoot = CommandLine.arguments.dropFirst().first.map {
 } ?? defaultProjectRoot
 
 private let brandDirectory = outputRoot.appendingPathComponent("Brand", isDirectory: true)
-private let sizeDirectory = brandDirectory.appendingPathComponent("BetterDemos-sizes", isDirectory: true)
+private let sizeDirectory = brandDirectory.appendingPathComponent("BetterMeets-sizes", isDirectory: true)
 private let resourceDirectory = outputRoot.appendingPathComponent("Resources", isDirectory: true)
 
 private func point(_ x: CGFloat, _ y: CGFloat, scale: CGFloat) -> CGPoint {
@@ -81,7 +81,7 @@ private func drawIcon(size: Int) throws -> Data {
         space: CGColorSpaceCreateDeviceRGB(),
         bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
     ) else {
-        throw NSError(domain: "BetterDemosIcon", code: 1)
+        throw NSError(domain: "BetterMeetsIcon", code: 1)
     }
 
     let scale = CGFloat(size)
@@ -172,11 +172,11 @@ private func drawIcon(size: Int) throws -> Data {
     context.fillPath()
 
     guard let image = context.makeImage() else {
-        throw NSError(domain: "BetterDemosIcon", code: 2)
+        throw NSError(domain: "BetterMeetsIcon", code: 2)
     }
     let representation = NSBitmapImageRep(cgImage: image)
     guard let data = representation.representation(using: .png, properties: [:]) else {
-        throw NSError(domain: "BetterDemosIcon", code: 3)
+        throw NSError(domain: "BetterMeetsIcon", code: 3)
     }
     return data
 }
@@ -225,12 +225,12 @@ private func rebuildIconAssets() throws {
         ("icon_512x512@2x.png", 1024),
     ]
 
-    try writeIcon(size: 1024, to: brandDirectory.appendingPathComponent("BetterDemos-AppIcon-1024.png"))
+    try writeIcon(size: 1024, to: brandDirectory.appendingPathComponent("BetterMeets-AppIcon-1024.png"))
     for export in exports {
         try writeIcon(size: export.pixels, to: sizeDirectory.appendingPathComponent(export.name))
     }
 
-    let iconURL = resourceDirectory.appendingPathComponent("BetterDemos.icns")
+    let iconURL = resourceDirectory.appendingPathComponent("BetterMeets.icns")
     let icnsChunks = [
         ("icp4", 16),
         ("icp5", 32),
@@ -244,4 +244,4 @@ private func rebuildIconAssets() throws {
 }
 
 try rebuildIconAssets()
-print("Generated BetterDemos app-icon assets in \(outputRoot.path)")
+print("Generated BetterMeets app-icon assets in \(outputRoot.path)")

@@ -3,7 +3,7 @@
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
-APP_DIR="$PROJECT_DIR/dist/BetterDemos.app"
+APP_DIR="$PROJECT_DIR/dist/BetterMeets.app"
 SHOULD_LAUNCH=true
 
 if [[ "${1:-}" == "--no-launch" ]]; then
@@ -27,7 +27,7 @@ if [[ "$SHOULD_LAUNCH" == true ]]; then
         done
 
         if /usr/bin/pgrep -x MeetStage >/dev/null; then
-            echo "BetterDemos is still running. Quit it, then run ./dev-app.sh again." >&2
+            echo "BetterMeets is still running. Quit it, then run ./dev-app.sh again." >&2
             exit 1
         fi
     fi

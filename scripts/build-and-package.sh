@@ -13,7 +13,7 @@ case "$CONFIGURATION" in
         ;;
 esac
 
-APP_DIR="$PROJECT_DIR/dist/BetterDemos.app"
+APP_DIR="$PROJECT_DIR/dist/BetterMeets.app"
 CONTENTS_DIR="$APP_DIR/Contents"
 SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
 BUNDLE_IDENTIFIER="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$PROJECT_DIR/Resources/Info.plist")"
@@ -57,7 +57,7 @@ rm -rf "$APP_DIR"
 mkdir -p "$CONTENTS_DIR/MacOS" "$CONTENTS_DIR/Resources"
 cp "$PROJECT_DIR/.build/$CONFIGURATION/MeetStage" "$CONTENTS_DIR/MacOS/MeetStage"
 cp "$PROJECT_DIR/Resources/Info.plist" "$CONTENTS_DIR/Info.plist"
-cp "$PROJECT_DIR/Resources/BetterDemos.icns" "$CONTENTS_DIR/Resources/BetterDemos.icns"
+cp "$PROJECT_DIR/Resources/BetterMeets.icns" "$CONTENTS_DIR/Resources/BetterMeets.icns"
 cp "$METAL_LIBRARY" "$CONTENTS_DIR/Resources/IdleStageChrome.metallib"
 
 # A stable designated requirement keeps Screen Recording approval valid across

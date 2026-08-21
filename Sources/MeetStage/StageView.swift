@@ -111,18 +111,22 @@ struct StageView: View {
     }
 
     private var stageGuidance: String {
+        let guidance: String
+
         switch manager.state {
         case .switching:
-            return "Waiting for the first video frame."
+            guidance = "Waiting for the first video frame"
         case .paused:
-            return "Select this window again in BetterDemos to resume."
+            guidance = "Select this window again in BetterMeets to resume"
         case .permissionRequired:
-            return "Allow screen recording in BetterDemos."
+            guidance = "Allow screen recording in BetterMeets"
         case let .failed(message):
-            return message
+            guidance = message
         default:
-            return "Choose a window in BetterDemos."
+            guidance = "Choose a window in BetterMeets"
         }
+
+        return guidance.hasSuffix(".") ? String(guidance.dropLast()) : guidance
     }
 
     private var stageAccessibilityLabel: String {

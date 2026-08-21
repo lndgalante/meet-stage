@@ -400,7 +400,7 @@ final class SourceAnnotationPresenter {
 }
 
 enum AnnotationWindowPolicy {
-    // The selected source windows are normal-level, while BetterDemos' compact
+    // The selected source windows are normal-level, while BetterMeets' compact
     // controller is floating. This slot keeps ink above the source without
     // making the controller unreachable when the two overlap.
     static let sourceOverlayLevel = NSWindow.Level(

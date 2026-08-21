@@ -126,7 +126,7 @@ final class GlobalMouseClickMonitor {
         ) { [weak self] event in
             self?.dispatch(event)
         }
-        // Drawing is hosted by BetterDemos' non-activating panel, so those
+        // Drawing is hosted by BetterMeets' non-activating panel, so those
         // clicks are local even while the selected source app stays focused.
         resources.localMonitor = NSEvent.addLocalMonitorForEvents(
             matching: eventMask

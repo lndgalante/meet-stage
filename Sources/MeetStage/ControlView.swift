@@ -339,7 +339,7 @@ struct ControlView: View {
             )
             PermissionActionButton(
                 systemImage: "arrow.clockwise",
-                title: "Restart BetterDemos",
+                title: "Restart BetterMeets",
                 action: manager.restartApplication
             )
         }
