@@ -20,7 +20,6 @@ private enum ControlMetrics {
     static let controlBarIconSize: CGFloat = 12
     static let clickHighlightGlyphOffset = CGSize(width: -0.5, height: -0.5)
     static let keystrokeHighlightGlyphOffset = CGSize(width: 0.25, height: -0.5)
-    static let demoCyan = Color(red: 54 / 255, green: 214 / 255, blue: 1)
 }
 
 struct ControlView: View {
@@ -102,7 +101,6 @@ struct ControlView: View {
                 title: "Annotate",
                 help: annotationControlHelp,
                 isOn: manager.annotationsEnabled,
-                activeTint: ControlMetrics.demoCyan,
                 action: manager.toggleAnnotations
             )
 
@@ -1059,7 +1057,6 @@ private struct ControlBarButton: View {
     var isPresented: Bool?
     var glyphOffset = CGSize.zero
     var isEnabled = true
-    var activeTint: Color?
     var showsPermissionWarning = false
     let action: () -> Void
 
@@ -1092,7 +1089,7 @@ private struct ControlBarButton: View {
                 }
                 .foregroundStyle(
                     isActive
-                        ? (activeTint ?? Color.primary)
+                        ? Color.primary
                         : (isHovering && isEnabled ? Color.primary : Color.secondary)
                 )
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -1127,7 +1124,7 @@ private struct ControlBarButton: View {
     private var buttonBackground: Color {
         guard isEnabled else { return .clear }
         if isActive {
-            return (activeTint ?? Color.primary).opacity(isHovering ? 0.16 : 0.11)
+            return Color.primary.opacity(isHovering ? 0.16 : 0.11)
         }
         return isHovering ? Color.primary.opacity(0.07) : .clear
     }
