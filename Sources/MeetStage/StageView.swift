@@ -131,7 +131,7 @@ struct StageView: View {
             guidance = message
         default:
             guidance =
-                "Choose a window in BetterMeets, then share this Demo Stage window in Google Meet or Zoom"
+                "Choose a window in BetterMeets, then share this\nDemo Stage window in Google Meet or Zoom"
         }
 
         return guidance.hasSuffix(".") ? String(guidance.dropLast()) : guidance
