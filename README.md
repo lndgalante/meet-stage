@@ -49,9 +49,12 @@ overlay suspends whenever another app, including BetterMeets, becomes active and
 resumes when the selected source app returns. This keeps the Demo Stage draggable
 and lets it move normally in front of or behind other windows. Enabling Draw with
 a live source returns focus to that source app so drawing can begin immediately.
-Each stroke fades automatically after the delay selected in Settings. The tabbed
-Settings popover also lets you choose the annotation color, click-ripple color
-and size, and the size and light or dark appearance of keystroke badges. Press
+When a stroke closes into a rough circle or four-sided box, releasing the pointer
+snaps it to a true circle or axis-aligned rectangle; other strokes remain
+freehand. Each stroke fades automatically after the delay selected in Settings.
+The tabbed Settings popover also lets you choose the annotation color,
+click-ripple color and size, and the size and light or dark appearance of
+keystroke badges. Press
 Escape, choose Done, or click the pencil again to leave annotation mode. Click
 highlighting uses ScreenCaptureKit on macOS 15 and later.
 Keystroke highlighting asks for Accessibility access the first time you enable
@@ -159,7 +162,7 @@ inside it.
 | `Sources/MeetStage/StageWindowSizing.swift` | Demo Stage geometry and aspect-ratio handling |
 | `Sources/MeetStage/WindowConfiguration.swift` | AppKit window behavior used by SwiftUI scenes |
 | `Sources/MeetStage/GlobalHotKeyManager.swift` | Option+1 through Option+9 registration |
-| `Sources/MeetStage/Annotations.swift` and `AnnotationOverlay.swift` | Temporary ink model and rendering plus AppKit source-overlay presentation |
+| `Sources/MeetStage/Annotations.swift`, `AnnotationShapeRecognizer.swift`, and `AnnotationOverlay.swift` | Temporary ink, closed-shape recognition and rendering, plus AppKit source-overlay presentation |
 | `Sources/MeetStage/ClickHighlights.swift`, `KeystrokeHighlights.swift`, and `SpotlightEffect.swift` | Effect-specific models, monitoring, overlays, and rendering |
 | `Sources/MeetStage/PresentationPreferences.swift` | Shared color, size, and keystroke appearance options |
 | `Sources/MeetStage/WorkspaceObservationBag.swift` | App lifecycle observation and notification-token ownership |

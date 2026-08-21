@@ -39,12 +39,15 @@ to follow while keeping the parts that do not require macOS services testable.
   source-list events while `WorkspaceObservationBag` owns the notification
   tokens.
 - `AnnotationSession` owns normalized temporary ink shared by the selected
-  source overlay and `StageView`. `CaptureManager` owns annotation lifecycle,
-  persistence, and source-switch cleanup. Annotation intent is independent from
-  the active overlay so it can remain armed through idle, paused, switching, and
-  source-focus changes. The source overlay is non-activating and only exists while
-  the selected source app is frontmost, preventing drawing mode from changing
-  BetterMeets' window order or intercepting another app.
+  source overlay and `StageView`. `AnnotationShapeRecognizer` is the pure,
+  pixel-space policy that conservatively turns closed strokes into semantic
+  circles or rectangles at pointer-up. `CaptureManager` owns annotation
+  lifecycle, persistence, and source-switch cleanup. Annotation intent is
+  independent from the active overlay so it can remain armed through idle,
+  paused, switching, and source-focus changes. The source overlay is
+  non-activating and only exists while the selected source app is frontmost,
+  preventing drawing mode from changing BetterMeets' window order or
+  intercepting another app.
 - `ClickHighlights`, `KeystrokeHighlights`, and `SpotlightEffect` each own one
   presentation effect from domain value through platform monitor or overlay and
   SwiftUI rendering. `ControlSettingsPreviews` owns preview-only rendering; it

@@ -8,6 +8,29 @@ struct AnnotationStroke: Equatable, Identifiable, Sendable {
     let color: PresentationColor
     var opacity: Double
     var fadeDuration: TimeInterval
+    var geometry: AnnotationStrokeGeometry = .freehand
+}
+
+enum AnnotationStrokeGeometry: Equatable, Sendable {
+    case freehand
+    case circle(center: NormalizedWindowPoint, diameter: CGFloat)
+    case rectangle(NormalizedAnnotationBounds)
+}
+
+struct NormalizedAnnotationBounds: Equatable, Sendable {
+    let minX: CGFloat
+    let minY: CGFloat
+    let width: CGFloat
+    let height: CGFloat
+
+    func resolved(in rect: CGRect) -> CGRect {
+        CGRect(
+            x: rect.minX + minX * rect.width,
+            y: rect.minY + minY * rect.height,
+            width: width * rect.width,
+            height: height * rect.height
+        )
+    }
 }
 
 enum AnnotationTiming {
@@ -86,9 +109,19 @@ final class AnnotationSession: ObservableObject {
 
     func endStroke(
         _ id: UUID,
+        canvasSize: CGSize? = nil,
         reducesMotion: Bool
     ) {
-        guard strokes.contains(where: { $0.id == id }) else { return }
+        guard let index = strokes.firstIndex(where: { $0.id == id }) else { return }
+
+        if let canvasSize,
+            let recognizedGeometry = AnnotationShapeRecognizer.recognize(
+                points: strokes[index].points,
+                in: canvasSize
+            )
+        {
+            strokes[index].geometry = recognizedGeometry
+        }
 
         let strokeLifetimeSeconds = lifetimeSeconds
         let sleep = sleep
@@ -150,6 +183,7 @@ final class AnnotationSession: ObservableObject {
 @MainActor
 struct AnnotationInputController {
     private(set) var activeStrokeID: UUID?
+    private var activeCanvasSize: CGSize?
 
     mutating func update(
         location: CGPoint,
@@ -168,6 +202,7 @@ struct AnnotationInputController {
         } else {
             activeStrokeID = session.beginStroke(at: point)
         }
+        activeCanvasSize = canvasSize
     }
 
     mutating func finish(
@@ -175,8 +210,13 @@ struct AnnotationInputController {
         reducesMotion: Bool
     ) {
         guard let activeStrokeID else { return }
-        session.endStroke(activeStrokeID, reducesMotion: reducesMotion)
+        session.endStroke(
+            activeStrokeID,
+            canvasSize: activeCanvasSize,
+            reducesMotion: reducesMotion
+        )
         self.activeStrokeID = nil
+        activeCanvasSize = nil
     }
 }
 
@@ -192,7 +232,7 @@ struct AnnotationInkLayer: View {
         GeometryReader { geometry in
             ZStack {
                 ForEach(session.strokes) { stroke in
-                    let shape = AnnotationStrokeShape(points: stroke.points)
+                    let shape = AnnotationStrokePath(stroke: stroke)
                     let lineWidth = min(max(min(geometry.size.width, geometry.size.height) * 0.009, 3.5), 8)
 
                     ZStack {
@@ -231,7 +271,9 @@ struct AnnotationInkLayer: View {
                         .gesture(drawingGesture(in: geometry.size))
                         .onHover(perform: updateCursor)
                         .accessibilityLabel("Annotation canvas")
-                        .accessibilityHint("Drag the pointer to draw temporary ink")
+                        .accessibilityHint(
+                            "Drag the pointer to draw temporary ink. Rough circles and rectangles snap into clean shapes."
+                        )
                 }
             }
         }
@@ -279,10 +321,22 @@ struct AnnotationInkLayer: View {
     }
 }
 
-private struct AnnotationStrokeShape: Shape {
-    let points: [NormalizedWindowPoint]
+private struct AnnotationStrokePath: Shape {
+    let stroke: AnnotationStroke
 
     func path(in rect: CGRect) -> Path {
+        switch stroke.geometry {
+        case .freehand:
+            freehandPath(in: rect)
+        case .circle(let center, let diameter):
+            circlePath(center: center, diameter: diameter, in: rect)
+        case .rectangle(let bounds):
+            Path(bounds.resolved(in: rect))
+        }
+    }
+
+    private func freehandPath(in rect: CGRect) -> Path {
+        let points = stroke.points
         guard let firstPoint = points.first else { return Path() }
 
         let resolvedPoints = points.map {
@@ -317,5 +371,25 @@ private struct AnnotationStrokeShape: Shape {
             path.addLine(to: lastPoint)
         }
         return path
+    }
+
+    private func circlePath(
+        center: NormalizedWindowPoint,
+        diameter: CGFloat,
+        in rect: CGRect
+    ) -> Path {
+        let resolvedDiameter = diameter * min(rect.width, rect.height)
+        let resolvedCenter = CGPoint(
+            x: rect.minX + center.x * rect.width,
+            y: rect.minY + center.y * rect.height
+        )
+        return Path(
+            ellipseIn: CGRect(
+                x: resolvedCenter.x - resolvedDiameter / 2,
+                y: resolvedCenter.y - resolvedDiameter / 2,
+                width: resolvedDiameter,
+                height: resolvedDiameter
+            )
+        )
     }
 }

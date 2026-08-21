@@ -113,6 +113,142 @@ struct AnnotationTests {
         )
     }
 
+    @Test("Snaps a rough closed circle to a true circle")
+    @MainActor
+    func recognizesRoughCircle() throws {
+        let canvasSize = CGSize(width: 640, height: 480)
+        let pixelPoints = (0...48).map { index in
+            let angle = CGFloat(index) / 48 * 2 * .pi
+            let radius = 96 * (1 + 0.055 * sin(angle * 3) + 0.025 * cos(angle * 5))
+            return CGPoint(
+                x: 330 + cos(angle) * radius,
+                y: 235 + sin(angle) * radius
+            )
+        }
+        let points = normalized(pixelPoints, in: canvasSize)
+        let session = AnnotationSession(lifetimeSeconds: 10)
+        let id = session.beginStroke(at: try #require(points.first))
+        points.dropFirst().forEach { session.append($0, to: id) }
+
+        session.endStroke(id, canvasSize: canvasSize, reducesMotion: false)
+
+        let stroke = try #require(session.strokes.first)
+        guard case .circle(let center, let diameter) = stroke.geometry else {
+            Issue.record("Expected the rough stroke to become a circle")
+            return
+        }
+        #expect(abs(center.x * canvasSize.width - 330) < 8)
+        #expect(abs(center.y * canvasSize.height - 235) < 8)
+        #expect(abs(diameter * min(canvasSize.width, canvasSize.height) - 192) < 16)
+        session.clear()
+    }
+
+    @Test("Snaps a rough four-sided stroke to an axis-aligned rectangle")
+    @MainActor
+    func recognizesRoughRectangle() throws {
+        let canvasSize = CGSize(width: 640, height: 480)
+        var pixelPoints: [CGPoint] = []
+        for index in 0...12 {
+            let progress = CGFloat(index) / 12
+            pixelPoints.append(
+                CGPoint(x: 145 + 285 * progress, y: 105 + 3 * sin(progress * .pi))
+            )
+        }
+        for index in 1...8 {
+            let progress = CGFloat(index) / 8
+            pixelPoints.append(
+                CGPoint(x: 430 + 3 * sin(progress * .pi), y: 105 + 155 * progress)
+            )
+        }
+        for index in 1...12 {
+            let progress = CGFloat(index) / 12
+            pixelPoints.append(
+                CGPoint(x: 430 - 285 * progress, y: 260 - 4 * sin(progress * .pi))
+            )
+        }
+        for index in 1...8 {
+            let progress = CGFloat(index) / 8
+            pixelPoints.append(
+                CGPoint(x: 145 - 2 * sin(progress * .pi), y: 260 - 153 * progress)
+            )
+        }
+
+        let points = normalized(pixelPoints, in: canvasSize)
+        let session = AnnotationSession(lifetimeSeconds: 10)
+        let id = session.beginStroke(at: try #require(points.first))
+        points.dropFirst().forEach { session.append($0, to: id) }
+
+        session.endStroke(id, canvasSize: canvasSize, reducesMotion: false)
+
+        let stroke = try #require(session.strokes.first)
+        guard case .rectangle(let bounds) = stroke.geometry else {
+            Issue.record("Expected the rough stroke to become a rectangle")
+            return
+        }
+        #expect(abs(bounds.minX * canvasSize.width - 145) < 6)
+        #expect(abs(bounds.minY * canvasSize.height - 105) < 6)
+        #expect(abs(bounds.width * canvasSize.width - 285) < 10)
+        #expect(abs(bounds.height * canvasSize.height - 155) < 10)
+        session.clear()
+    }
+
+    @Test("Snaps a closed trapezoidal outline to a rectangle")
+    func recognizesLooseFourSidedRectangle() throws {
+        let canvasSize = CGSize(width: 800, height: 500)
+        let corners = [
+            CGPoint(x: 190, y: 100),
+            CGPoint(x: 530, y: 105),
+            CGPoint(x: 445, y: 315),
+            CGPoint(x: 160, y: 300),
+            CGPoint(x: 188, y: 104)
+        ]
+        var pixelPoints: [CGPoint] = []
+        for pair in zip(corners, corners.dropFirst()) {
+            for index in 0..<12 {
+                let progress = CGFloat(index) / 12
+                let wobble = sin(progress * .pi) * 3
+                pixelPoints.append(
+                    CGPoint(
+                        x: pair.0.x + (pair.1.x - pair.0.x) * progress + wobble,
+                        y: pair.0.y + (pair.1.y - pair.0.y) * progress - wobble
+                    )
+                )
+            }
+        }
+        pixelPoints.append(try #require(corners.last))
+
+        let geometry = AnnotationShapeRecognizer.recognize(
+            points: normalized(pixelPoints, in: canvasSize),
+            in: canvasSize
+        )
+
+        guard case .rectangle(let bounds) = geometry else {
+            Issue.record("Expected the loose four-sided outline to become a rectangle")
+            return
+        }
+        #expect(abs(bounds.width * canvasSize.width - 370) < 12)
+        #expect(abs(bounds.height * canvasSize.height - 215) < 12)
+    }
+
+    @Test("Keeps an open curved stroke as freehand ink")
+    func preservesOpenFreehandStroke() {
+        let canvasSize = CGSize(width: 640, height: 480)
+        let pixelPoints = (0...32).map { index in
+            let angle = CGFloat(index) / 32 * 1.55 * .pi
+            return CGPoint(
+                x: 320 + cos(angle) * 100,
+                y: 240 + sin(angle) * 100
+            )
+        }
+
+        #expect(
+            AnnotationShapeRecognizer.recognize(
+                points: normalized(pixelPoints, in: canvasSize),
+                in: canvasSize
+            ) == nil
+        )
+    }
+
     @Test("Uses the nearest supported drawing lifetime")
     func normalizesLifetime() {
         #expect(AnnotationTiming.normalizedLifetimeSeconds(1) == 2)
@@ -232,6 +368,17 @@ struct AnnotationTests {
         #expect(condition())
     }
 
+    private func normalized(
+        _ points: [CGPoint],
+        in canvasSize: CGSize
+    ) -> [NormalizedWindowPoint] {
+        points.map {
+            NormalizedWindowPoint(
+                x: $0.x / canvasSize.width,
+                y: $0.y / canvasSize.height
+            )
+        }
+    }
 }
 
 private final class ControlledAnnotationSleeper: @unchecked Sendable {
