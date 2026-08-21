@@ -149,6 +149,7 @@ inside it.
 | `Sources/MeetStage/MeetStageApp.swift` | SwiftUI app entry point and windows |
 | `Sources/MeetStage/ControlView.swift` | Floating controller and source picker |
 | `Sources/MeetStage/CaptureManager.swift` | Main-actor capture lifecycle and observable UI state |
+| `Sources/MeetStage/WindowSourceDiscovery.swift` | Source eligibility, ScreenCaptureKit discovery, and thumbnails |
 | `Sources/MeetStage/ShortcutAssignments.swift` | Deterministic shortcut-assignment policy |
 | `Sources/MeetStage/ShortcutPreferencesStore.swift` | Backward-compatible shortcut persistence |
 | `Sources/MeetStage/SampleBufferRenderer.swift` | High-resolution frame rendering |
@@ -157,7 +158,8 @@ inside it.
 | `Sources/MeetStage/GlobalHotKeyManager.swift` | Option+1 through Option+9 registration |
 | `Sources/MeetStage/Annotations.swift` | Temporary ink model, source overlay, stage rendering, and fade timing |
 | `Sources/MeetStage/PresentationPreferences.swift` | Shared color, size, and keystroke appearance options |
-| `Tests/MeetStageTests/` | Shortcut, persistence, and stage-sizing tests |
+| `Sources/MeetStage/WorkspaceObservationBag.swift` | App lifecycle observation and notification-token ownership |
+| `Tests/MeetStageTests/` | Policy, persistence, geometry, and AppKit interaction tests |
 | `Resources/Info.plist` | Bundle name, version, permissions, and icon metadata |
 | `Brand/` | BetterMeets icon masters and brand guidance |
 | `dev-app.sh` | Debug build, package, sign, and relaunch workflow |
@@ -207,18 +209,19 @@ Run the automated suite and packaging checks before handing off a change:
 
 ```bash
 swift test
-swift format lint --strict --recursive Sources Tests Package.swift
+swift format lint --strict --recursive Sources Tests Package.swift scripts/generate-app-icon.swift
 ./build-app.sh
 plutil -lint Resources/Info.plist
 codesign --verify --deep --strict "dist/BetterMeets.app"
 git diff --check
 ```
 
-The automated suite covers deterministic shortcut assignment, persisted
-shortcut compatibility, corrupt preference recovery, and stage sizing. For
-ScreenCaptureKit, global-hotkey, or controller changes, also test the complete
-flow manually in a meeting because those APIs require real windows and macOS
-privacy consent.
+The automated suite covers window eligibility, deterministic shortcut
+assignment, persisted preference compatibility, corrupt preference recovery,
+presentation and annotation policies, stage sizing, and AppKit stage
+interaction. For ScreenCaptureKit, global-hotkey, or controller changes, also
+test the complete flow manually in a meeting because those APIs require real
+windows and macOS privacy consent.
 
 ## Release build
 

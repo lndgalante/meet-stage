@@ -46,9 +46,18 @@ struct PresentationPreferencesTests {
     func rejectsUnsupportedValues() throws {
         let fixture = try PreferencesFixture()
         defer { fixture.dispose() }
-        fixture.defaults.set("ultraviolet", forKey: "presentation.annotationColor")
-        fixture.defaults.set("huge", forKey: "presentation.clickHighlightSize")
-        fixture.defaults.set("transparent", forKey: "presentation.keystrokeAppearance")
+        fixture.defaults.set(
+            "ultraviolet",
+            forKey: PresentationPreferencesStore.annotationColorKey
+        )
+        fixture.defaults.set(
+            "huge",
+            forKey: PresentationPreferencesStore.clickHighlightSizeKey
+        )
+        fixture.defaults.set(
+            "transparent",
+            forKey: PresentationPreferencesStore.keystrokeAppearanceKey
+        )
 
         let manager = CaptureManager(defaults: fixture.defaults)
 
@@ -56,11 +65,42 @@ struct PresentationPreferencesTests {
         #expect(manager.clickHighlightSize == .medium)
         #expect(manager.keystrokeAppearance == .dark)
     }
+
+    @Test("Normalizes drawing lifetime at the persistence boundary")
+    func normalizesLifetime() throws {
+        let fixture = try PreferencesFixture()
+        defer { fixture.dispose() }
+
+        fixture.store.annotationLifetimeSeconds = 9
+
+        #expect(fixture.store.annotationLifetimeSeconds == 10)
+        #expect(
+            fixture.defaults.integer(
+                forKey: PresentationPreferencesStore.annotationLifetimeSecondsKey
+            ) == 10
+        )
+    }
+
+    @Test("Keeps presentation feature flags independent")
+    func persistsFeatureFlags() throws {
+        let fixture = try PreferencesFixture()
+        defer { fixture.dispose() }
+
+        fixture.store.highlightsMouseClicks = true
+        fixture.store.highlightsKeystrokes = false
+
+        #expect(fixture.store.highlightsMouseClicks)
+        #expect(!fixture.store.highlightsKeystrokes)
+    }
 }
 
 private struct PreferencesFixture {
     let suiteName: String
     let defaults: UserDefaults
+
+    var store: PresentationPreferencesStore {
+        PresentationPreferencesStore(defaults: defaults)
+    }
 
     init() throws {
         suiteName = "PresentationPreferencesTests.\(UUID().uuidString)"

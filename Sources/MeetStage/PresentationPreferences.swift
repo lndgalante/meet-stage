@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 
 enum PresentationColor: String, CaseIterable, Identifiable, Sendable {
@@ -56,5 +57,84 @@ enum KeystrokeAppearance: String, CaseIterable, Identifiable, Sendable {
 
     var label: String {
         rawValue.capitalized
+    }
+}
+
+/// Persists presentation settings behind typed properties.
+///
+/// The raw keys are compatibility contracts with existing BetterMeets
+/// installations. Keeping them at this boundary prevents `CaptureManager`
+/// and SwiftUI views from depending on storage details.
+struct PresentationPreferencesStore {
+    static let highlightsMouseClicksKey = "presentation.highlightsMouseClicks"
+    static let highlightsKeystrokesKey = "presentation.highlightsKeystrokes"
+    static let annotationLifetimeSecondsKey = "presentation.annotationLifetimeSeconds"
+    static let annotationColorKey = "presentation.annotationColor"
+    static let clickHighlightColorKey = "presentation.clickHighlightColor"
+    static let clickHighlightSizeKey = "presentation.clickHighlightSize"
+    static let keystrokeHighlightSizeKey = "presentation.keystrokeHighlightSize"
+    static let keystrokeAppearanceKey = "presentation.keystrokeAppearance"
+
+    private let defaults: UserDefaults
+
+    init(defaults: UserDefaults) {
+        self.defaults = defaults
+    }
+
+    var highlightsMouseClicks: Bool {
+        get { defaults.bool(forKey: Self.highlightsMouseClicksKey) }
+        nonmutating set { defaults.set(newValue, forKey: Self.highlightsMouseClicksKey) }
+    }
+
+    var highlightsKeystrokes: Bool {
+        get { defaults.bool(forKey: Self.highlightsKeystrokesKey) }
+        nonmutating set { defaults.set(newValue, forKey: Self.highlightsKeystrokesKey) }
+    }
+
+    var annotationLifetimeSeconds: Int {
+        get {
+            let savedValue = defaults.object(forKey: Self.annotationLifetimeSecondsKey) as? NSNumber
+            return AnnotationTiming.normalizedLifetimeSeconds(
+                savedValue?.intValue ?? AnnotationTiming.defaultLifetimeSeconds
+            )
+        }
+        nonmutating set {
+            defaults.set(
+                AnnotationTiming.normalizedLifetimeSeconds(newValue),
+                forKey: Self.annotationLifetimeSecondsKey
+            )
+        }
+    }
+
+    var annotationColor: PresentationColor {
+        get { value(forKey: Self.annotationColorKey, default: .orange) }
+        nonmutating set { defaults.set(newValue.rawValue, forKey: Self.annotationColorKey) }
+    }
+
+    var clickHighlightColor: PresentationColor {
+        get { value(forKey: Self.clickHighlightColorKey, default: .orange) }
+        nonmutating set { defaults.set(newValue.rawValue, forKey: Self.clickHighlightColorKey) }
+    }
+
+    var clickHighlightSize: PresentationSize {
+        get { value(forKey: Self.clickHighlightSizeKey, default: .medium) }
+        nonmutating set { defaults.set(newValue.rawValue, forKey: Self.clickHighlightSizeKey) }
+    }
+
+    var keystrokeHighlightSize: PresentationSize {
+        get { value(forKey: Self.keystrokeHighlightSizeKey, default: .medium) }
+        nonmutating set { defaults.set(newValue.rawValue, forKey: Self.keystrokeHighlightSizeKey) }
+    }
+
+    var keystrokeAppearance: KeystrokeAppearance {
+        get { value(forKey: Self.keystrokeAppearanceKey, default: .dark) }
+        nonmutating set { defaults.set(newValue.rawValue, forKey: Self.keystrokeAppearanceKey) }
+    }
+
+    private func value<Value>(
+        forKey key: String,
+        default defaultValue: Value
+    ) -> Value where Value: RawRepresentable, Value.RawValue == String {
+        defaults.string(forKey: key).flatMap(Value.init(rawValue:)) ?? defaultValue
     }
 }

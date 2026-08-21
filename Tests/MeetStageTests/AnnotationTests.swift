@@ -253,7 +253,7 @@ struct AnnotationTests {
     private func waitUntil(_ condition: @escaping @MainActor () -> Bool) async {
         for _ in 0..<1_000 {
             if condition() { return }
-            await Task.yield()
+            try? await Task.sleep(for: .milliseconds(1))
         }
         #expect(condition())
     }

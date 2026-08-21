@@ -3,6 +3,26 @@
 import AppKit
 import Foundation
 
+private enum IconGenerationError: LocalizedError {
+    case bitmapContext
+    case gradient
+    case image
+    case pngRepresentation
+
+    var errorDescription: String? {
+        switch self {
+        case .bitmapContext:
+            "Could not create the app icon bitmap context."
+        case .gradient:
+            "Could not create the app icon background gradient."
+        case .image:
+            "Could not render the app icon image."
+        case .pngRepresentation:
+            "Could not encode the app icon as PNG."
+        }
+    }
+}
+
 private struct RGBColor {
     let red: CGFloat
     let green: CGFloat
@@ -22,11 +42,14 @@ private struct RGBColor {
 }
 
 private let fileManager = FileManager.default
-private let scriptURL = URL(fileURLWithPath: CommandLine.arguments[0]).standardizedFileURL
+private let scriptURL = URL(
+    fileURLWithPath: CommandLine.arguments.first ?? #filePath
+).standardizedFileURL
 private let defaultProjectRoot = scriptURL.deletingLastPathComponent().deletingLastPathComponent()
-private let outputRoot = CommandLine.arguments.dropFirst().first.map {
-    URL(fileURLWithPath: $0).standardizedFileURL
-} ?? defaultProjectRoot
+private let outputRoot =
+    CommandLine.arguments.dropFirst().first.map {
+        URL(fileURLWithPath: $0).standardizedFileURL
+    } ?? defaultProjectRoot
 
 private let brandDirectory = outputRoot.appendingPathComponent("Brand", isDirectory: true)
 private let sizeDirectory = brandDirectory.appendingPathComponent("BetterMeets-sizes", isDirectory: true)
@@ -72,16 +95,18 @@ private func mirroredPath(_ source: CGPath, scale: CGFloat) -> CGPath {
 }
 
 private func drawIcon(size: Int) throws -> Data {
-    guard let context = CGContext(
-        data: nil,
-        width: size,
-        height: size,
-        bitsPerComponent: 8,
-        bytesPerRow: 0,
-        space: CGColorSpaceCreateDeviceRGB(),
-        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-    ) else {
-        throw NSError(domain: "BetterMeetsIcon", code: 1)
+    guard
+        let context = CGContext(
+            data: nil,
+            width: size,
+            height: size,
+            bitsPerComponent: 8,
+            bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )
+    else {
+        throw IconGenerationError.bitmapContext
     }
 
     let scale = CGFloat(size)
@@ -117,11 +142,15 @@ private func drawIcon(size: Int) throws -> Data {
     context.saveGState()
     context.addPath(tilePath)
     context.clip()
-    let gradient = CGGradient(
-        colorsSpace: CGColorSpaceCreateDeviceRGB(),
-        colors: [RGBColor(0x565656).cgColor, RGBColor(0x484848).cgColor] as CFArray,
-        locations: [0, 1]
-    )!
+    guard
+        let gradient = CGGradient(
+            colorsSpace: CGColorSpaceCreateDeviceRGB(),
+            colors: [RGBColor(0x565656).cgColor, RGBColor(0x484848).cgColor] as CFArray,
+            locations: [0, 1]
+        )
+    else {
+        throw IconGenerationError.gradient
+    }
     context.drawLinearGradient(
         gradient,
         start: CGPoint(x: scale * 0.5, y: tileRect.maxY),
@@ -172,11 +201,11 @@ private func drawIcon(size: Int) throws -> Data {
     context.fillPath()
 
     guard let image = context.makeImage() else {
-        throw NSError(domain: "BetterMeetsIcon", code: 2)
+        throw IconGenerationError.image
     }
     let representation = NSBitmapImageRep(cgImage: image)
     guard let data = representation.representation(using: .png, properties: [:]) else {
-        throw NSError(domain: "BetterMeetsIcon", code: 3)
+        throw IconGenerationError.pngRepresentation
     }
     return data
 }
@@ -222,7 +251,7 @@ private func rebuildIconAssets() throws {
         ("icon_256x256.png", 256),
         ("icon_256x256@2x.png", 512),
         ("icon_512x512.png", 512),
-        ("icon_512x512@2x.png", 1024),
+        ("icon_512x512@2x.png", 1024)
     ]
 
     try writeIcon(size: 1024, to: brandDirectory.appendingPathComponent("BetterMeets-AppIcon-1024.png"))
@@ -238,7 +267,7 @@ private func rebuildIconAssets() throws {
         ("ic07", 128),
         ("ic08", 256),
         ("ic09", 512),
-        ("ic10", 1024),
+        ("ic10", 1024)
     ]
     try makeICNSData(chunks: icnsChunks).write(to: iconURL, options: .atomic)
 }

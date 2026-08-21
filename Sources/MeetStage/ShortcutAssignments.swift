@@ -48,18 +48,20 @@ enum ShortcutAssignmentPolicy {
         previousAssignments: [Int: CGWindowID],
         previousPinnedAssignments: [Int: CGWindowID]
     ) -> ShortcutResolution {
+        // Treat callers and persisted data as untrusted at the policy boundary.
+        let validPins = pins.filter { ShortcutSlot.isValid($0.key) }
         var seenWindowIDs: Set<CGWindowID> = []
         let uniqueCandidates = candidates.filter { seenWindowIDs.insert($0.id).inserted }
         let candidatesByID = Dictionary(
             uniqueKeysWithValues: uniqueCandidates.map { ($0.id, $0) }
         )
-        var resolvedPins = pins
+        var resolvedPins = validPins
         var assignments: [Int: CGWindowID] = [:]
         var pinnedAssignments: [Int: CGWindowID] = [:]
         var usedWindowIDs: Set<CGWindowID> = []
 
-        for slot in pins.keys.sorted() {
-            guard let pin = pins[slot] else { continue }
+        for slot in validPins.keys.sorted() {
+            guard let pin = validPins[slot] else { continue }
 
             let resolvedCandidate: ShortcutCandidate?
             if let previousWindowID = previousPinnedAssignments[slot],
@@ -83,7 +85,7 @@ enum ShortcutAssignmentPolicy {
             resolvedPins[slot] = resolvedCandidate.identity
         }
 
-        let reservedSlots = Set(pins.keys)
+        let reservedSlots = Set(validPins.keys)
         let automaticSlots = ShortcutSlot.all.filter { !reservedSlots.contains($0) }
 
         // Preserve an automatic assignment while its window remains eligible.

@@ -8,18 +8,11 @@ final class CaptureManager: ObservableObject {
     // SCStreamConfiguration.backgroundColor is an unretained CGColorRef. Keep
     // these objects alive while ScreenCaptureKit copies stream configurations.
     private static let transparentBackground = CGColor(gray: 0, alpha: 0)
-    private static let blackBackground = CGColor(gray: 0, alpha: 1)
-    private static let highlightsMouseClicksKey = "presentation.highlightsMouseClicks"
-    private static let highlightsKeystrokesKey = "presentation.highlightsKeystrokes"
-    private static let annotationLifetimeSecondsKey = "presentation.annotationLifetimeSeconds"
-    private static let annotationColorKey = "presentation.annotationColor"
-    private static let clickHighlightColorKey = "presentation.clickHighlightColor"
-    private static let clickHighlightSizeKey = "presentation.clickHighlightSize"
-    private static let keystrokeHighlightSizeKey = "presentation.keystrokeHighlightSize"
-    private static let keystrokeAppearanceKey = "presentation.keystrokeAppearance"
     private static let firstFrameTimeout: Duration = .seconds(3)
     private static let unavailableSourceMessage =
         "Window unavailable. Restore it or choose another window."
+
+    // MARK: - Observable state
 
     @Published private(set) var windows: [WindowSource] = []
     @Published private(set) var selectedWindowID: CGWindowID?
@@ -59,7 +52,7 @@ final class CaptureManager: ObservableObject {
     }
 
     private let shortcutStore: ShortcutPreferencesStore
-    private let preferencesDefaults: UserDefaults
+    private let presentationStore: PresentationPreferencesStore
     private let inactiveStageAspectRatio: CGFloat
     private let sampleQueue = DispatchQueue(
         label: "dev.poc.meetstage.screen-frames",
@@ -95,7 +88,7 @@ final class CaptureManager: ObservableObject {
     private var mouseClickMonitor: GlobalMouseClickMonitor?
     private let sourceClickRipplePresenter = SourceClickRipplePresenter()
     private lazy var sourceAnnotationPresenter = SourceAnnotationPresenter()
-    private let workspaceObservationBag: WorkspaceObservationBag
+    private var workspaceMonitor: WorkspaceMonitor?
     private var windowMonitoringTask: Task<Void, Never>?
     private var windowRefreshTask: Task<Void, Never>?
     private var queuedManualRefresh = false
@@ -107,114 +100,46 @@ final class CaptureManager: ObservableObject {
     private var requestedPermissionThisLaunch = false
     private var resolvedPinnedWindowIDs: [Int: CGWindowID] = [:]
 
+    // MARK: - Initialization
+
     init(defaults: UserDefaults = .standard) {
         let shortcutStore = ShortcutPreferencesStore(defaults: defaults)
+        let presentationStore = PresentationPreferencesStore(defaults: defaults)
         let inactiveStageAspectRatio = StageWindowSizing.currentScreenAspectRatio()
         self.shortcutStore = shortcutStore
+        self.presentationStore = presentationStore
         self.inactiveStageAspectRatio = inactiveStageAspectRatio
-        preferencesDefaults = defaults
         stageAspectRatio = inactiveStageAspectRatio
-        let savedAnnotationLifetime =
-            defaults.object(
-                forKey: Self.annotationLifetimeSecondsKey
-            ) as? NSNumber
-        let annotationLifetimeSeconds = AnnotationTiming.normalizedLifetimeSeconds(
-            savedAnnotationLifetime?.intValue ?? AnnotationTiming.defaultLifetimeSeconds
-        )
-        let annotationColor =
-            defaults.string(forKey: Self.annotationColorKey)
-            .flatMap(PresentationColor.init(rawValue:)) ?? .orange
+        let annotationLifetimeSeconds = presentationStore.annotationLifetimeSeconds
+        let annotationColor = presentationStore.annotationColor
         self.annotationLifetimeSeconds = annotationLifetimeSeconds
         self.annotationColor = annotationColor
-        clickHighlightColor =
-            defaults.string(forKey: Self.clickHighlightColorKey)
-            .flatMap(PresentationColor.init(rawValue:)) ?? .orange
-        clickHighlightSize =
-            defaults.string(forKey: Self.clickHighlightSizeKey)
-            .flatMap(PresentationSize.init(rawValue:)) ?? .medium
-        keystrokeHighlightSize =
-            defaults.string(forKey: Self.keystrokeHighlightSizeKey)
-            .flatMap(PresentationSize.init(rawValue:)) ?? .medium
-        keystrokeAppearance =
-            defaults.string(forKey: Self.keystrokeAppearanceKey)
-            .flatMap(KeystrokeAppearance.init(rawValue:)) ?? .dark
+        clickHighlightColor = presentationStore.clickHighlightColor
+        clickHighlightSize = presentationStore.clickHighlightSize
+        keystrokeHighlightSize = presentationStore.keystrokeHighlightSize
+        keystrokeAppearance = presentationStore.keystrokeAppearance
         annotations = AnnotationSession(
             lifetimeSeconds: annotationLifetimeSeconds,
             inkColor: annotationColor
         )
-        highlightsMouseClicks = defaults.bool(forKey: Self.highlightsMouseClicksKey)
+        highlightsMouseClicks = presentationStore.highlightsMouseClicks
         highlightsKeystrokes =
-            defaults.bool(forKey: Self.highlightsKeystrokesKey)
+            presentationStore.highlightsKeystrokes
             && GlobalKeystrokeMonitor.hasAccessibilityPermission
         shortcutPins = shortcutStore.loadPins()
         shortcutExclusions = shortcutStore.loadExclusions()
 
-        let workspaceCenter = NSWorkspace.shared.notificationCenter
-        workspaceObservationBag = WorkspaceObservationBag(center: workspaceCenter)
-        workspaceObservationBag.store([
-            workspaceCenter.addObserver(
-                forName: NSWorkspace.didActivateApplicationNotification,
-                object: nil,
-                queue: .main
-            ) { [weak self] notification in
-                guard
-                    let application = notification.userInfo?[NSWorkspace.applicationUserInfoKey]
-                        as? NSRunningApplication
-                else { return }
-                Task { @MainActor [weak self] in
-                    self?.handleApplicationActivation(application)
-                }
+        workspaceMonitor = WorkspaceMonitor(
+            onApplicationActivated: { [weak self] application in
+                self?.handleApplicationActivation(application)
             },
-            workspaceCenter.addObserver(
-                forName: NSWorkspace.didDeactivateApplicationNotification,
-                object: nil,
-                queue: .main
-            ) { [weak self] notification in
-                guard
-                    let application = notification.userInfo?[NSWorkspace.applicationUserInfoKey]
-                        as? NSRunningApplication
-                else { return }
-                Task { @MainActor [weak self] in
-                    self?.handleApplicationDeactivation(application)
-                }
+            onApplicationDeactivated: { [weak self] application in
+                self?.handleApplicationDeactivation(application)
             },
-            workspaceCenter.addObserver(
-                forName: NSWorkspace.didLaunchApplicationNotification,
-                object: nil,
-                queue: .main
-            ) { [weak self] _ in
-                Task { @MainActor [weak self] in
-                    self?.refreshWindowsAutomatically()
-                }
-            },
-            workspaceCenter.addObserver(
-                forName: NSWorkspace.didTerminateApplicationNotification,
-                object: nil,
-                queue: .main
-            ) { [weak self] _ in
-                Task { @MainActor [weak self] in
-                    self?.refreshWindowsAutomatically()
-                }
-            },
-            workspaceCenter.addObserver(
-                forName: NSWorkspace.didHideApplicationNotification,
-                object: nil,
-                queue: .main
-            ) { [weak self] _ in
-                Task { @MainActor [weak self] in
-                    self?.refreshWindowsAutomatically()
-                }
-            },
-            workspaceCenter.addObserver(
-                forName: NSWorkspace.didUnhideApplicationNotification,
-                object: nil,
-                queue: .main
-            ) { [weak self] _ in
-                Task { @MainActor [weak self] in
-                    self?.refreshWindowsAutomatically()
-                }
+            onSourceListChanged: { [weak self] in
+                self?.refreshWindowsAutomatically()
             }
-        ])
+        )
 
         if highlightsKeystrokes {
             startKeystrokeMonitor()
@@ -231,7 +156,10 @@ final class CaptureManager: ObservableObject {
         windowMonitoringTask?.cancel()
         windowRefreshTask?.cancel()
         firstFrameTimeoutTask?.cancel()
+        selectionTask?.cancel()
     }
+
+    // MARK: - View state
 
     var isCapturing: Bool {
         stream != nil
@@ -317,6 +245,8 @@ final class CaptureManager: ObservableObject {
         return "No window selected"
     }
 
+    // MARK: - Window discovery
+
     func startWindowMonitoring() {
         guard windowMonitoringTask == nil else { return }
 
@@ -392,33 +322,10 @@ final class CaptureManager: ObservableObject {
         }
 
         do {
-            let content = try await SCShareableContent.excludingDesktopWindows(
-                false,
-                onScreenWindowsOnly: true
-            )
             let existingWindows = Dictionary(uniqueKeysWithValues: windows.map { ($0.id, $0) })
-            let ownBundleIdentifier = Bundle.main.bundleIdentifier
-            let candidates = content.windows
-                .filter { window in
-                    let frame = window.frame
-                    let title = window.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-                    let bundleIdentifier = window.owningApplication?.bundleIdentifier
-
-                    return window.windowLayer == 0
-                        && frame.width >= 160
-                        && frame.height >= 100
-                        && !title.isEmpty
-                        && window.owningApplication != nil
-                        && bundleIdentifier != ownBundleIdentifier
-                }
-                .map { window in
-                    WindowSource(window: window, reusing: existingWindows[window.windowID])
-                }
-                .sorted {
-                    let first = "\($0.applicationName) \($0.title)"
-                    let second = "\($1.applicationName) \($1.title)"
-                    return first.localizedCaseInsensitiveCompare(second) == .orderedAscending
-                }
+            let candidates = try await WindowSourceDiscovery.discover(
+                reusing: existingWindows
+            )
 
             windows = candidates
             reconcileShortcuts(with: candidates)
@@ -459,6 +366,8 @@ final class CaptureManager: ObservableObject {
             }
         }
     }
+
+    // MARK: - Capture commands
 
     func select(_ source: WindowSource) {
         guard windows.contains(where: { $0.id == source.id }) else {
@@ -529,6 +438,8 @@ final class CaptureManager: ObservableObject {
             }
         }
     }
+
+    // MARK: - Shortcuts
 
     func shortcut(for source: WindowSource) -> Int? {
         shortcutWindowIDs.first(where: { $0.value == source.id })?.key
@@ -615,9 +526,11 @@ final class CaptureManager: ObservableObject {
         select(source)
     }
 
+    // MARK: - Presentation commands and preferences
+
     func toggleMouseClickHighlighting() {
         highlightsMouseClicks.toggle()
-        preferencesDefaults.set(highlightsMouseClicks, forKey: Self.highlightsMouseClicksKey)
+        presentationStore.highlightsMouseClicks = highlightsMouseClicks
         if highlightsMouseClicks {
             startMouseClickMonitor()
         } else {
@@ -650,40 +563,40 @@ final class CaptureManager: ObservableObject {
         let normalizedValue = AnnotationTiming.normalizedLifetimeSeconds(value)
         annotationLifetimeSeconds = normalizedValue
         annotations.setLifetimeSeconds(normalizedValue)
-        preferencesDefaults.set(normalizedValue, forKey: Self.annotationLifetimeSecondsKey)
+        presentationStore.annotationLifetimeSeconds = normalizedValue
     }
 
     func setAnnotationColor(_ value: PresentationColor) {
         annotationColor = value
         annotations.setInkColor(value)
-        preferencesDefaults.set(value.rawValue, forKey: Self.annotationColorKey)
+        presentationStore.annotationColor = value
     }
 
     func setClickHighlightColor(_ value: PresentationColor) {
         clickHighlightColor = value
-        preferencesDefaults.set(value.rawValue, forKey: Self.clickHighlightColorKey)
+        presentationStore.clickHighlightColor = value
     }
 
     func setClickHighlightSize(_ value: PresentationSize) {
         clickHighlightSize = value
-        preferencesDefaults.set(value.rawValue, forKey: Self.clickHighlightSizeKey)
+        presentationStore.clickHighlightSize = value
     }
 
     func setKeystrokeHighlightSize(_ value: PresentationSize) {
         keystrokeHighlightSize = value
-        preferencesDefaults.set(value.rawValue, forKey: Self.keystrokeHighlightSizeKey)
+        presentationStore.keystrokeHighlightSize = value
     }
 
     func setKeystrokeAppearance(_ value: KeystrokeAppearance) {
         keystrokeAppearance = value
-        preferencesDefaults.set(value.rawValue, forKey: Self.keystrokeAppearanceKey)
+        presentationStore.keystrokeAppearance = value
     }
 
     func toggleKeystrokeHighlighting() {
         if highlightsKeystrokes {
             highlightsKeystrokes = false
             needsKeystrokeAccessibilityPermission = false
-            preferencesDefaults.set(false, forKey: Self.highlightsKeystrokesKey)
+            presentationStore.highlightsKeystrokes = false
             keystrokeMonitor?.stop()
             clearKeystrokePresentation()
             return
@@ -697,9 +610,11 @@ final class CaptureManager: ObservableObject {
 
         needsKeystrokeAccessibilityPermission = false
         highlightsKeystrokes = true
-        preferencesDefaults.set(true, forKey: Self.highlightsKeystrokesKey)
+        presentationStore.highlightsKeystrokes = true
         startKeystrokeMonitor()
     }
+
+    // MARK: - Application actions
 
     func openScreenRecordingSettings() {
         guard
@@ -729,6 +644,8 @@ final class CaptureManager: ObservableObject {
             state = .failed(message)
         }
     }
+
+    // MARK: - Capture lifecycle
 
     private func startSelectionTask() {
         selectionGeneration += 1
@@ -951,6 +868,8 @@ final class CaptureManager: ObservableObject {
         return configuration
     }
 
+    // MARK: - Focus and cursor capture
+
     private func shouldCaptureCursor(for source: WindowSource) -> Bool {
         guard source.processIdentifier != 0,
             let frontmostApplication = NSWorkspace.shared.frontmostApplication
@@ -1056,6 +975,8 @@ final class CaptureManager: ObservableObject {
         deactivateAnnotations(clearStrokes: true)
         isSwitchingStream = false
     }
+
+    // MARK: - Presentation monitoring
 
     private func startMouseClickMonitor() {
         if mouseClickMonitor == nil {
@@ -1201,6 +1122,8 @@ final class CaptureManager: ObservableObject {
         keystrokePresentation = nil
     }
 
+    // MARK: - Stream callbacks
+
     private func handleFrame(from sourceStreamID: ObjectIdentifier, geometry: CaptureFrameGeometry) {
         guard let stream, ObjectIdentifier(stream) == sourceStreamID else { return }
 
@@ -1249,31 +1172,16 @@ final class CaptureManager: ObservableObject {
         state = .failed(message)
     }
 
+    // MARK: - Thumbnails and shortcut reconciliation
+
     private func loadThumbnails(for sources: [WindowSource]) async {
         for source in sources {
-            guard let index = windows.firstIndex(where: { $0.id == source.id }) else { continue }
-
             do {
-                let filter = SCContentFilter(desktopIndependentWindow: source.window)
-                let configuration = SCStreamConfiguration()
-                configuration.width = 480
-                configuration.height = 270
-                configuration.pixelFormat = kCVPixelFormatType_32BGRA
-                configuration.showsCursor = false
-                configuration.scalesToFit = true
-                configuration.preservesAspectRatio = true
-                configuration.backgroundColor = Self.blackBackground
-                configuration.ignoreShadowsSingleWindow = true
-                configuration.ignoreGlobalClipSingleWindow = true
-
-                let image = try await SCScreenshotManager.captureImage(
-                    contentFilter: filter,
-                    configuration: configuration
-                )
-                windows[index].thumbnail = NSImage(
-                    cgImage: image,
-                    size: NSSize(width: image.width, height: image.height)
-                )
+                let thumbnail = try await WindowSourceDiscovery.thumbnail(for: source)
+                guard let index = windows.firstIndex(where: { $0.id == source.id }) else {
+                    continue
+                }
+                windows[index].thumbnail = thumbnail
             } catch {
                 // A window can close during refresh. Its fallback remains useful
                 // until the next source-list refresh removes it.
@@ -1317,6 +1225,8 @@ final class CaptureManager: ObservableObject {
     private func shortcutList(_ slots: Set<Int>) -> String {
         slots.sorted().map { "⌥\($0)" }.joined(separator: ", ")
     }
+
+    // MARK: - Error presentation
 
     private static func friendlyMessage(for error: Error) -> String {
         let nsError = error as NSError

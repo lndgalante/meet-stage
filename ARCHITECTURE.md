@@ -9,16 +9,25 @@ to follow while keeping the parts that do not require macOS services testable.
 - `MeetStageApp`, `ControlView`, and `StageView` own SwiftUI composition only.
   AppKit window mutations live in `WindowConfigurator`.
 - `CaptureManager` is the main-actor coordinator. It owns observable state,
-  source discovery, capture tasks, cursor policy, and the active `SCStream`.
+  capture tasks, cursor policy, and the active `SCStream`.
+- `WindowSourceDiscovery` owns ScreenCaptureKit enumeration and thumbnails.
+  `WindowDiscoveryPolicy` contains the platform-independent picker eligibility
+  rules and is tested without requiring screen-recording permission.
 - `ShortcutAssignmentPolicy` is a pure reconciliation function. It knows
   nothing about ScreenCaptureKit, UserDefaults, SwiftUI, or Carbon.
 - `ShortcutPreferencesStore` is the persistence boundary. Its legacy keys and
   Codable property names are compatibility contracts.
+- `PresentationPreferencesStore` is the typed persistence boundary for drawing,
+  click, and keystroke settings. Views and capture orchestration must not read
+  or write its raw `UserDefaults` keys directly.
 - `GlobalHotKeyManager` owns Carbon resources and reports registration failures
   instead of changing capture state itself.
 - `SampleBufferRenderer` is the only cross-thread rendering bridge. Its lock
   protects renderer state; `StageVideoView` performs layer work on the main
   queue.
+- `WorkspaceMonitor` translates AppKit lifecycle notifications into focus and
+  source-list events while `WorkspaceObservationBag` owns the notification
+  tokens.
 - `AnnotationSession` owns normalized temporary ink shared by the selected
   source overlay and `StageView`. `CaptureManager` owns annotation lifecycle,
   persistence, and source-switch cleanup. Annotation intent is independent from
@@ -67,10 +76,11 @@ same commit. Do not spread shortcut branches through `CaptureManager` or views.
 
 ## Verification strategy
 
-`swift test` exercises pure shortcut reconciliation, preference compatibility,
-and geometry calculations. ScreenCaptureKit streams, Carbon hotkeys, permission
-prompts, and window-server behavior require the packaged app and are verified
-manually with the checklist in `README.md`.
+`swift test` exercises source eligibility, shortcut reconciliation, preference
+compatibility, presentation and annotation policies, geometry calculations,
+and AppKit window interaction. ScreenCaptureKit streams, Carbon hotkeys,
+permission prompts, and end-to-end window-server behavior require the packaged
+app and are verified manually with the checklist in `README.md`.
 
 The `build-app.sh` and `dev-app.sh` entry points share
 `scripts/build-and-package.sh`. The helper derives the signing identifier from

@@ -56,6 +56,17 @@ struct ShortcutAssignmentPolicyTests {
     }
 
     @Test
+    func testInvalidPinIsDiscardedInsteadOfReservingAHiddenSlot() {
+        let invalidPin = identity(title: "Missing")
+        let available = candidate(id: 11, title: "Available")
+
+        let resolution = resolve(candidates: [available], pins: [0: invalidPin])
+
+        #expect(resolution.pins.isEmpty)
+        #expect(resolution.assignments == [1: available.id])
+    }
+
+    @Test
     func testAmbiguousPinDoesNotGuess() {
         let pin = identity(title: "Document")
         let candidates = [
