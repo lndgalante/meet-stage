@@ -85,6 +85,11 @@ enum StageFrameAppearance {
     static let defaultShadow = 0.68
 }
 
+enum StageLogoAppearance {
+    static let maximumDataSize = 10 * 1_024 * 1_024
+    static let minimumStagePadding = 0.10
+}
+
 /// Persists presentation settings behind typed properties.
 ///
 /// The raw keys are compatibility contracts with existing BetterMeets
@@ -107,6 +112,7 @@ struct PresentationPreferencesStore {
     static let stageFrameBlurKey = "presentation.stageFrameBlur"
     static let stageFrameShadowKey = "presentation.stageFrameShadow"
     static let autoZoomSizeKey = "presentation.autoZoomSize"
+    static let stageLogoDataKey = "presentation.stageLogoData"
 
     private let defaults: UserDefaults
 
@@ -257,6 +263,17 @@ struct PresentationPreferencesStore {
     var autoZoomSize: PresentationSize {
         get { value(forKey: Self.autoZoomSizeKey, default: .medium) }
         nonmutating set { defaults.set(newValue.rawValue, forKey: Self.autoZoomSizeKey) }
+    }
+
+    var stageLogoData: Data? {
+        get { defaults.data(forKey: Self.stageLogoDataKey) }
+        nonmutating set {
+            if let newValue {
+                defaults.set(newValue, forKey: Self.stageLogoDataKey)
+            } else {
+                defaults.removeObject(forKey: Self.stageLogoDataKey)
+            }
+        }
     }
 
     private func value<Value>(

@@ -1,8 +1,11 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct SettingsPopover: View {
     @ObservedObject var manager: CaptureManager
     @State private var selectedTab: SettingsTab = .stage
+    @State private var isChoosingLogo = false
+    @State private var logoImportError: String?
 
     var body: some View {
         VStack(spacing: 16) {
@@ -38,19 +41,39 @@ struct SettingsPopover: View {
         .frame(width: 504)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Settings")
+        .fileImporter(
+            isPresented: $isChoosingLogo,
+            allowedContentTypes: [.image],
+            allowsMultipleSelection: false,
+            onCompletion: importLogo
+        )
+        .alert(
+            "Couldn’t Add Logo",
+            isPresented: Binding(
+                get: { logoImportError != nil },
+                set: { if !$0 { logoImportError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {
+                logoImportError = nil
+            }
+        } message: {
+            Text(logoImportError ?? "Choose another image and try again.")
+        }
     }
 
     private var stageSettings: some View {
         VStack(spacing: 12) {
-            SettingsPreviewWell(height: 144) {
+            SettingsPreviewWell {
                 StageFrameSettingsPreview(
                     style: manager.stageFrameStyle,
                     padding: manager.stageFramePadding,
                     cornerRadius: manager.stageFrameCornerRadius,
                     blur: manager.stageFrameBlur,
-                    shadow: manager.stageFrameShadow
+                    shadow: manager.stageFrameShadow,
+                    logo: manager.stageLogo
                 )
-                .frame(width: 224, height: 126)
+                .frame(width: 112, height: 63)
             }
 
             SettingsFormRow(title: "Backdrop") {
@@ -69,68 +92,42 @@ struct SettingsPopover: View {
                 .labelsHidden()
             }
 
-            SettingsFormRow(title: "Frame padding") {
-                SettingsPercentageSlider(
-                    label: "Frame padding",
-                    value: Binding(
-                        get: { manager.stageFramePadding },
-                        set: { manager.setStageFramePadding($0) }
-                    ),
-                    range: StageFrameAppearance.paddingRange,
-                    step: 0.01
-                )
-            }
+            SettingsFormRow(title: "Logo") {
+                HStack(spacing: 8) {
+                    Button(manager.stageLogo == nil ? "Choose Image…" : "Replace…") {
+                        isChoosingLogo = true
+                    }
 
-            SettingsFormRow(title: "Corners") {
-                SettingsPointSlider(
-                    label: "Frame corner radius",
-                    value: Binding(
-                        get: { manager.stageFrameCornerRadius },
-                        set: { manager.setStageFrameCornerRadius($0) }
-                    ),
-                    range: StageFrameAppearance.cornerRadiusRange
-                )
-            }
-
-            SettingsFormRow(title: "Backdrop blur") {
-                SettingsPercentageSlider(
-                    label: "Backdrop blur",
-                    value: Binding(
-                        get: { manager.stageFrameBlur },
-                        set: { manager.setStageFrameBlur($0) }
-                    ),
-                    range: StageFrameAppearance.blurRange
-                )
-            }
-
-            SettingsFormRow(title: "Frame shadow") {
-                SettingsPercentageSlider(
-                    label: "Frame shadow",
-                    value: Binding(
-                        get: { manager.stageFrameShadow },
-                        set: { manager.setStageFrameShadow($0) }
-                    ),
-                    range: StageFrameAppearance.shadowRange
-                )
-            }
-
-            SettingsFormRow(title: "Auto zoom") {
-                Picker(
-                    "Auto zoom strength",
-                    selection: Binding(
-                        get: { manager.autoZoomSize },
-                        set: { manager.setAutoZoomSize($0) }
-                    )
-                ) {
-                    ForEach(PresentationSize.allCases) { size in
-                        Text(size.label)
-                            .tag(size)
+                    if manager.stageLogo != nil {
+                        Button("Remove", role: .destructive) {
+                            manager.removeStageLogo()
+                        }
                     }
                 }
-                .labelsHidden()
-                .pickerStyle(.segmented)
+            }
+        }
+    }
+
+    private func importLogo(_ result: Result<[URL], any Error>) {
+        do {
+            guard let url = try result.get().first else {
+                return
+            }
+            let isAccessing = url.startAccessingSecurityScopedResource()
+            defer {
+                if isAccessing {
+                    url.stopAccessingSecurityScopedResource()
+                }
             }
 
+            let data = try Data(contentsOf: url, options: .mappedIfSafe)
+            guard manager.setStageLogoData(data) else {
+                logoImportError = "Choose a valid image smaller than 10 MB."
+                return
+            }
+        } catch {
+            logoImportError =
+                "The selected image couldn’t be opened. Choose another image and try again."
         }
     }
 
@@ -372,31 +369,6 @@ private struct SettingsPercentageSlider: View {
 
     private var percentageLabel: String {
         "\(Int((value * 100).rounded()))%"
-    }
-}
-
-private struct SettingsPointSlider: View {
-    let label: String
-    @Binding var value: Double
-    let range: ClosedRange<Double>
-
-    var body: some View {
-        HStack(spacing: 10) {
-            Slider(value: $value, in: range, step: 1)
-                .labelsHidden()
-                .accessibilityLabel(label)
-                .accessibilityValue(valueLabel)
-
-            Text(valueLabel)
-                .font(.callout.monospacedDigit())
-                .foregroundStyle(.secondary)
-                .frame(width: 42, alignment: .trailing)
-                .accessibilityHidden(true)
-        }
-    }
-
-    private var valueLabel: String {
-        "\(Int(value.rounded())) pt"
     }
 }
 

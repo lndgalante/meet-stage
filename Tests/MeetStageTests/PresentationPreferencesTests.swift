@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 import Testing
 @testable import MeetStage
@@ -25,6 +26,7 @@ struct PresentationPreferencesTests {
         #expect(manager.stageFrameBlur == StageFrameAppearance.defaultBlur)
         #expect(manager.stageFrameShadow == StageFrameAppearance.defaultShadow)
         #expect(manager.autoZoomSize == .medium)
+        #expect(manager.stageLogo == nil)
     }
 
     @Test("Persists every presentation appearance setting")
@@ -47,6 +49,8 @@ struct PresentationPreferencesTests {
         manager.setStageFrameBlur(0.7)
         manager.setStageFrameShadow(0.4)
         manager.setAutoZoomSize(.large)
+        let logoData = try #require(makeLogoData())
+        #expect(manager.setStageLogoData(logoData))
 
         let restoredManager = CaptureManager(defaults: fixture.defaults)
         #expect(restoredManager.annotationColor == .purple)
@@ -65,6 +69,12 @@ struct PresentationPreferencesTests {
         #expect(restoredManager.stageFrameBlur == 0.7)
         #expect(restoredManager.stageFrameShadow == 0.4)
         #expect(restoredManager.autoZoomSize == .large)
+        #expect(restoredManager.stageLogo != nil)
+        #expect(fixture.store.stageLogoData == logoData)
+
+        restoredManager.removeStageLogo()
+        #expect(restoredManager.stageLogo == nil)
+        #expect(fixture.store.stageLogoData == nil)
     }
 
     @Test("Ignores unsupported persisted appearance values")
@@ -140,6 +150,29 @@ struct PresentationPreferencesTests {
 
         #expect(fixture.store.highlightsMouseClicks)
         #expect(!fixture.store.highlightsKeystrokes)
+    }
+
+    @Test("Rejects invalid logo data")
+    @MainActor
+    func rejectsInvalidLogoData() throws {
+        let fixture = try PreferencesFixture()
+        defer { fixture.dispose() }
+
+        let manager = CaptureManager(defaults: fixture.defaults)
+
+        #expect(!manager.setStageLogoData(Data("not an image".utf8)))
+        #expect(manager.stageLogo == nil)
+        #expect(fixture.store.stageLogoData == nil)
+    }
+
+    @MainActor
+    private func makeLogoData() -> Data? {
+        let image = NSImage(size: NSSize(width: 24, height: 12))
+        image.lockFocus()
+        NSColor.systemBlue.setFill()
+        NSRect(x: 0, y: 0, width: 24, height: 12).fill()
+        image.unlockFocus()
+        return image.tiffRepresentation
     }
 }
 

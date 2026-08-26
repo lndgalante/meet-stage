@@ -158,6 +158,24 @@ extension CaptureManager {
         presentationStore.autoZoomSize = value
     }
 
+    @discardableResult
+    func setStageLogoData(_ data: Data) -> Bool {
+        guard
+            data.count <= StageLogoAppearance.maximumDataSize,
+            let image = NSImage(data: data),
+            image.isValid
+        else { return false }
+
+        stageLogo = image
+        presentationStore.stageLogoData = data
+        return true
+    }
+
+    func removeStageLogo() {
+        stageLogo = nil
+        presentationStore.stageLogoData = nil
+    }
+
     private func clamped(
         _ value: Double,
         to range: ClosedRange<Double>

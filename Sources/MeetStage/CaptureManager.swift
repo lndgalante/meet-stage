@@ -41,6 +41,7 @@ final class CaptureManager: ObservableObject {
     @Published var stageFrameBlur: Double
     @Published var stageFrameShadow: Double
     @Published var autoZoomSize: PresentationSize
+    @Published var stageLogo: NSImage?
     @Published var annotationLifetimeSeconds: Int
     @Published var annotationColor: PresentationColor
     @Published var clickHighlightColor: PresentationColor
@@ -143,6 +144,12 @@ final class CaptureManager: ObservableObject {
         stageFrameBlur = presentationStore.stageFrameBlur
         stageFrameShadow = presentationStore.stageFrameShadow
         autoZoomSize = presentationStore.autoZoomSize
+        let storedStageLogoData = presentationStore.stageLogoData
+        let storedStageLogo = storedStageLogoData.flatMap(NSImage.init(data:))
+        stageLogo = storedStageLogo
+        if storedStageLogoData != nil, storedStageLogo == nil {
+            presentationStore.stageLogoData = nil
+        }
         annotations = AnnotationSession(
             lifetimeSeconds: annotationLifetimeSeconds,
             inkColor: annotationColor

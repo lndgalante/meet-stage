@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct StageFrameLayout: Equatable, Sendable {
@@ -119,13 +120,18 @@ struct StageFrameSettingsPreview: View {
     let cornerRadius: Double
     let blur: Double
     let shadow: Double
+    let logo: NSImage?
 
     var body: some View {
         GeometryReader { geometry in
+            let effectivePadding =
+                logo == nil
+                ? padding
+                : max(padding, StageLogoAppearance.minimumStagePadding)
             let layout = StageFrameLayout.resolve(
                 viewportSize: geometry.size,
                 sourceAspectRatio: 16 / 9,
-                paddingFraction: padding,
+                paddingFraction: effectivePadding,
                 cornerRadius: cornerRadius * 0.32,
                 isEnabled: true
             )
@@ -176,8 +182,112 @@ struct StageFrameSettingsPreview: View {
                     y: 2 * shadow
                 )
                 .position(x: layout.contentFrame.midX, y: layout.contentFrame.midY)
+
+                if let logo {
+                    StageLogoOverlay(
+                        image: logo,
+                        contentFrame: layout.contentFrame
+                    )
+                }
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+}
+
+struct StageLogoLayout: Equatable, Sendable {
+    let frame: CGRect
+
+    static func resolve(
+        viewportSize: CGSize,
+        contentFrame: CGRect,
+        imageSize: CGSize
+    ) -> StageLogoLayout? {
+        guard
+            viewportSize.width.isFinite,
+            viewportSize.height.isFinite,
+            viewportSize.width > 0,
+            viewportSize.height > 0,
+            imageSize.width.isFinite,
+            imageSize.height.isFinite,
+            imageSize.width > 0,
+            imageSize.height > 0
+        else { return nil }
+
+        let edgeInset = min(max(min(viewportSize.width, viewportSize.height) * 0.012, 1), 16)
+        let maximumWidth = min(viewportSize.width * 0.18, 220)
+        let maximumHeight = min(viewportSize.height * 0.14, 96)
+
+        let bottomCandidate = fittedSize(
+            imageSize,
+            inside: CGSize(
+                width: maximumWidth,
+                height: max(viewportSize.height - contentFrame.maxY - edgeInset * 2, 0)
+            )
+        )
+        let trailingCandidate = fittedSize(
+            imageSize,
+            inside: CGSize(
+                width: max(viewportSize.width - contentFrame.maxX - edgeInset * 2, 0),
+                height: maximumHeight
+            )
+        )
+        let logoSize =
+            bottomCandidate.width * bottomCandidate.height
+                >= trailingCandidate.width * trailingCandidate.height
+            ? bottomCandidate
+            : trailingCandidate
+        guard logoSize.width > 0, logoSize.height > 0 else { return nil }
+
+        let frame = CGRect(
+            x: viewportSize.width - edgeInset - logoSize.width,
+            y: viewportSize.height - edgeInset - logoSize.height,
+            width: logoSize.width,
+            height: logoSize.height
+        )
+        guard !frame.intersects(contentFrame) else { return nil }
+
+        return StageLogoLayout(frame: frame)
+    }
+
+    private static func fittedSize(_ size: CGSize, inside bounds: CGSize) -> CGSize {
+        guard bounds.width > 0, bounds.height > 0 else { return .zero }
+
+        let scale = min(bounds.width / size.width, bounds.height / size.height)
+        return CGSize(width: size.width * scale, height: size.height * scale)
+    }
+}
+
+enum StageLogoVisibilityPolicy {
+    static func shouldShow(
+        isLive: Bool,
+        isAutoPresentationEnabled: Bool,
+        hasLogo: Bool
+    ) -> Bool {
+        isLive && isAutoPresentationEnabled && hasLogo
+    }
+}
+
+struct StageLogoOverlay: View {
+    let image: NSImage
+    let contentFrame: CGRect
+
+    var body: some View {
+        GeometryReader { geometry in
+            if let layout = StageLogoLayout.resolve(
+                viewportSize: geometry.size,
+                contentFrame: contentFrame,
+                imageSize: image.size
+            ) {
+                Image(nsImage: image)
+                    .resizable()
+                    .interpolation(.high)
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: layout.frame.width, height: layout.frame.height)
+                    .position(x: layout.frame.midX, y: layout.frame.midY)
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
     }
 }

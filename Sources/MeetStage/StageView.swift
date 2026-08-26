@@ -129,12 +129,22 @@ private struct LiveStageSurface: View {
             let frameIsStyled =
                 manager.autoPresentationEnabled
                 && manager.stageFrameStyle != .none
+            let showsStageLogo = StageLogoVisibilityPolicy.shouldShow(
+                isLive: manager.isLive,
+                isAutoPresentationEnabled: manager.autoPresentationEnabled,
+                hasLogo: manager.stageLogo != nil
+            )
+            let frameLayoutIsEnabled = frameIsStyled || showsStageLogo
+            let effectivePadding =
+                showsStageLogo
+                ? max(manager.stageFramePadding, StageLogoAppearance.minimumStagePadding)
+                : manager.stageFramePadding
             let layout = StageFrameLayout.resolve(
                 viewportSize: stageGeometry.size,
                 sourceAspectRatio: manager.stageAspectRatio,
-                paddingFraction: manager.stageFramePadding,
-                cornerRadius: manager.stageFrameCornerRadius,
-                isEnabled: frameIsStyled
+                paddingFraction: effectivePadding,
+                cornerRadius: frameIsStyled ? manager.stageFrameCornerRadius : 0,
+                isEnabled: frameLayoutIsEnabled
             )
 
             ZStack {
@@ -243,6 +253,13 @@ private struct LiveStageSurface: View {
                     x: layout.contentFrame.midX,
                     y: layout.contentFrame.midY
                 )
+
+                if showsStageLogo, let logo = manager.stageLogo {
+                    StageLogoOverlay(
+                        image: logo,
+                        contentFrame: layout.contentFrame
+                    )
+                }
             }
         }
         .clipped()

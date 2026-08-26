@@ -248,7 +248,7 @@ struct SystemCursorAppearance {
 }
 
 enum EnlargedCursorGeometry {
-    static let magnification: CGFloat = 3
+    static let magnification: CGFloat = 2
 
     static func frame(
         pointerLocation: NormalizedWindowPoint,
