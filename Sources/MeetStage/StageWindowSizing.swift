@@ -27,7 +27,9 @@ enum StageWindowAspectRatioPolicy {
 
 enum StageWindowSizing {
     private static let windowScale: CGFloat = 0.68
-    private static let maximumCaptureEdge: CGFloat = 4_096
+    /// A 2560px surface leaves useful detail for the strongest stage zoom while
+    /// avoiding the bandwidth and GPU cost of processing full 4K/5K windows.
+    private static let maximumCaptureEdge: CGFloat = 2_560
     private static let preferredMinimumWindowWidth: CGFloat = 640
 
     @MainActor
@@ -55,6 +57,10 @@ enum StageWindowSizing {
             measuredSize.width > 0 && measuredSize.height > 0
             ? measuredSize
             : fallbackSize
+        return captureFormat(forPixelSize: baseSize)
+    }
+
+    static func captureFormat(forPixelSize baseSize: NSSize) -> StageCaptureFormat {
         let longestEdge = max(baseSize.width, baseSize.height)
         let scale = longestEdge > maximumCaptureEdge ? maximumCaptureEdge / longestEdge : 1
 

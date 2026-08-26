@@ -8,9 +8,9 @@ extension CaptureManager {
             focusSelectedSourceIfPossible()
             activateAutoPresentationIfPossible()
         } else {
-            autoPresentationPointerMonitor?.stop()
             autoPresentation.clear()
             updateMouseClickMonitoring()
+            updatePresentationPointerMonitoring()
         }
         synchronizeDesiredCursorVisibility()
     }
@@ -21,19 +21,19 @@ extension CaptureManager {
             isLive,
             isSelectedSourceFocused
         else {
-            autoPresentationPointerMonitor?.stop()
             autoPresentation.updatePointer(nil, zoomScale: autoZoomSize.autoZoomScale)
+            updatePresentationPointerMonitoring()
             return
         }
 
-        startAutoPresentationPointerMonitor()
+        updatePresentationPointerMonitoring()
         if let pointer = CGEvent(source: nil)?.location {
-            updateAutoPresentationPointer(to: pointer)
+            updatePresentationPointer(to: pointer)
         }
     }
 
     func handleAutoPresentationSourceChange() {
-        autoPresentationPointerMonitor?.stop()
+        presentationPointerMonitor?.stop()
         autoPresentation.clear()
     }
 
@@ -87,26 +87,36 @@ extension CaptureManager {
         }
     }
 
-    func startAutoPresentationPointerMonitor() {
-        if autoPresentationPointerMonitor == nil {
-            autoPresentationPointerMonitor = GlobalPointerMonitor(
+    func updatePresentationPointerMonitoring() {
+        guard
+            isLive,
+            isSelectedSourceFocused,
+            autoPresentationEnabled || spotlightEnabled
+        else {
+            presentationPointerMonitor?.stop()
+            return
+        }
+
+        if presentationPointerMonitor == nil {
+            presentationPointerMonitor = GlobalPointerMonitor(
                 pointerMovements: { [weak self] location in
-                    self?.updateAutoPresentationPointer(to: location)
+                    self?.updatePresentationPointer(to: location)
                 }
             )
         }
-        autoPresentationPointerMonitor?.start()
+        presentationPointerMonitor?.start()
     }
 
-    func updateAutoPresentationPointer(to globalLocation: CGPoint) {
+    func updatePresentationPointer(to globalLocation: CGPoint) {
         guard
-            autoPresentationEnabled,
             isLive,
             isSelectedSourceFocused,
             let source = activeCaptureSource,
             selectedWindowID == source.id
         else {
-            autoPresentation.updatePointer(nil, zoomScale: autoZoomSize.autoZoomScale)
+            if autoPresentationEnabled {
+                autoPresentation.updatePointer(nil, zoomScale: autoZoomSize.autoZoomScale)
+            }
             return
         }
 
@@ -118,10 +128,15 @@ extension CaptureManager {
             inside: globalLocation,
             sourceFrame: sourceFrame
         )
-        autoPresentation.updatePointer(
-            location,
-            zoomScale: autoZoomSize.autoZoomScale
-        )
+        if autoPresentationEnabled {
+            autoPresentation.updatePointer(
+                location,
+                zoomScale: autoZoomSize.autoZoomScale
+            )
+        }
+        if spotlightEnabled, let location {
+            spotlight.move(to: location)
+        }
     }
 
     func setStageFrameStyle(_ value: StageFrameStyle) {

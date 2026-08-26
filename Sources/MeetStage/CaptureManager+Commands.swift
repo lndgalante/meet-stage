@@ -159,15 +159,15 @@ extension CaptureManager {
         cancelAutoZoomForManualPresentation()
         spotlightEnabled.toggle()
         if spotlightEnabled {
-            startSpotlightPointerMonitor()
-            if let currentPointerLocation = CGEvent(source: nil)?.location {
-                moveSpotlight(to: currentPointerLocation)
-            }
             focusSelectedSourceIfPossible()
             activateSpotlightIfPossible()
+            updatePresentationPointerMonitoring()
+            if let currentPointerLocation = CGEvent(source: nil)?.location {
+                updatePresentationPointer(to: currentPointerLocation)
+            }
         } else {
-            spotlightPointerMonitor?.stop()
             deactivateSpotlight()
+            updatePresentationPointerMonitoring()
         }
     }
 

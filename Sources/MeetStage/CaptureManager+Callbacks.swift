@@ -21,13 +21,15 @@ extension CaptureManager {
             }
         }
 
-        if selectedWindowID != nil {
-            state = pendingWindowID == nil ? .capturing : .switching
-            if state == .capturing {
-                activateSpotlightIfPossible()
-                activateAnnotationsIfPossible()
-                activateAutoPresentationIfPossible()
-            }
+        guard selectedWindowID != nil else { return }
+        let nextState: CaptureState = pendingWindowID == nil ? .capturing : .switching
+        guard state != nextState else { return }
+
+        state = nextState
+        if nextState == .capturing {
+            activateSpotlightIfPossible()
+            activateAnnotationsIfPossible()
+            activateAutoPresentationIfPossible()
         }
     }
 

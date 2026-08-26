@@ -12,18 +12,25 @@ final class GlobalLocalEventMonitor<Value: Sendable> {
     typealias Transform = @Sendable (NSEvent) -> Value?
 
     private let eventMask: NSEvent.EventTypeMask
+    private let coalescesEvents: Bool
     private let transform: Transform
     private let handler: Handler
     private let resources = GlobalLocalEventMonitorResources()
+    private let latestDelivery: LatestMainActorDelivery<Value>
 
     init(
         eventMask: NSEvent.EventTypeMask,
+        coalescingInterval: Duration? = nil,
         transform: @escaping Transform,
         handler: @escaping Handler
     ) {
         self.eventMask = eventMask
+        coalescesEvents = coalescingInterval != nil
         self.transform = transform
         self.handler = handler
+        latestDelivery = LatestMainActorDelivery(
+            minimumInterval: coalescingInterval ?? .zero
+        )
     }
 
     var observesLocalApplicationEvents: Bool {
@@ -37,10 +44,16 @@ final class GlobalLocalEventMonitor<Value: Sendable> {
 
         let transform = transform
         let handler = handler
+        let coalescesEvents = coalescesEvents
+        let latestDelivery = latestDelivery
         let dispatch: @Sendable (NSEvent) -> Void = { event in
             guard let value = transform(event) else { return }
-            Task { @MainActor in
-                handler(value)
+            if coalescesEvents {
+                latestDelivery.submit(value, to: handler)
+            } else {
+                Task { @MainActor in
+                    handler(value)
+                }
             }
         }
 
@@ -58,6 +71,7 @@ final class GlobalLocalEventMonitor<Value: Sendable> {
 
     func stop() {
         resources.stop()
+        latestDelivery.cancelPending()
     }
 }
 
@@ -88,9 +102,62 @@ extension GlobalLocalEventMonitor where Value == CGPoint {
     convenience init(pointerMovements handler: @escaping Handler) {
         self.init(
             eventMask: [.mouseMoved, .leftMouseDragged, .rightMouseDragged, .otherMouseDragged],
+            coalescingInterval: .milliseconds(16),
             transform: { $0.cgEvent?.location },
             handler: handler
         )
+    }
+}
+
+/// Prevents high-frequency pointer monitors from flooding the main actor. A
+/// burst keeps only its newest position and schedules at most one display-paced
+/// delivery, preserving direct tracking without stale backlog.
+final class LatestMainActorDelivery<Value: Sendable>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var pendingValue: Value?
+    private var deliveryGeneration: UInt64 = 0
+    private var isDeliveryScheduled = false
+    private let minimumInterval: Duration
+
+    init(minimumInterval: Duration = .zero) {
+        self.minimumInterval = minimumInterval
+    }
+
+    func submit(
+        _ value: Value,
+        to handler: @escaping @MainActor @Sendable (Value) -> Void
+    ) {
+        let generationToSchedule: UInt64? = lock.withLock {
+            pendingValue = value
+            guard !isDeliveryScheduled else { return nil }
+            isDeliveryScheduled = true
+            return deliveryGeneration
+        }
+        guard let generationToSchedule else { return }
+
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            if minimumInterval > .zero {
+                try? await Task.sleep(for: minimumInterval)
+            }
+            let value: Value? = lock.withLock {
+                guard generationToSchedule == deliveryGeneration else { return nil }
+                isDeliveryScheduled = false
+                defer { pendingValue = nil }
+                return pendingValue
+            }
+            if let value {
+                handler(value)
+            }
+        }
+    }
+
+    func cancelPending() {
+        lock.withLock {
+            deliveryGeneration &+= 1
+            pendingValue = nil
+            isDeliveryScheduled = false
+        }
     }
 }
 

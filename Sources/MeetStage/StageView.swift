@@ -8,7 +8,6 @@ struct StageView: View {
         ZStack {
             LiveStageSurface(
                 manager: manager,
-                autoPresentation: manager.autoPresentation,
                 reducesMotion: reduceMotion
             )
 
@@ -121,7 +120,6 @@ struct StageView: View {
 
 private struct LiveStageSurface: View {
     @ObservedObject var manager: CaptureManager
-    @ObservedObject var autoPresentation: AutoPresentationSession
     let reducesMotion: Bool
 
     var body: some View {
@@ -153,68 +151,11 @@ private struct LiveStageSurface: View {
                     blur: frameIsStyled ? manager.stageFrameBlur : 0
                 )
 
-                GeometryReader { contentGeometry in
-                    let transform = AutoZoomTransform.resolve(
-                        focus: manager.autoPresentationEnabled
-                            ? autoPresentation.zoomFocus
-                            : nil,
-                        requestedScale: manager.autoZoomSize.autoZoomScale,
-                        viewportSize: contentGeometry.size,
-                        reducesMotion: reducesMotion
-                    )
-
-                    ZStack {
-                        StageVideoRepresentable(
-                            renderer: manager.renderer,
-                            reducesMotion: reducesMotion
-                        )
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-
-                        if manager.isSpotlightVisible {
-                            SpotlightSurface(session: manager.spotlight)
-                                .transition(.opacity)
-                        }
-
-                        if manager.isLive {
-                            AnnotationInkLayer(
-                                session: manager.annotations,
-                                acceptsInput: false
-                            )
-                            .allowsHitTesting(false)
-                            .accessibilityHidden(true)
-                        }
-
-                        ForEach(manager.clickPresentations) { presentation in
-                            ClickRippleGlyph(
-                                presentation: presentation,
-                                reducesMotion: reducesMotion
-                            )
-                            .position(
-                                x: presentation.location.x * contentGeometry.size.width,
-                                y: presentation.location.y * contentGeometry.size.height
-                            )
-                        }
-
-                        if manager.isLive, manager.autoPresentationEnabled {
-                            EnlargedSystemCursorLayer(
-                                session: autoPresentation,
-                                reducesMotion: reducesMotion
-                            )
-                        }
-                    }
-                    .frame(
-                        width: contentGeometry.size.width,
-                        height: contentGeometry.size.height
-                    )
-                    .scaleEffect(transform.scale, anchor: .topLeading)
-                    .offset(transform.offset)
-                    .animation(
-                        reducesMotion
-                            ? nil
-                            : .spring(response: 0.34, dampingFraction: 1),
-                        value: transform
-                    )
-                }
+                ZoomableStageContent(
+                    manager: manager,
+                    autoPresentation: manager.autoPresentation,
+                    reducesMotion: reducesMotion
+                )
                 .frame(
                     width: layout.contentFrame.width,
                     height: layout.contentFrame.height
@@ -266,6 +207,77 @@ private struct LiveStageSurface: View {
         .ignoresSafeArea()
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+}
+
+/// Keeps high-frequency camera state below the styled-stage composition. A
+/// cursor or zoom update can move the captured content without rebuilding the
+/// backdrop, logo, clipping surface, or layered shadows around it.
+private struct ZoomableStageContent: View {
+    @ObservedObject var manager: CaptureManager
+    @ObservedObject var autoPresentation: AutoPresentationSession
+    let reducesMotion: Bool
+
+    var body: some View {
+        GeometryReader { contentGeometry in
+            let transform = AutoZoomTransform.resolve(
+                focus: manager.autoPresentationEnabled
+                    ? autoPresentation.zoomFocus
+                    : nil,
+                requestedScale: manager.autoZoomSize.autoZoomScale,
+                viewportSize: contentGeometry.size,
+                reducesMotion: reducesMotion
+            )
+
+            ZStack {
+                StageVideoRepresentable(
+                    renderer: manager.renderer,
+                    reducesMotion: reducesMotion
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                if manager.isSpotlightVisible {
+                    SpotlightSurface(session: manager.spotlight)
+                        .transition(.opacity)
+                }
+
+                if manager.isLive {
+                    AnnotationInkLayer(
+                        session: manager.annotations,
+                        acceptsInput: false
+                    )
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+                }
+
+                ForEach(manager.clickPresentations) { presentation in
+                    ClickRippleGlyph(
+                        presentation: presentation,
+                        reducesMotion: reducesMotion
+                    )
+                    .position(
+                        x: presentation.location.x * contentGeometry.size.width,
+                        y: presentation.location.y * contentGeometry.size.height
+                    )
+                }
+
+                if manager.isLive, manager.autoPresentationEnabled {
+                    EnlargedSystemCursorLayer(session: autoPresentation.cursor)
+                }
+            }
+            .frame(
+                width: contentGeometry.size.width,
+                height: contentGeometry.size.height
+            )
+            .scaleEffect(transform.scale, anchor: .topLeading)
+            .offset(transform.offset)
+            .animation(
+                reducesMotion
+                    ? nil
+                    : .spring(response: 0.26, dampingFraction: 1),
+                value: transform
+            )
+        }
     }
 }
 
@@ -406,9 +418,9 @@ private struct StageVideoRepresentable: NSViewRepresentable {
         if context.coordinator.renderer !== renderer {
             context.coordinator.renderer.detach(nsView)
             context.coordinator.renderer = renderer
+            renderer.attach(nsView)
         }
         nsView.reducesMotion = reducesMotion
-        renderer.attach(nsView)
     }
 
     static func dismantleNSView(_ nsView: StageVideoView, coordinator: Coordinator) {

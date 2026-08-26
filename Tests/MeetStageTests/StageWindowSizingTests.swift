@@ -110,4 +110,44 @@ struct StageWindowSizingTests {
         #expect(StageWindowSizing.evenPixelCount(3) == 2)
         #expect(StageWindowSizing.evenPixelCount(5.6) == 6)
     }
+
+    @Test("Capture dimensions avoid processing an entire 4K source")
+    func capsCaptureResolution() {
+        let format = StageWindowSizing.captureFormat(
+            forPixelSize: NSSize(width: 3_840, height: 2_160)
+        )
+
+        #expect(format == StageCaptureFormat(width: 2_560, height: 1_440))
+    }
+
+    @Test("Capture dimensions preserve smaller source pixels")
+    func preservesEfficientCaptureResolution() {
+        let format = StageWindowSizing.captureFormat(
+            forPixelSize: NSSize(width: 1_920, height: 1_080)
+        )
+
+        #expect(format == StageCaptureFormat(width: 1_920, height: 1_080))
+    }
+
+    @Test("Downscaled frame metadata preserves the complete source aspect ratio")
+    func fitsSourceSpaceMetadataIntoCaptureBuffer() {
+        let contentRect = CaptureFrameGeometryResolver.contentRectInPixels(
+            contentRectInPoints: CGRect(x: 0, y: 0, width: 1_920, height: 1_080),
+            pointPixelScale: 2,
+            bufferSize: CGSize(width: 2_560, height: 1_440)
+        )
+
+        #expect(contentRect == CGRect(x: 0, y: 0, width: 2_560, height: 1_440))
+    }
+
+    @Test("Delivered-surface frame metadata keeps its existing placement")
+    func preservesSurfaceSpaceMetadata() {
+        let contentRect = CaptureFrameGeometryResolver.contentRectInPixels(
+            contentRectInPoints: CGRect(x: 10, y: 20, width: 1_260, height: 700),
+            pointPixelScale: 2,
+            bufferSize: CGSize(width: 2_560, height: 1_440)
+        )
+
+        #expect(contentRect == CGRect(x: 20, y: 40, width: 2_520, height: 1_400))
+    }
 }

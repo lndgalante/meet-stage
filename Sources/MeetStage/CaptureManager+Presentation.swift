@@ -48,7 +48,7 @@ extension CaptureManager {
             activateAnnotationsIfPossible()
             activateAutoPresentationIfPossible()
         } else {
-            autoPresentationPointerMonitor?.stop()
+            presentationPointerMonitor?.stop()
             clearKeystrokePresentation()
             clearClickPresentations()
             deactivateSpotlight()
@@ -179,35 +179,6 @@ extension CaptureManager {
         sourceClickRipplePresenter.dismissAll()
     }
 
-    func startSpotlightPointerMonitor() {
-        if spotlightPointerMonitor == nil {
-            spotlightPointerMonitor = GlobalPointerMonitor(pointerMovements: { [weak self] location in
-                self?.moveSpotlight(to: location)
-            })
-        }
-        spotlightPointerMonitor?.start()
-    }
-
-    func moveSpotlight(to globalLocation: CGPoint) {
-        guard spotlightEnabled,
-            let source = activeCaptureSource,
-            selectedWindowID == source.id
-        else { return }
-
-        let sourceFrame = WindowFrameResolver.currentFrame(
-            for: source.id,
-            fallback: source.window.frame
-        )
-        guard
-            let location = WindowCoordinateGeometry.normalizedPoint(
-                inside: globalLocation,
-                sourceFrame: sourceFrame
-            )
-        else { return }
-
-        spotlight.move(to: location)
-    }
-
     func activateSpotlightIfPossible() {
         guard isSpotlightVisible,
             let source = activeCaptureSource,
@@ -219,6 +190,7 @@ extension CaptureManager {
             sourceWindowID: source.id,
             fallbackSourceFrame: source.window.frame
         )
+        updatePresentationPointerMonitoring()
     }
 
     func focusSelectedSourceIfPossible() {

@@ -13,6 +13,43 @@ struct CaptureFrameGeometry: Sendable {
     }
 }
 
+enum CaptureFrameGeometryResolver {
+    static func contentRectInPixels(
+        contentRectInPoints: CGRect,
+        pointPixelScale: CGFloat,
+        bufferSize: CGSize
+    ) -> CGRect {
+        let bufferBounds = CGRect(origin: .zero, size: bufferSize)
+        guard bufferBounds.width > 0, bufferBounds.height > 0 else { return .null }
+
+        var contentRect = contentRectInPoints.standardized.applying(
+            CGAffineTransform(scaleX: pointPixelScale, y: pointPixelScale)
+        )
+        guard contentRect.width > 0, contentRect.height > 0 else { return .null }
+
+        // ScreenCaptureKit normally reports contentRect in surface points. If
+        // an OS version instead supplies source-space points for a downscaled
+        // stream, fit the complete rect into the delivered pixel buffer rather
+        // than intersecting it and changing its aspect ratio.
+        let widthScale =
+            contentRect.maxX > bufferBounds.maxX
+            ? bufferBounds.maxX / contentRect.maxX
+            : 1
+        let heightScale =
+            contentRect.maxY > bufferBounds.maxY
+            ? bufferBounds.maxY / contentRect.maxY
+            : 1
+        let fitScale = min(widthScale, heightScale)
+        if fitScale < 1 {
+            contentRect = contentRect.applying(
+                CGAffineTransform(scaleX: fitScale, y: fitScale)
+            )
+        }
+
+        return contentRect.intersection(bufferBounds)
+    }
+}
+
 /// Thread-safe handoff from ScreenCaptureKit's sample queue to the AppKit view.
 /// Every cross-thread mutable property is protected by `lock`; `StageVideoView`
 /// performs its visual work on the main queue.
@@ -99,10 +136,11 @@ final class SampleBufferRenderer: @unchecked Sendable {
         let contentRect: CGRect
         if let contentRectInPoints = Self.contentRect(from: frameInfo) {
             let pointPixelScale = Self.pointPixelScale(from: frameInfo)
-            let contentRectInPixels = contentRectInPoints.applying(
-                CGAffineTransform(scaleX: pointPixelScale, y: pointPixelScale)
+            contentRect = CaptureFrameGeometryResolver.contentRectInPixels(
+                contentRectInPoints: contentRectInPoints,
+                pointPixelScale: pointPixelScale,
+                bufferSize: bufferSize
             )
-            contentRect = contentRectInPixels.standardized.intersection(bufferBounds)
         } else {
             contentRect = bufferBounds
         }

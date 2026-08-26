@@ -99,8 +99,7 @@ final class CaptureManager: ObservableObject {
     var clickDismissTasks: [UUID: Task<Void, Never>] = [:]
     var keystrokeMonitor: GlobalKeystrokeMonitor?
     var mouseClickMonitor: GlobalMouseClickMonitor?
-    var spotlightPointerMonitor: GlobalPointerMonitor?
-    var autoPresentationPointerMonitor: GlobalPointerMonitor?
+    var presentationPointerMonitor: GlobalPointerMonitor?
     let sourceClickRipplePresenter = SourceClickRipplePresenter()
     let sourceSpotlightPresenter = SourceSpotlightPresenter()
     lazy var sourceAnnotationPresenter = SourceAnnotationPresenter()

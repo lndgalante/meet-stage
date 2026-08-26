@@ -26,6 +26,21 @@ struct AutoPresentationTests {
         #expect(focus == current)
     }
 
+    @Test("Cursor tracking remains independent while the zoom camera is stationary")
+    @MainActor
+    func isolatesCursorFromCamera() {
+        let session = AutoPresentationSession()
+        let click = NormalizedWindowPoint(x: 0.5, y: 0.5)
+        let pointer = NormalizedWindowPoint(x: 0.58, y: 0.42)
+
+        session.registerClick(at: click, zoomScale: 1.6)
+        session.updatePointer(pointer, zoomScale: 1.6)
+
+        #expect(session.zoomFocus == click)
+        #expect(session.cursor.location == pointer)
+        session.clear()
+    }
+
     @Test("The camera shifts only enough to return an escaped pointer to the safe zone")
     func followsPointerOutsideSafeZone() {
         let focus = AutoZoomCameraPolicy.focusFollowingPointer(

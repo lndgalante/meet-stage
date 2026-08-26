@@ -29,12 +29,16 @@ to follow while keeping the parts that do not require macOS services testable.
   window geometry.
 - `GlobalLocalEventMonitor` owns the paired AppKit monitor lifecycle used by
   pointer-based effects. Domain-specific initializers copy `NSEvent` data into
-  Sendable click or pointer values before returning to the main actor.
+  Sendable click or pointer values before returning to the main actor. Pointer
+  bursts are latest-value coalesced to display cadence, and `CaptureManager`
+  shares one pointer monitor between Auto Polish and Spotlight.
 - `GlobalHotKeyManager` owns Carbon resources and reports registration failures
   instead of changing capture state itself.
 - `SampleBufferRenderer` is the only cross-thread rendering bridge. Its lock
   protects renderer state; `StageVideoView` performs layer work on the main
-  queue.
+  queue. Capture dimensions retain smaller sources and cap the longest edge at
+  2560 pixels so 4K/5K windows do not consume bandwidth the shared stage cannot
+  usefully expose.
 - `WorkspaceMonitor` translates AppKit lifecycle notifications into focus and
   source-list events while `WorkspaceObservationBag` owns the notification
   tokens.

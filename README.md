@@ -79,6 +79,12 @@ Stage, so the source window remains untouched. Everything runs locally from
 mouse activity; no microphone, transcription model, network request, or AI
 subscription is required.
 
+The live pipeline is intentionally bounded for presentation workloads. Smaller
+sources keep their native pixel size, while 4K and 5K windows are scaled to a
+maximum 2560-pixel edge at 30 fps. Pointer-driven effects share one monitor and
+coalesce bursts to display cadence, so styled framing, zoom, ink, spotlight,
+and click highlights do not queue duplicate work when used together.
+
 ## Requirements
 
 - macOS 26 or newer

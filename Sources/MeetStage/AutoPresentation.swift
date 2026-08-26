@@ -103,9 +103,8 @@ enum AutoZoomCameraPolicy {
 final class AutoPresentationSession: ObservableObject {
     static let zoomHoldDuration = Duration.milliseconds(1_900)
 
-    @Published private(set) var pointerLocation: NormalizedWindowPoint?
     @Published private(set) var zoomFocus: NormalizedWindowPoint?
-    @Published private(set) var cursorAppearance = SystemCursorAppearance.current()
+    let cursor = AutoPresentationCursorSession()
 
     private var zoomDismissTask: Task<Void, Never>?
 
@@ -117,8 +116,7 @@ final class AutoPresentationSession: ObservableObject {
         _ location: NormalizedWindowPoint?,
         zoomScale: CGFloat
     ) {
-        refreshSystemCursor()
-        pointerLocation = location
+        cursor.update(location: location)
         guard let location, let zoomFocus else { return }
         let nextFocus = AutoZoomCameraPolicy.focusFollowingPointer(
             current: zoomFocus,
@@ -134,8 +132,7 @@ final class AutoPresentationSession: ObservableObject {
         at location: NormalizedWindowPoint,
         zoomScale: CGFloat
     ) {
-        refreshSystemCursor()
-        pointerLocation = location
+        cursor.update(location: location)
         if let zoomFocus {
             self.zoomFocus = AutoZoomCameraPolicy.focusFollowingPointer(
                 current: zoomFocus,
@@ -170,45 +167,60 @@ final class AutoPresentationSession: ObservableObject {
 
     func clear() {
         cancelZoom()
-        pointerLocation = nil
+        cursor.update(location: nil)
+    }
+}
+
+@MainActor
+final class AutoPresentationCursorSession: ObservableObject {
+    @Published private(set) var location: NormalizedWindowPoint?
+    @Published private(set) var appearance = SystemCursorAppearance.current()
+
+    private static let appearanceRefreshInterval: TimeInterval = 0.1
+    private var lastAppearanceRefreshTime: TimeInterval = 0
+
+    func update(location: NormalizedWindowPoint?) {
+        refreshSystemCursorIfNeeded()
+        if self.location != location {
+            self.location = location
+        }
     }
 
-    private func refreshSystemCursor() {
+    private func refreshSystemCursorIfNeeded() {
+        let currentTime = ProcessInfo.processInfo.systemUptime
+        guard currentTime - lastAppearanceRefreshTime >= Self.appearanceRefreshInterval else {
+            return
+        }
+        lastAppearanceRefreshTime = currentTime
+
         let appearance = SystemCursorAppearance.current()
-        if appearance.cursorIdentifier != cursorAppearance.cursorIdentifier
-            || appearance.imageSize != cursorAppearance.imageSize
-            || appearance.hotSpot != cursorAppearance.hotSpot
+        if appearance.cursorIdentifier != self.appearance.cursorIdentifier
+            || appearance.imageSize != self.appearance.imageSize
+            || appearance.hotSpot != self.appearance.hotSpot
         {
-            cursorAppearance = appearance
+            self.appearance = appearance
         }
     }
 }
 
 struct EnlargedSystemCursorLayer: View {
-    @ObservedObject var session: AutoPresentationSession
-    let reducesMotion: Bool
+    @ObservedObject var session: AutoPresentationCursorSession
 
     var body: some View {
         GeometryReader { geometry in
-            if let location = session.pointerLocation {
+            if let location = session.location {
                 let frame = EnlargedCursorGeometry.frame(
                     pointerLocation: location,
                     viewportSize: geometry.size,
-                    imageSize: session.cursorAppearance.imageSize,
-                    hotSpot: session.cursorAppearance.hotSpot
+                    imageSize: session.appearance.imageSize,
+                    hotSpot: session.appearance.hotSpot
                 )
 
-                Image(nsImage: session.cursorAppearance.image)
+                Image(nsImage: session.appearance.image)
                     .resizable()
                     .interpolation(.high)
                     .frame(width: frame.width, height: frame.height)
                     .position(x: frame.midX, y: frame.midY)
-                    .animation(
-                        reducesMotion
-                            ? nil
-                            : .spring(response: 0.12, dampingFraction: 1),
-                        value: location
-                    )
                     .transition(.opacity)
             }
         }

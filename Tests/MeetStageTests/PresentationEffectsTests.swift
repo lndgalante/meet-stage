@@ -16,6 +16,41 @@ struct PresentationEffectsTests {
         #expect(!monitor.observesLocalApplicationEvents)
     }
 
+    @Test("A pointer burst delivers only its freshest location")
+    @MainActor
+    func coalescesPointerBursts() async {
+        let delivery = LatestMainActorDelivery<CGPoint>()
+        let recorder = PointerDeliveryRecorder()
+
+        delivery.submit(CGPoint(x: 10, y: 10)) { recorder.values.append($0) }
+        delivery.submit(CGPoint(x: 20, y: 20)) { recorder.values.append($0) }
+        delivery.submit(CGPoint(x: 30, y: 30)) { recorder.values.append($0) }
+        await Task.yield()
+        await Task.yield()
+
+        #expect(recorder.values == [CGPoint(x: 30, y: 30)])
+    }
+
+    @Test("Stage polish, drawing, spotlight, and click highlights remain independently armed")
+    @MainActor
+    func armsCombinedPresentationActions() throws {
+        let suiteName = "CombinedPresentationActionsTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let manager = CaptureManager(defaults: defaults)
+
+        manager.toggleAutoPresentation()
+        manager.toggleAnnotations()
+        manager.toggleSpotlight()
+        manager.toggleMouseClickHighlighting()
+
+        #expect(manager.autoPresentationEnabled)
+        #expect(manager.annotationsEnabled)
+        #expect(manager.spotlightEnabled)
+        #expect(manager.highlightsMouseClicks)
+        #expect(manager.presentationPointerMonitor == nil)
+    }
+
     @Test("Maps global clicks into the selected window")
     func normalizesClickLocation() {
         let location = WindowCoordinateGeometry.normalizedPoint(
@@ -97,4 +132,9 @@ struct PresentationEffectsTests {
             ) == nil
         )
     }
+}
+
+@MainActor
+private final class PointerDeliveryRecorder {
+    var values: [CGPoint] = []
 }
