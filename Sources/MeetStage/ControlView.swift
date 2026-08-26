@@ -103,6 +103,16 @@ struct ControlView: View {
     private var controlBar: some View {
         HStack(spacing: 0) {
             ControlBarButton(
+                systemImage: "wand.and.sparkles",
+                title: "Auto polish",
+                help: autoPresentationControlHelp,
+                isOn: manager.autoPresentationEnabled,
+                action: manager.toggleAutoPresentation
+            )
+
+            controlBarDivider
+
+            ControlBarButton(
                 systemImage: "magnifyingglass",
                 title: "Focus spotlight",
                 help: spotlightControlHelp,
@@ -143,16 +153,6 @@ struct ControlView: View {
                 glyphOffset: ControlMetrics.keystrokeHighlightGlyphOffset,
                 showsPermissionWarning: manager.needsKeystrokeAccessibilityPermission,
                 action: manager.toggleKeystrokeHighlighting
-            )
-
-            controlBarDivider
-
-            ControlBarButton(
-                systemImage: "wand.and.sparkles",
-                title: "Auto polish",
-                help: autoPresentationControlHelp,
-                isOn: manager.autoPresentationEnabled,
-                action: manager.toggleAutoPresentation
             )
 
             controlBarDivider
