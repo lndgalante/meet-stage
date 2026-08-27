@@ -17,10 +17,13 @@ enum ControlMetrics {
     static let sourceTileVerticalInset: CGFloat = 0
     static let sourceViewportHeight: CGFloat = 44
     static let sourceTileRadius: CGFloat = 9
+    static let sourcePreviewTrailingInset: CGFloat = 5
+    static let sourcePreviewBottomInset: CGFloat = 6
+    static let sourcePreviewWidth = sourceTileWidth - sourcePreviewTrailingInset
+    static let sourcePreviewHeight = sourceTileHeight - sourcePreviewBottomInset
     static let sourceBadgeIconSize: CGFloat = 12
-    static let sourceApplicationIconSize: CGFloat = 16
-    static let sourceApplicationIconHorizontalOffset: CGFloat = 1
-    static let sourceApplicationIconVerticalOffset: CGFloat = 1
+    static let sourceApplicationBadgeSize: CGFloat = 22
+    static let sourceApplicationIconSize: CGFloat = 25
     static let sourceScrollFadeWidth: CGFloat = 14
     static let sourceScrollShadowWidth: CGFloat = 18
     static let sourceScrollCoordinateSpace = "source-scroll"

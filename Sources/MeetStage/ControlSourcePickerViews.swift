@@ -114,97 +114,17 @@ struct CompactWindowButton: View {
 
     var body: some View {
         Button(action: action) {
-            ZStack {
-                RoundedRectangle(cornerRadius: ControlMetrics.sourceTileRadius, style: .continuous)
-                    .fill(Color.black)
-
-                if let thumbnail = source.thumbnail {
-                    Image(nsImage: thumbnail)
-                        .resizable()
-                        .scaledToFill()
-                        .frame(
-                            width: ControlMetrics.sourceTileWidth,
-                            height: ControlMetrics.sourceTileHeight
-                        )
-                        .clipped()
-                } else if let icon = source.applicationIcon {
-                    Image(nsImage: icon)
-                        .resizable()
-                        .scaledToFit()
-                        .padding(10)
-                } else {
-                    Image(systemName: "macwindow")
-                        .foregroundStyle(.secondary)
-                }
-
-                VStack {
-                    HStack {
-                        if let shortcut {
-                            Text("⌥\(shortcut)")
-                                .font(.system(.caption2, design: .rounded, weight: .bold))
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 2)
-                                .foregroundStyle(.white)
-                                .background(
-                                    isShortcutAvailable ? Color.black.opacity(0.78) : Color.red.opacity(0.9),
-                                    in: Capsule()
-                                )
-                        }
-                        Spacer()
-                        if isPending {
-                            ProgressView()
-                                .controlSize(.mini)
-                                .tint(.orange)
-                                .transition(.opacity.combined(with: .scale(scale: 0.75)))
-                        }
-                    }
-                    Spacer()
-                    HStack {
-                        if isPaused {
-                            Image(systemName: "pause.circle.fill")
-                                .symbolRenderingMode(.palette)
-                                .foregroundStyle(.white, .orange)
-                                .font(.system(size: ControlMetrics.sourceBadgeIconSize))
-                                .transition(.opacity.combined(with: .scale(scale: 0.75)))
-                        } else if isSelected && !isPending {
-                            Image(systemName: "checkmark.circle.fill")
-                                .symbolRenderingMode(.palette)
-                                .foregroundStyle(.white, .blue)
-                                .font(.system(size: ControlMetrics.sourceBadgeIconSize))
-                                .transition(.opacity.combined(with: .scale(scale: 0.75)))
-                        }
-                        Spacer()
+            sourcePreview
+                .frame(
+                    width: ControlMetrics.sourceTileWidth,
+                    height: ControlMetrics.sourceTileHeight,
+                    alignment: .topLeading
+                )
+                .overlay(alignment: .bottomTrailing) {
+                    if let icon = source.applicationIcon {
+                        ApplicationIconBadge(icon: icon)
                     }
                 }
-                .padding(4)
-            }
-            .frame(width: ControlMetrics.sourceTileWidth, height: ControlMetrics.sourceTileHeight)
-            .overlay(alignment: .bottomTrailing) {
-                if let icon = source.applicationIcon {
-                    Image(nsImage: icon)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(
-                            width: ControlMetrics.sourceApplicationIconSize,
-                            height: ControlMetrics.sourceApplicationIconSize
-                        )
-                        .offset(
-                            x: ControlMetrics.sourceApplicationIconHorizontalOffset,
-                            y: ControlMetrics.sourceApplicationIconVerticalOffset
-                        )
-                }
-            }
-            .clipShape(
-                RoundedRectangle(cornerRadius: ControlMetrics.sourceTileRadius, style: .continuous)
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: ControlMetrics.sourceTileRadius, style: .continuous)
-                    .strokeBorder(borderColor, lineWidth: borderWidth)
-            }
-            .animation(
-                reduceMotion ? nil : .easeOut(duration: 0.14),
-                value: visualState
-            )
         }
         .buttonStyle(CompactIconButtonStyle())
         .contextMenu {
@@ -258,6 +178,85 @@ struct CompactWindowButton: View {
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
+    private var sourcePreview: some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: ControlMetrics.sourceTileRadius, style: .continuous)
+                .fill(Color.black)
+
+            if let thumbnail = source.thumbnail {
+                Image(nsImage: thumbnail)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(
+                        width: ControlMetrics.sourcePreviewWidth,
+                        height: ControlMetrics.sourcePreviewHeight
+                    )
+                    .clipped()
+            } else if let icon = source.applicationIcon {
+                Image(nsImage: icon)
+                    .resizable()
+                    .scaledToFit()
+                    .padding(10)
+            } else {
+                Image(systemName: "macwindow")
+                    .foregroundStyle(.secondary)
+            }
+
+            VStack {
+                HStack {
+                    if let shortcut {
+                        Text("⌥\(shortcut)")
+                            .font(.system(.caption2, design: .rounded, weight: .bold))
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 2)
+                            .foregroundStyle(.white)
+                            .background(
+                                isShortcutAvailable ? Color.black.opacity(0.78) : Color.red.opacity(0.9),
+                                in: Capsule()
+                            )
+                    }
+                    Spacer()
+                    if isPending {
+                        ProgressView()
+                            .controlSize(.mini)
+                            .tint(.orange)
+                            .transition(.opacity.combined(with: .scale(scale: 0.75)))
+                    }
+                }
+                Spacer()
+                HStack {
+                    if isPaused {
+                        Image(systemName: "pause.circle.fill")
+                            .symbolRenderingMode(.palette)
+                            .foregroundStyle(.white, .orange)
+                            .font(.system(size: ControlMetrics.sourceBadgeIconSize))
+                            .transition(.opacity.combined(with: .scale(scale: 0.75)))
+                    } else if isSelected && !isPending {
+                        Image(systemName: "checkmark.circle.fill")
+                            .symbolRenderingMode(.palette)
+                            .foregroundStyle(.white, .blue)
+                            .font(.system(size: ControlMetrics.sourceBadgeIconSize))
+                            .transition(.opacity.combined(with: .scale(scale: 0.75)))
+                    }
+                    Spacer()
+                }
+            }
+            .padding(4)
+        }
+        .frame(width: ControlMetrics.sourcePreviewWidth, height: ControlMetrics.sourcePreviewHeight)
+        .clipShape(
+            RoundedRectangle(cornerRadius: ControlMetrics.sourceTileRadius, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: ControlMetrics.sourceTileRadius, style: .continuous)
+                .strokeBorder(borderColor, lineWidth: borderWidth)
+        }
+        .animation(
+            reduceMotion ? nil : .easeOut(duration: 0.14),
+            value: visualState
+        )
+    }
+
     private var borderColor: Color {
         if isPending { return .orange }
         if isPaused { return .orange }
@@ -299,6 +298,31 @@ struct CompactWindowButton: View {
         } else {
             Text("Option+\(slot)")
         }
+    }
+}
+
+private struct ApplicationIconBadge: View {
+    let icon: NSImage
+
+    var body: some View {
+        Image(nsImage: icon)
+            .resizable()
+            .scaledToFit()
+            .frame(
+                width: ControlMetrics.sourceApplicationIconSize,
+                height: ControlMetrics.sourceApplicationIconSize
+            )
+            .frame(
+                width: ControlMetrics.sourceApplicationBadgeSize,
+                height: ControlMetrics.sourceApplicationBadgeSize
+            )
+            .background(.regularMaterial, in: Circle())
+            .overlay {
+                Circle()
+                    .strokeBorder(Color.white.opacity(0.38), lineWidth: 0.75)
+            }
+            .shadow(color: Color.black.opacity(0.42), radius: 2.5, y: 1)
+            .accessibilityHidden(true)
     }
 }
 
