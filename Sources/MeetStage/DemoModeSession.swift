@@ -77,6 +77,14 @@ final class DemoModeSession: ObservableObject {
         highlights.removeAll { $0.id == id }
     }
 
+    /// Immediately removes every highlight ring — used right after a click
+    /// navigates, so a ring never lingers over a control that is now gone.
+    func clearHighlights() {
+        highlightDismissTasks.values.forEach { $0.cancel() }
+        highlightDismissTasks.removeAll()
+        highlights.removeAll()
+    }
+
     /// Clears transient visuals (highlights and caption) without ending the
     /// session; used when focus is lost but Demo Mode remains armed.
     func clearVisuals() {

@@ -21,6 +21,7 @@ let package = Package(
                 .linkedFramework("Carbon"),
                 .linkedFramework("CoreMedia"),
                 .linkedFramework("QuartzCore"),
+                .linkedFramework("FoundationModels"),
                 .linkedFramework("ScreenCaptureKit"),
                 .linkedFramework("Speech"),
                 .linkedFramework("Vision")

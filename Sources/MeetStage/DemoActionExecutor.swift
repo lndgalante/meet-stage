@@ -62,6 +62,40 @@ enum DemoActionExecutor {
         postMouseEvent(.leftMouseUp, at: target, clickState: 1)
     }
 
+    /// Delay between typed characters, so entry looks natural and reliably lands.
+    static let typeStepDelay = Duration.milliseconds(28)
+
+    /// Focuses the field at `target` (a visible click) and types `text` into it as
+    /// synthesized Unicode keystrokes. No-op without Accessibility trust.
+    static func performType(_ text: String, at target: CGPoint) async {
+        guard canSynthesizeInput else {
+            AppLog.demoMode.notice("Skipped Demo Mode type: Accessibility not trusted")
+            return
+        }
+        await performClick(at: target)
+        if Task.isCancelled { return }
+        try? await Task.sleep(for: .milliseconds(140))  // let focus settle
+
+        for character in text {
+            if Task.isCancelled { return }
+            postCharacter(character)
+            try? await Task.sleep(for: typeStepDelay)
+        }
+    }
+
+    private static func postCharacter(_ character: Character) {
+        var utf16 = Array(String(character).utf16)
+        let count = utf16.count
+        if let down = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: true) {
+            down.keyboardSetUnicodeString(stringLength: count, unicodeString: &utf16)
+            down.post(tap: .cghidEventTap)
+        }
+        if let up = CGEvent(keyboardEventSource: nil, virtualKey: 0, keyDown: false) {
+            up.keyboardSetUnicodeString(stringLength: count, unicodeString: &utf16)
+            up.post(tap: .cghidEventTap)
+        }
+    }
+
     private static func postMouseEvent(
         _ type: CGEventType,
         at point: CGPoint,

@@ -140,6 +140,7 @@ struct PresentationPreferencesStore {
     static let demoVoiceActionsKey = "presentation.demoVoiceActions"
     static let demoHighlightColorKey = "presentation.demoHighlightColor"
     static let demoZoomSizeKey = "presentation.demoZoomSize"
+    static let demoSmartUnderstandingKey = "presentation.demoSmartUnderstanding"
 
     private let defaults: UserDefaults
 
@@ -321,6 +322,13 @@ struct PresentationPreferencesStore {
     var demoZoomSize: PresentationSize {
         get { value(forKey: Self.demoZoomSizeKey, default: .medium) }
         nonmutating set { defaults.set(newValue.rawValue, forKey: Self.demoZoomSizeKey) }
+    }
+
+    var demoSmartUnderstanding: Bool {
+        // Defaults on: the coordinator only uses it when the on-device model is
+        // actually available, and always falls back to the deterministic policy.
+        get { defaults.object(forKey: Self.demoSmartUnderstandingKey) as? Bool ?? true }
+        nonmutating set { defaults.set(newValue, forKey: Self.demoSmartUnderstandingKey) }
     }
 
     private func value<Value>(

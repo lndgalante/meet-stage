@@ -57,6 +57,7 @@ final class CaptureManager: ObservableObject {
     @Published var demoVoiceActions: DemoVoiceActions
     @Published var demoHighlightColor: PresentationColor
     @Published var demoZoomSize: PresentationSize
+    @Published var demoSmartUnderstanding: Bool
     @Published var shortcutPins: [Int: PinnedWindow] = [:]
     @Published var shortcutExclusions: Set<PinnedWindow> = []
 
@@ -120,12 +121,23 @@ final class CaptureManager: ObservableObject {
     lazy var sourceAnnotationPresenter = SourceAnnotationPresenter()
     lazy var sourceDemoOverlayPresenter = DemoSourceOverlayPresenter()
     var demoSpeechTranscriber: DemoSpeechListening?
+    let demoEmbeddingMatcher = DemoEmbeddingMatcher()
+    let demoModelResolver = DemoModelIntentResolver()
+    let demoBrain: DemoBrain = ClaudeDemoBrain()
+    var demoConversation = DemoConversation()
     var demoListeningStartTask: Task<Void, Never>?
     var demoIndexRefreshTask: Task<Void, Never>?
     var demoIndexWalkTask: Task<DemoElementIndex, Never>?
     var demoActionTask: Task<Void, Never>?
+    var demoModelTask: Task<Void, Never>?
+    var demoBrainTask: Task<Void, Never>?
+    var demoSpotlightTask: Task<Void, Never>?
     var demoCommandGate = DemoCommandGate()
     var demoIndexGeneration = 0
+    /// Label of the last control Demo Mode acted on, so the on-device model can
+    /// resolve pronouns like "click it back".
+    var lastReferencedControl: String?
+    @Published var hasDemoBrainKey = AnthropicKeyStore.hasKey
     var workspaceMonitor: WorkspaceMonitor?
     var windowMonitoringTask: Task<Void, Never>?
     var windowRefreshTask: Task<Void, Never>?
@@ -163,6 +175,7 @@ final class CaptureManager: ObservableObject {
         demoVoiceActions = presentationStore.demoVoiceActions
         demoHighlightColor = presentationStore.demoHighlightColor
         demoZoomSize = presentationStore.demoZoomSize
+        demoSmartUnderstanding = presentationStore.demoSmartUnderstanding
         stageFrameStyle = presentationStore.stageFrameStyle
         stageFramePadding = presentationStore.stageFramePadding
         stageFrameCornerRadius = presentationStore.stageFrameCornerRadius
@@ -215,6 +228,9 @@ final class CaptureManager: ObservableObject {
         demoIndexRefreshTask?.cancel()
         demoIndexWalkTask?.cancel()
         demoActionTask?.cancel()
+        demoModelTask?.cancel()
+        demoBrainTask?.cancel()
+        demoSpotlightTask?.cancel()
     }
 
     // MARK: - View state

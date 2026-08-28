@@ -236,6 +236,27 @@ enum DemoIntentPolicy {
         return nil
     }
 
+    /// Whether the whole utterance requests actuation (an un-negated action verb
+    /// or navigation phrase). Used by the semantic and model tiers, which resolve
+    /// a target without a token position, so intent is judged over all the words.
+    static func utteranceRequestsClick(_ tokens: [String]) -> Bool {
+        func notNegatedBefore(_ index: Int) -> Bool {
+            !tokens[..<index].contains(where: negators.contains)
+        }
+        if let index = tokens.firstIndex(where: actionVerbs.contains) {
+            return notNegatedBefore(index)
+        }
+        for phrase in navigationPhrases {
+            if let start = subsequenceStart(phrase, in: tokens) {
+                return notNegatedBefore(start)
+            }
+        }
+        if let index = tokens.firstIndex(where: tightAdjacencyVerbs.contains) {
+            return notNegatedBefore(index)
+        }
+        return false
+    }
+
     private static func subsequenceStart(_ phrase: [String], in tokens: [String]) -> Int? {
         guard !phrase.isEmpty, tokens.count >= phrase.count else { return nil }
         for start in 0...(tokens.count - phrase.count) {

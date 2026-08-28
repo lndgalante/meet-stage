@@ -6,6 +6,7 @@ struct SettingsPopover: View {
     @State private var selectedTab: SettingsTab = .stage
     @State private var isChoosingLogo = false
     @State private var logoImportError: String?
+    @State private var brainKeyDraft = ""
 
     var body: some View {
         VStack(spacing: 16) {
@@ -87,6 +88,27 @@ struct SettingsPopover: View {
                 .pickerStyle(.segmented)
             }
 
+            SettingsFormRow(title: "Understanding") {
+                Toggle(
+                    "Conversational understanding",
+                    isOn: Binding(
+                        get: { manager.demoSmartUnderstanding },
+                        set: { manager.setDemoSmartUnderstanding($0) }
+                    )
+                )
+                .labelsHidden()
+                .toggleStyle(.switch)
+                .disabled(!manager.isDemoSmartUnderstandingAvailable)
+            }
+
+            if manager.demoSmartUnderstanding, !manager.isDemoConversationalTierAvailable {
+                DemoSettingsNote(
+                    text:
+                        "Matches controls you describe, on device. Turn on Apple Intelligence "
+                        + "for conversational commands like “open it” that refer back."
+                )
+            }
+
             SettingsFormRow(title: "Highlight color") {
                 PresentationColorPicker(
                     selection: manager.demoHighlightColor,
@@ -119,6 +141,28 @@ struct SettingsPopover: View {
                     actionTitle: "Open Settings",
                     action: { manager.openAccessibilitySettings() }
                 )
+            }
+
+            SettingsFormRow(title: "Conversation AI") {
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack(spacing: 6) {
+                        SecureField("Anthropic API key", text: $brainKeyDraft)
+                            .textFieldStyle(.roundedBorder)
+                        Button("Save") {
+                            manager.setDemoBrainKey(brainKeyDraft)
+                            brainKeyDraft = ""
+                        }
+                        .disabled(brainKeyDraft.isEmpty)
+                    }
+                    Text(
+                        manager.hasDemoBrainKey
+                            ? "Connected — natural, conversational commands use Claude Haiku 4.5 (cloud)."
+                            : "Add a key for natural commands like “now open it”. A window screenshot is sent to Anthropic to resolve the target."
+                    )
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
     }

@@ -320,6 +320,17 @@ struct DemoIntentPolicyTests {
         #expect(command?.kind != .click)
     }
 
+    @Test("Whole-utterance click detection powers the semantic tier")
+    func utteranceClickDetection() {
+        func tokens(_ text: String) -> [String] {
+            DemoText.tokenizeTranscript(text).tokens
+        }
+        #expect(DemoIntentPolicy.utteranceRequestsClick(tokens("open the get-paid button")))
+        #expect(DemoIntentPolicy.utteranceRequestsClick(tokens("take us to that screen")))
+        #expect(!DemoIntentPolicy.utteranceRequestsClick(tokens("look at the get-paid area")))
+        #expect(!DemoIntentPolicy.utteranceRequestsClick(tokens("don't open that yet")))
+    }
+
     @Test("Recognized-text controls are never clicked even with a verb")
     func recognizedTextNeverClicked() throws {
         let ocrOnly = [
