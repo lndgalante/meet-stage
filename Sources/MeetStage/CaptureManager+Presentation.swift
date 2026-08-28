@@ -18,6 +18,9 @@ extension CaptureManager {
 
     func handleApplicationActivation(_ application: NSRunningApplication) {
         refreshWindowsAutomatically()
+        // The user may have just granted Accessibility in System Settings and
+        // switched back; re-read trust so the Demo Mode badge clears.
+        refreshAccessibilityTrust()
         guard let source = activeCaptureSource else { return }
         let selectedSourceIsFocused =
             application.processIdentifier == source.processIdentifier
@@ -47,6 +50,9 @@ extension CaptureManager {
             activateSpotlightIfPossible()
             activateAnnotationsIfPossible()
             activateAutoPresentationIfPossible()
+            if demoModeEnabled {
+                startDemoModeIfPossible()
+            }
         } else {
             presentationPointerMonitor?.stop()
             clearKeystrokePresentation()
@@ -55,6 +61,9 @@ extension CaptureManager {
             deactivateAnnotations(clearStrokes: false)
             autoPresentation.updatePointer(nil, zoomScale: autoZoomSize.autoZoomScale)
             autoPresentation.cancelZoom()
+            if demoModeEnabled {
+                deactivateDemoModeSurfaces()
+            }
         }
         scheduleCaptureConfigurationUpdateIfNeeded()
     }
@@ -123,6 +132,7 @@ extension CaptureManager {
         clearClickPresentations()
         deactivateSpotlight()
         deactivateAnnotations(clearStrokes: true)
+        deactivateDemoMode()
         isSwitchingStream = false
     }
 

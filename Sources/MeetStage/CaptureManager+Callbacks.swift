@@ -30,6 +30,7 @@ extension CaptureManager {
             activateSpotlightIfPossible()
             activateAnnotationsIfPossible()
             activateAutoPresentationIfPossible()
+            startDemoModeIfPossible()
         }
     }
 

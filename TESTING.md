@@ -10,11 +10,11 @@ packaged app.
 
 | Layer | Examples | Expected coverage |
 | --- | --- | --- |
-| Pure policy and geometry | shortcut reconciliation, capture selection, window eligibility, auto-zoom camera and styled-frame transforms, normalized coordinates, stage sizing | Every branch and boundary value |
+| Pure policy and geometry | shortcut reconciliation, capture selection, window eligibility, auto-zoom camera and styled-frame transforms, normalized coordinates, stage sizing, Demo Mode text matching, intent classification, and command debounce | Every branch and boundary value |
 | Persistence | presentation settings, shortcut pins and exclusions, corrupt or legacy data | Defaults, round trips, normalization, and invalid input |
 | Main-actor models | annotation fading, spotlight state, armed presentation effects | State changes and cancellation-sensitive behavior |
 | AppKit integration | overlay window levels, event-monitor ownership, drag surfaces, workspace notifications | Configuration and callback translation that can run without privacy consent |
-| Live macOS integration | ScreenCaptureKit, global mouse monitoring, Accessibility permission, Carbon hotkeys, meeting-app window capture | Manual packaged-app verification |
+| Live macOS integration | ScreenCaptureKit, global mouse monitoring, Accessibility permission, Carbon hotkeys, meeting-app window capture, microphone transcription (SpeechAnalyzer), AX-tree indexing, Vision text recognition, synthesized clicks | Manual packaged-app verification |
 
 ## Required local checks
 
@@ -79,6 +79,20 @@ window configuration, or permissions, build the packaged debug app with
 10. Turn on Reduce Motion and confirm zoom is restrained, cursor travel does not
     animate, and all controls remain usable. Spotlight and Draw cancel the
     current auto zoom and continue to take input precedence.
+11. Enable Demo Mode. Confirm the microphone prompt appears the first time and
+    that a revoked microphone permission re-disables the toggle at next launch.
+    With a live, focused source, naming a visible control ("the Receive button")
+    highlights it on the Demo Stage and zooms to it, and the presenter-only
+    caption never appears in the shared capture. Confirm listening continues
+    while BetterMeets is focused but no command fires unless the source is
+    frontmost, and that everything tears down on stop, pause, and source switch.
+12. With Voice actions set to "Highlight and click" and Accessibility granted,
+    saying "click <control>" glides the pointer to the control and opens it; set
+    to "Highlight only" and confirm no click is ever performed. With Accessibility
+    declined, confirm Demo Mode still highlights text-recognized controls but does
+    not click. Verify a Chromium/Electron app's web controls become targetable
+    (the accessibility enhancement plus text-recognition fallback), and that
+    repeating the same phrase does not double-fire within the debounce window.
 
 Record the macOS version and meeting app when a manual result depends on
 window-server or capture-framework behavior.

@@ -75,9 +75,30 @@ the native hotspot, moves smoothly, and never controls the real pointer.
 Auto Polish can also place the source in a styled frame. Open Settings → Stage
 to choose a built-in backdrop and adjust padding, corners, background blur,
 shadow, and zoom strength. The framing is applied only to the Demo
-Stage, so the source window remains untouched. Everything runs locally from
-mouse activity; no microphone, transcription model, network request, or AI
-subscription is required.
+Stage, so the source window remains untouched. Auto Polish runs entirely from
+mouse activity — no microphone or network request. (Demo Mode, below, is the one
+feature that listens to the microphone, and only while you turn it on.)
+
+Turn on **Demo Mode** (the waveform control) to drive the UI by voice while you
+narrate. BetterMeets transcribes your narration entirely on device and matches
+the control names you say against the buttons, links, and tabs in the window you
+are presenting. Naming a control highlights it on the Demo Stage and gently
+zooms to it — say "here's the new **Receive** button" and it lights up. Add an
+action verb and BetterMeets performs the click for you — "let's **click**
+**Discover**" glides the pointer to the Discover button and opens it, so the
+navigation you are describing actually happens. The verb is the safety line:
+nothing is clicked unless you say click, press, open, select, or a phrase like
+"take us to". A small caption over your window shows what BetterMeets heard and
+did; meeting viewers never see it.
+
+Demo Mode finds controls through macOS Accessibility, falling back to on-screen
+text recognition for canvas or web-rendered apps whose accessibility is sparse.
+It needs microphone access (for transcription) and, to read controls and click
+them, Accessibility access; BetterMeets requests both the first time you enable
+it. If Accessibility is declined, Demo Mode still highlights controls it can read
+but will not click. Set Settings → Demo → Voice actions to **Highlight only** to
+keep BetterMeets from ever clicking. All transcription is on device; no audio or
+transcript leaves your Mac.
 
 The live pipeline is intentionally bounded for presentation workloads. Smaller
 sources keep their native pixel size, while 4K and 5K windows are scaled to a
@@ -225,6 +246,17 @@ the app and grant access again:
 tccutil reset ScreenCapture dev.poc.meetstage.v2
 ```
 
+Demo Mode adds two more permissions, keyed to the same stable identity:
+Microphone (for on-device transcription) and Accessibility (to read and click
+controls in the app you are presenting). Grant them under **System Settings →
+Privacy & Security → Microphone** and **→ Accessibility**. If either becomes
+stuck, reset only BetterMeets' decision and re-grant it:
+
+```bash
+tccutil reset Microphone dev.poc.meetstage.v2
+tccutil reset Accessibility dev.poc.meetstage.v2
+```
+
 Pinned shortcuts use the legacy `MeetStage.shortcutPins.v1` defaults key, and
 explicit unpins use `MeetStage.shortcutExclusions.v1`. Keep both keys stable so
 local development and future rebrands do not discard user preferences.
@@ -300,9 +332,12 @@ notarization are intentionally external to the repository.
 
 ## Known limitations
 
-- Video only; source audio is intentionally not captured.
-- Auto Polish currently starts zooms from clicks; it does not infer semantic
-  importance from page content or speech.
+- Source audio is not captured; the microphone is used only by Demo Mode, and
+  only while it is turned on.
+- Auto Polish starts zooms from clicks and does not read page content or speech;
+  the voice-driven behavior lives in Demo Mode instead.
+- Demo Mode matches spoken control names against visible controls; it cannot
+  target a control that is scrolled off screen or has no readable name.
 - Styled frames use built-in gradients and colors; custom image wallpapers are
   not yet supported.
 - macOS may block protected video surfaces, causing them to appear black.

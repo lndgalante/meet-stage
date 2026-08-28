@@ -60,6 +60,29 @@ enum KeystrokeAppearance: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// How Demo Mode responds when narration names a control.
+///
+/// `highlightOnly` never actuates the source app; it only draws a highlight and
+/// zooms the Demo Stage. `highlightAndClick` additionally presses the control
+/// when the presenter uses an explicit action verb ("click", "open", ...).
+enum DemoVoiceActions: String, CaseIterable, Identifiable, Sendable {
+    case highlightOnly
+    case highlightAndClick
+
+    var id: Self { self }
+
+    var label: String {
+        switch self {
+        case .highlightOnly: "Highlight only"
+        case .highlightAndClick: "Highlight and click"
+        }
+    }
+
+    var allowsClicking: Bool {
+        self == .highlightAndClick
+    }
+}
+
 enum StageFrameStyle: String, CaseIterable, Identifiable, Sendable {
     case none
     case midnight
@@ -113,6 +136,10 @@ struct PresentationPreferencesStore {
     static let stageFrameShadowKey = "presentation.stageFrameShadow"
     static let autoZoomSizeKey = "presentation.autoZoomSize"
     static let stageLogoDataKey = "presentation.stageLogoData"
+    static let demoModeEnabledKey = "presentation.demoModeEnabled"
+    static let demoVoiceActionsKey = "presentation.demoVoiceActions"
+    static let demoHighlightColorKey = "presentation.demoHighlightColor"
+    static let demoZoomSizeKey = "presentation.demoZoomSize"
 
     private let defaults: UserDefaults
 
@@ -274,6 +301,26 @@ struct PresentationPreferencesStore {
                 defaults.removeObject(forKey: Self.stageLogoDataKey)
             }
         }
+    }
+
+    var demoModeEnabled: Bool {
+        get { defaults.bool(forKey: Self.demoModeEnabledKey) }
+        nonmutating set { defaults.set(newValue, forKey: Self.demoModeEnabledKey) }
+    }
+
+    var demoVoiceActions: DemoVoiceActions {
+        get { value(forKey: Self.demoVoiceActionsKey, default: .highlightAndClick) }
+        nonmutating set { defaults.set(newValue.rawValue, forKey: Self.demoVoiceActionsKey) }
+    }
+
+    var demoHighlightColor: PresentationColor {
+        get { value(forKey: Self.demoHighlightColorKey, default: .blue) }
+        nonmutating set { defaults.set(newValue.rawValue, forKey: Self.demoHighlightColorKey) }
+    }
+
+    var demoZoomSize: PresentationSize {
+        get { value(forKey: Self.demoZoomSizeKey, default: .medium) }
+        nonmutating set { defaults.set(newValue.rawValue, forKey: Self.demoZoomSizeKey) }
     }
 
     private func value<Value>(

@@ -24,6 +24,8 @@ struct SettingsPopover: View {
 
             Group {
                 switch selectedTab {
+                case .demo:
+                    demoSettings
                 case .stage:
                     stageSettings
                 case .spotlight:
@@ -59,6 +61,65 @@ struct SettingsPopover: View {
             }
         } message: {
             Text(logoImportError ?? "Choose another image and try again.")
+        }
+    }
+
+    private var demoSettings: some View {
+        VStack(spacing: 12) {
+            SettingsPreviewWell {
+                DemoHighlightPreview(color: manager.demoHighlightColor)
+            }
+
+            SettingsFormRow(title: "Voice actions") {
+                Picker(
+                    "Voice actions",
+                    selection: Binding(
+                        get: { manager.demoVoiceActions },
+                        set: { manager.setDemoVoiceActions($0) }
+                    )
+                ) {
+                    ForEach(DemoVoiceActions.allCases) { option in
+                        Text(option.label)
+                            .tag(option)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+            }
+
+            SettingsFormRow(title: "Highlight color") {
+                PresentationColorPicker(
+                    selection: manager.demoHighlightColor,
+                    onSelect: { manager.setDemoHighlightColor($0) }
+                )
+            }
+
+            SettingsFormRow(title: "Zoom size") {
+                Picker(
+                    "Zoom size",
+                    selection: Binding(
+                        get: { manager.demoZoomSize },
+                        set: { manager.setDemoZoomSize($0) }
+                    )
+                ) {
+                    ForEach(PresentationSize.allCases) { size in
+                        Text(size.label)
+                            .tag(size)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+            }
+
+            if manager.demoModeNeedsClickAccessibility {
+                DemoSettingsNote(
+                    text:
+                        "Allow BetterMeets under Accessibility to open controls. "
+                        + "Until then, controls are only highlighted.",
+                    actionTitle: "Open Settings",
+                    action: { manager.openAccessibilitySettings() }
+                )
+            }
         }
     }
 
@@ -301,6 +362,7 @@ struct SettingsPopover: View {
 }
 
 private enum SettingsTab: String, CaseIterable, Identifiable {
+    case demo
     case stage
     case spotlight
     case annotations
@@ -311,12 +373,67 @@ private enum SettingsTab: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
+        case .demo: "Demo"
         case .stage: "Stage"
         case .spotlight: "Focus"
         case .annotations: "Draw"
         case .clicks: "Clicks"
         case .keystrokes: "Keys"
         }
+    }
+}
+
+/// An inline advisory note inside a settings tab, with an optional action.
+private struct DemoSettingsNote: View {
+    let text: String
+    var actionTitle: String?
+    var action: (() -> Void)?
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 7) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: 11))
+                .foregroundStyle(.orange)
+            Text(text)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            if let actionTitle, let action {
+                Button(actionTitle, action: action)
+                    .buttonStyle(.borderless)
+                    .font(.caption.weight(.semibold))
+                    .fixedSize()
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+    }
+}
+
+/// Static preview of the Demo Mode highlight over a sample control.
+private struct DemoHighlightPreview: View {
+    let color: PresentationColor
+
+    var body: some View {
+        Text("Discover")
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(.primary)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(.quaternary, in: Capsule())
+            .overlay {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(color.color, lineWidth: 3)
+                    .background(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(color.color.opacity(0.12))
+                    )
+                    .padding(-7)
+                    .shadow(color: color.color.opacity(0.5), radius: 6)
+            }
+            .accessibilityHidden(true)
     }
 }
 

@@ -64,8 +64,33 @@ to follow while keeping the parts that do not require macOS services testable.
   zone so routine pointer movement does not make the camera chase the presenter.
   `CaptureManager+AutoPresentation` owns the global read-only mouse monitors,
   source-coordinate mapping, capture-cursor visibility, and preference updates.
-  It must never synthesize source pointer, click, or keyboard input. Manual
-  spotlight and annotation tools cancel any automatic zoom.
+  It must never synthesize source pointer, click, or keyboard input; its
+  monitors are strictly observational. Manual spotlight and annotation tools
+  cancel any automatic zoom. Demo Mode is the one subsystem allowed to actuate
+  the source app, and it does so through its own charter (below), never through
+  this extension.
+- Demo Mode (`CaptureManager+DemoMode`, `DemoModeSession`, and the `Demo*`
+  modules) is the deliberate, separately chartered exception to the
+  no-synthesized-input rule: while it is armed and the selected source is
+  focused, it transcribes the presenter's narration on device
+  (`DemoSpeechTranscriber`, macOS Speech framework), matches spoken control
+  names against an index of the source window's controls, and either highlights
+  a control or clicks it. The decision layer is pure and testable —
+  `DemoText`/`DemoLabelMatcher` (tokenizing and fuzzy matching),
+  `DemoIntentPolicy` (verb-versus-reference classification and the contextual
+  cue gate that prevents incidental mentions from firing), and `DemoCommandGate`
+  (per-target debounce). The platform edges are isolated: `DemoSpeechListening`
+  (live transcription), `AccessibilityElementIndexer` (bounded off-main AX-tree
+  walk, with the Chromium/Electron enhancement attributes), `DemoTextRecognizer`
+  (Vision text recognition over an on-demand captured frame as a fallback for
+  sparse AX trees), and `DemoActionExecutor` (the *only* place BetterMeets posts
+  synthesized events — a visible cursor glide plus click, gated on Accessibility
+  trust). Highlights dual-render like every other effect (source overlay plus
+  Demo Stage); the caption HUD renders only on the presenter's non-captured
+  overlay. Clicking is opt-out via the `Highlight only` voice-actions setting.
+  Actuation requires Accessibility trust; the microphone is a hard requirement
+  re-gated against live authorization at launch, exactly like keystroke
+  highlighting.
 - `StageFrameLayout` preserves the source aspect ratio inside configurable
   padding. `StageFrameBackdrop` and `StageView` own the visual composition:
   backdrop, blur, rounded source surface, layered shadow, auto-zoom transform,

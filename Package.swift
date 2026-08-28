@@ -21,7 +21,9 @@ let package = Package(
                 .linkedFramework("Carbon"),
                 .linkedFramework("CoreMedia"),
                 .linkedFramework("QuartzCore"),
-                .linkedFramework("ScreenCaptureKit")
+                .linkedFramework("ScreenCaptureKit"),
+                .linkedFramework("Speech"),
+                .linkedFramework("Vision")
             ]
         ),
         .testTarget(

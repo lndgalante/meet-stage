@@ -45,15 +45,10 @@ struct ControlBarButton: View {
                         .offset(x: glyphOffset.width, y: glyphOffset.height)
 
                     if showsPermissionWarning {
-                        HStack {
-                            Spacer()
-
-                            Image(systemName: "exclamationmark")
-                                .font(.system(size: 7, weight: .bold))
-                                .foregroundStyle(.orange)
-                                .frame(width: 8, height: 8)
-                        }
-                        .padding(.trailing, 4)
+                        PermissionWarningBadge()
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                            .padding(.top, 2)
+                            .padding(.trailing, 2)
                     }
                 }
                 .foregroundStyle(
@@ -110,6 +105,21 @@ struct ControlBarButton: View {
         guard let isOn else { return "Coming soon" }
         if showsPermissionWarning { return "Permission required" }
         return isOn ? "On" : "Off"
+    }
+}
+
+/// A high-contrast "action needed" badge for control-bar toggles whose feature
+/// is blocked on a permission.
+struct PermissionWarningBadge: View {
+    var body: some View {
+        Image(systemName: "exclamationmark")
+            .font(.system(size: 8, weight: .black))
+            .foregroundStyle(.white)
+            .frame(width: 13, height: 13)
+            .background(Circle().fill(Color.orange))
+            .overlay(Circle().strokeBorder(Color.black.opacity(0.35), lineWidth: 0.5))
+            .shadow(color: .black.opacity(0.35), radius: 1.5, y: 0.5)
+            .accessibilityHidden(true)
     }
 }
 

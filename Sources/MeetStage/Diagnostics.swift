@@ -12,4 +12,5 @@ enum AppLog {
     static let capture = Logger(subsystem: subsystem, category: "capture")
     static let preferences = Logger(subsystem: subsystem, category: "preferences")
     static let shortcuts = Logger(subsystem: subsystem, category: "shortcuts")
+    static let demoMode = Logger(subsystem: subsystem, category: "demoMode")
 }

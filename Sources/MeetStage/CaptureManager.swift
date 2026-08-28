@@ -48,6 +48,15 @@ final class CaptureManager: ObservableObject {
     @Published var clickHighlightSize: PresentationSize
     @Published var keystrokeHighlightSize: PresentationSize
     @Published var keystrokeAppearance: KeystrokeAppearance
+    @Published var demoModeEnabled = false
+    @Published var needsMicrophonePermission = false
+    @Published var demoModeUnavailableReason: String?
+    // Cached so the permission badge re-renders when trust changes; AXIsProcessTrusted
+    // is only re-read via refreshAccessibilityTrust() (on activation and while listening).
+    @Published var isAccessibilityTrustedForDemo = AccessibilityElementIndexer.isAccessibilityTrusted
+    @Published var demoVoiceActions: DemoVoiceActions
+    @Published var demoHighlightColor: PresentationColor
+    @Published var demoZoomSize: PresentationSize
     @Published var shortcutPins: [Int: PinnedWindow] = [:]
     @Published var shortcutExclusions: Set<PinnedWindow> = []
 
@@ -55,6 +64,7 @@ final class CaptureManager: ObservableObject {
     let annotations: AnnotationSession
     let spotlight: SpotlightSession
     let autoPresentation = AutoPresentationSession()
+    let demoMode = DemoModeSession()
 
     var displayedStageAspectRatio: CGFloat {
         StageWindowAspectRatioPolicy.displayedAspectRatio(
@@ -82,6 +92,11 @@ final class CaptureManager: ObservableObject {
             Task { @MainActor in
                 self?.handleStreamStopped(sourceStreamID, error: error)
             }
+        },
+        onAnalyzableFrame: { [weak self] buffer, geometry in
+            Task { @MainActor in
+                self?.handleDemoAnalyzableFrame(buffer, geometry: geometry)
+            }
         }
     )
     lazy var hotKeyManager = GlobalHotKeyManager { [weak self] slot in
@@ -103,6 +118,14 @@ final class CaptureManager: ObservableObject {
     let sourceClickRipplePresenter = SourceClickRipplePresenter()
     let sourceSpotlightPresenter = SourceSpotlightPresenter()
     lazy var sourceAnnotationPresenter = SourceAnnotationPresenter()
+    lazy var sourceDemoOverlayPresenter = DemoSourceOverlayPresenter()
+    var demoSpeechTranscriber: DemoSpeechListening?
+    var demoListeningStartTask: Task<Void, Never>?
+    var demoIndexRefreshTask: Task<Void, Never>?
+    var demoIndexWalkTask: Task<DemoElementIndex, Never>?
+    var demoActionTask: Task<Void, Never>?
+    var demoCommandGate = DemoCommandGate()
+    var demoIndexGeneration = 0
     var workspaceMonitor: WorkspaceMonitor?
     var windowMonitoringTask: Task<Void, Never>?
     var windowRefreshTask: Task<Void, Never>?
@@ -137,6 +160,9 @@ final class CaptureManager: ObservableObject {
         clickHighlightSize = presentationStore.clickHighlightSize
         keystrokeHighlightSize = presentationStore.keystrokeHighlightSize
         keystrokeAppearance = presentationStore.keystrokeAppearance
+        demoVoiceActions = presentationStore.demoVoiceActions
+        demoHighlightColor = presentationStore.demoHighlightColor
+        demoZoomSize = presentationStore.demoZoomSize
         stageFrameStyle = presentationStore.stageFrameStyle
         stageFramePadding = presentationStore.stageFramePadding
         stageFrameCornerRadius = presentationStore.stageFrameCornerRadius
@@ -161,6 +187,11 @@ final class CaptureManager: ObservableObject {
         highlightsKeystrokes =
             presentationStore.highlightsKeystrokes
             && GlobalKeystrokeMonitor.hasAccessibilityPermission
+        // Demo Mode requires the microphone; re-gate the persisted flag against
+        // live authorization so a revoked permission cannot silently arm it.
+        demoModeEnabled =
+            presentationStore.demoModeEnabled
+            && DemoSpeechTranscriber.isMicrophoneAuthorized
         shortcutPins = shortcutStore.loadPins()
         shortcutExclusions = shortcutStore.loadExclusions()
 
@@ -180,6 +211,10 @@ final class CaptureManager: ObservableObject {
         windowRefreshTask?.cancel()
         firstFrameTimeoutTask?.cancel()
         selectionTask?.cancel()
+        demoListeningStartTask?.cancel()
+        demoIndexRefreshTask?.cancel()
+        demoIndexWalkTask?.cancel()
+        demoActionTask?.cancel()
     }
 
     // MARK: - View state

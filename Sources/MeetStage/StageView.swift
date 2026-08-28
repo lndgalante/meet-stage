@@ -154,6 +154,7 @@ private struct LiveStageSurface: View {
                 ZoomableStageContent(
                     manager: manager,
                     autoPresentation: manager.autoPresentation,
+                    demoMode: manager.demoMode,
                     reducesMotion: reducesMotion
                 )
                 .frame(
@@ -216,15 +217,16 @@ private struct LiveStageSurface: View {
 private struct ZoomableStageContent: View {
     @ObservedObject var manager: CaptureManager
     @ObservedObject var autoPresentation: AutoPresentationSession
+    @ObservedObject var demoMode: DemoModeSession
     let reducesMotion: Bool
 
     var body: some View {
         GeometryReader { contentGeometry in
+            let allowsZoom = manager.autoPresentationEnabled || manager.demoModeEnabled
             let transform = AutoZoomTransform.resolve(
-                focus: manager.autoPresentationEnabled
-                    ? autoPresentation.zoomFocus
-                    : nil,
-                requestedScale: manager.autoZoomSize.autoZoomScale,
+                focus: allowsZoom ? autoPresentation.zoomFocus : nil,
+                requestedScale: autoPresentation.zoomScaleOverride
+                    ?? manager.autoZoomSize.autoZoomScale,
                 viewportSize: contentGeometry.size,
                 reducesMotion: reducesMotion
             )
@@ -258,6 +260,13 @@ private struct ZoomableStageContent: View {
                     .position(
                         x: presentation.location.x * contentGeometry.size.width,
                         y: presentation.location.y * contentGeometry.size.height
+                    )
+                }
+
+                if manager.isLive {
+                    DemoHighlightSurface(
+                        highlights: demoMode.highlights,
+                        reducesMotion: reducesMotion
                     )
                 }
 

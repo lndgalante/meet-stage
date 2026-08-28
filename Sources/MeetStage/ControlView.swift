@@ -106,6 +106,19 @@ struct ControlView: View {
     private var controlBar: some View {
         HStack(spacing: 0) {
             ControlBarButton(
+                systemImage: "waveform.badge.mic",
+                title: "Demo mode",
+                help: demoModeControlHelp,
+                isOn: manager.demoModeEnabled,
+                showsPermissionWarning: manager.needsMicrophonePermission
+                    || manager.demoModeNeedsClickAccessibility
+                    || manager.demoModeUnavailableReason != nil,
+                action: manager.toggleDemoMode
+            )
+
+            controlBarDivider
+
+            ControlBarButton(
                 systemImage: "wand.and.sparkles",
                 title: "Auto polish",
                 help: autoPresentationControlHelp,
@@ -255,6 +268,24 @@ struct ControlView: View {
         manager.autoPresentationEnabled
             ? "Auto-zoom clicks, mirror the system pointer at 3×, and apply the selected frame"
             : "Polish the Demo Stage with activity zooms, a 3× system pointer, and a styled frame"
+    }
+
+    private var demoModeControlHelp: String {
+        if manager.needsMicrophonePermission {
+            return "Allow microphone access, then turn on Demo Mode"
+        }
+        if let reason = manager.demoModeUnavailableReason {
+            return reason
+        }
+        if manager.demoModeEnabled {
+            if manager.demoMode.isListening {
+                return manager.demoModeNeedsClickAccessibility
+                    ? "Listening — allow Accessibility to open controls, not just highlight them"
+                    : "Listening — name a control to highlight it, or say “click” to open it"
+            }
+            return "Demo Mode starts listening when a window is live"
+        }
+        return "Highlight and open controls by voice as you narrate your demo"
     }
 
     private var sourceScroller: some View {

@@ -104,12 +104,41 @@ final class AutoPresentationSession: ObservableObject {
     static let zoomHoldDuration = Duration.milliseconds(1_900)
 
     @Published private(set) var zoomFocus: NormalizedWindowPoint?
+    /// A per-focus scale set by Demo Mode when it drives the camera directly.
+    /// When nil, callers fall back to the global Auto Polish zoom size.
+    @Published private(set) var zoomScaleOverride: CGFloat?
     let cursor = AutoPresentationCursorSession()
 
     private var zoomDismissTask: Task<Void, Never>?
 
     deinit {
         zoomDismissTask?.cancel()
+    }
+
+    /// Focuses the stage camera on a control for a fixed hold, independent of
+    /// pointer following. Used by Demo Mode to frame a named control while it is
+    /// highlighted. Unlike `registerClick`, this does not track the pointer, so
+    /// the framing stays put through the narration.
+    func focus(
+        on point: NormalizedWindowPoint,
+        zoomScale: CGFloat,
+        hold: Duration
+    ) {
+        zoomScaleOverride = zoomScale
+        zoomFocus = AutoZoomCameraPolicy.clampedFocus(point, scale: zoomScale)
+
+        zoomDismissTask?.cancel()
+        zoomDismissTask = Task { [weak self] in
+            do {
+                try await Task.sleep(for: hold)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            self?.zoomFocus = nil
+            self?.zoomScaleOverride = nil
+            self?.zoomDismissTask = nil
+        }
     }
 
     func updatePointer(
@@ -133,6 +162,7 @@ final class AutoPresentationSession: ObservableObject {
         zoomScale: CGFloat
     ) {
         cursor.update(location: location)
+        zoomScaleOverride = nil
         if let zoomFocus {
             self.zoomFocus = AutoZoomCameraPolicy.focusFollowingPointer(
                 current: zoomFocus,
@@ -163,6 +193,7 @@ final class AutoPresentationSession: ObservableObject {
         zoomDismissTask?.cancel()
         zoomDismissTask = nil
         zoomFocus = nil
+        zoomScaleOverride = nil
     }
 
     func clear() {

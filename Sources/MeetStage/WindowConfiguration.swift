@@ -2,10 +2,14 @@ import AppKit
 import SwiftUI
 
 enum ControlWindowSizing {
-    static let sourceAreaWidth: CGFloat = 196
+    // Sized so the control bar fits seven equal-width effect toggles (Demo Mode,
+    // Auto Polish, Spotlight, Annotate, Clicks, Keystrokes, Settings) at the same
+    // per-button width the six-button bar used, with the bar inset ~11pt inside
+    // the capture surface for its rounded-drawer look.
+    static let sourceAreaWidth: CGFloat = 228
     static let contentWidth = sourceAreaWidth
     static let captureSurfaceSize = NSSize(width: contentWidth + 10, height: 54)
-    static let controlBarWidth: CGFloat = 184
+    static let controlBarWidth: CGFloat = 216
     static let controlBarHeight: CGFloat = 36
     static let controlBarOverlap: CGFloat = 6
     static let joinedSurfaceHeight =

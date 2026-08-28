@@ -48,6 +48,16 @@ struct MeetStageApp: App {
 
             CommandMenu("Presentation") {
                 Button(
+                    captureManager.demoModeEnabled
+                        ? "Turn Off Demo Mode"
+                        : "Turn On Demo Mode"
+                ) {
+                    captureManager.toggleDemoMode()
+                }
+
+                Divider()
+
+                Button(
                     captureManager.autoPresentationEnabled
                         ? "Turn Off Auto Polish"
                         : "Turn On Auto Polish"

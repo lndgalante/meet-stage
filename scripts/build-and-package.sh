@@ -61,13 +61,18 @@ cp "$PROJECT_DIR/Resources/Info.plist" "$CONTENTS_DIR/Info.plist"
 cp "$PROJECT_DIR/Resources/BetterMeets.icns" "$CONTENTS_DIR/Resources/BetterMeets.icns"
 cp "$METAL_LIBRARY" "$CONTENTS_DIR/Resources/IdleStageChrome.metallib"
 
+ENTITLEMENTS="$PROJECT_DIR/Resources/BetterMeets.entitlements"
+
 if [[ -n "$SIGNING_IDENTITY" ]]; then
     # Developer ID builds need the hardened runtime and a trusted timestamp
-    # before Apple will accept them for notarization.
+    # before Apple will accept them for notarization. The entitlements grant
+    # microphone access (Demo Mode) that the hardened runtime blocks by default;
+    # ad-hoc dev builds skip the hardened runtime, so this only affects releases.
     codesign \
         --force \
         --options runtime \
         --timestamp \
+        --entitlements "$ENTITLEMENTS" \
         --sign "$SIGNING_IDENTITY" \
         "$APP_DIR"
 else
