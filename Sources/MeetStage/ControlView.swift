@@ -51,8 +51,15 @@ struct ControlView: View {
                 )
 
             bottomDragHandle
-                .offset(y: ControlWindowSizing.joinedSurfaceHeight)
+                .offset(y: ControlWindowSizing.dragHandleOffset)
                 .zIndex(0.5)
+
+            demoHero
+                .position(
+                    x: ControlWindowSizing.size.width / 2,
+                    y: ControlWindowSizing.heroCenterY
+                )
+                .zIndex(1.5)
 
             captureSurface
                 .zIndex(1)
@@ -103,21 +110,70 @@ struct ControlView: View {
         .clipShape(RoundedRectangle(cornerRadius: ControlMetrics.cornerRadius, style: .continuous))
     }
 
+    private var demoHero: some View {
+        DemoHeroButton(
+            isListening: manager.demoModeEnabled,
+            showsPermissionWarning: manager.needsMicrophonePermission
+                || manager.demoModeNeedsClickAccessibility
+                || manager.demoModeUnavailableReason != nil,
+            help: demoModeControlHelp,
+            action: manager.toggleDemoMode
+        )
+    }
+
     private var controlBar: some View {
         HStack(spacing: 0) {
-            ControlBarButton(
-                systemImage: "waveform.badge.mic",
-                title: "Demo mode",
-                help: demoModeControlHelp,
-                isOn: manager.demoModeEnabled,
-                showsPermissionWarning: manager.needsMicrophonePermission
-                    || manager.demoModeNeedsClickAccessibility
-                    || manager.demoModeUnavailableReason != nil,
-                action: manager.toggleDemoMode
+            leftControlGroup
+                .frame(width: sideGroupWidth)
+
+            // Center gap the hero button nests into.
+            Color.clear.frame(width: ControlWindowSizing.heroGap)
+
+            rightControlGroup
+                .frame(width: sideGroupWidth)
+        }
+        .padding(.top, ControlWindowSizing.controlBarOverlap)
+        .frame(
+            width: ControlWindowSizing.controlBarWidth,
+            height: ControlWindowSizing.controlBarHeight
+        )
+        .background(
+            .regularMaterial,
+            in: UnevenRoundedRectangle(
+                topLeadingRadius: 0,
+                bottomLeadingRadius: ControlMetrics.controlBarCornerRadius,
+                bottomTrailingRadius: ControlMetrics.controlBarCornerRadius,
+                topTrailingRadius: 0,
+                style: .continuous
             )
+        )
+        .overlay {
+            UnevenRoundedRectangle(
+                topLeadingRadius: 0,
+                bottomLeadingRadius: ControlMetrics.controlBarCornerRadius,
+                bottomTrailingRadius: ControlMetrics.controlBarCornerRadius,
+                topTrailingRadius: 0,
+                style: .continuous
+            )
+            .strokeBorder(Color.white.opacity(0.16), lineWidth: 1)
+        }
+        .clipShape(
+            UnevenRoundedRectangle(
+                topLeadingRadius: 0,
+                bottomLeadingRadius: ControlMetrics.controlBarCornerRadius,
+                bottomTrailingRadius: ControlMetrics.controlBarCornerRadius,
+                topTrailingRadius: 0,
+                style: .continuous
+            )
+        )
+    }
 
-            controlBarDivider
+    private var sideGroupWidth: CGFloat {
+        (ControlWindowSizing.controlBarWidth - ControlWindowSizing.heroGap) / 2
+    }
 
+    private var leftControlGroup: some View {
+        HStack(spacing: 0) {
             ControlBarButton(
                 systemImage: "wand.and.sparkles",
                 title: "Auto polish",
@@ -145,9 +201,11 @@ struct ControlView: View {
                 isOn: manager.annotationsEnabled,
                 action: manager.toggleAnnotations
             )
+        }
+    }
 
-            controlBarDivider
-
+    private var rightControlGroup: some View {
+        HStack(spacing: 0) {
             ControlBarButton(
                 systemImage: "cursorarrow.rays",
                 title: "Highlight clicks",
@@ -188,40 +246,6 @@ struct ControlView: View {
                 SettingsPopover(manager: manager)
             }
         }
-        .padding(.top, ControlWindowSizing.controlBarOverlap)
-        .frame(
-            width: ControlWindowSizing.controlBarWidth,
-            height: ControlWindowSizing.controlBarHeight
-        )
-        .background(
-            .regularMaterial,
-            in: UnevenRoundedRectangle(
-                topLeadingRadius: 0,
-                bottomLeadingRadius: ControlMetrics.controlBarCornerRadius,
-                bottomTrailingRadius: ControlMetrics.controlBarCornerRadius,
-                topTrailingRadius: 0,
-                style: .continuous
-            )
-        )
-        .overlay {
-            UnevenRoundedRectangle(
-                topLeadingRadius: 0,
-                bottomLeadingRadius: ControlMetrics.controlBarCornerRadius,
-                bottomTrailingRadius: ControlMetrics.controlBarCornerRadius,
-                topTrailingRadius: 0,
-                style: .continuous
-            )
-            .strokeBorder(Color.white.opacity(0.16), lineWidth: 1)
-        }
-        .clipShape(
-            UnevenRoundedRectangle(
-                topLeadingRadius: 0,
-                bottomLeadingRadius: ControlMetrics.controlBarCornerRadius,
-                bottomTrailingRadius: ControlMetrics.controlBarCornerRadius,
-                topTrailingRadius: 0,
-                style: .continuous
-            )
-        )
     }
 
     private var controlBarDivider: some View {

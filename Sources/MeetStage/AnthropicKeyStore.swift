@@ -37,8 +37,20 @@ enum AnthropicKeyStore {
         return nil
     }
 
+    /// Whether a key exists — an attribute-only check that does NOT read the
+    /// secret, so it never triggers a Keychain access prompt (the prompt is
+    /// reserved for an actual brain call via `key`). Also true for the env var
+    /// and a not-yet-migrated legacy file.
     static var hasKey: Bool {
-        key != nil
+        if let envKey = ProcessInfo.processInfo.environment["ANTHROPIC_API_KEY"], !envKey.isEmpty {
+            return true
+        }
+        var query = baseQuery()
+        query[kSecMatchLimit as String] = kSecMatchLimitOne
+        if SecItemCopyMatching(query as CFDictionary, nil) == errSecSuccess {
+            return true
+        }
+        return FileManager.default.fileExists(atPath: legacyFileURL.path)
     }
 
     /// Persists (or clears, when empty) the key in the Keychain.

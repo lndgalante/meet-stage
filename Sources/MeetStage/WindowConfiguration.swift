@@ -2,10 +2,11 @@ import AppKit
 import SwiftUI
 
 enum ControlWindowSizing {
-    // Sized so the control bar fits seven equal-width effect toggles (Demo Mode,
-    // Auto Polish, Spotlight, Annotate, Clicks, Keystrokes, Settings) at the same
-    // per-button width the six-button bar used, with the bar inset ~11pt inside
-    // the capture surface for its rounded-drawer look.
+    // The control bar carries the six effect toggles (Auto Polish, Spotlight,
+    // Annotate, Clicks, Keystrokes, Settings) split three-per-side around a
+    // center gap. The Demo Mode voice control is promoted to a circular hero
+    // button that nests into that gap and protrudes below the bar, making the
+    // headline "talk to your demo" action unmistakable.
     static let sourceAreaWidth: CGFloat = 228
     static let contentWidth = sourceAreaWidth
     static let captureSurfaceSize = NSSize(width: contentWidth + 10, height: 54)
@@ -14,11 +15,23 @@ enum ControlWindowSizing {
     static let controlBarOverlap: CGFloat = 6
     static let joinedSurfaceHeight =
         captureSurfaceSize.height + controlBarHeight - controlBarOverlap
+
+    /// Hero (Demo Mode) button geometry. The gap reserves horizontal room in the
+    /// bar so the two effect groups clear the protruding circle.
+    static let heroDiameter: CGFloat = 46
+    static let heroGap: CGFloat = 60
+    /// How far the hero's bottom edge extends below the bar's bottom edge.
+    static let heroProtrusion: CGFloat = 18
+    static let heroBottomY = joinedSurfaceHeight + heroProtrusion
+    static let heroCenterY = heroBottomY - heroDiameter / 2
+
     static let dragHandleHitWidth: CGFloat = 72
     static let dragHandleAreaHeight: CGFloat = 12
+    /// Drag grip sits just beneath the hero's lowest point.
+    static let dragHandleOffset = heroBottomY + 6
     static let size = NSSize(
         width: captureSurfaceSize.width,
-        height: joinedSurfaceHeight + dragHandleAreaHeight
+        height: dragHandleOffset + dragHandleAreaHeight
     )
 }
 
