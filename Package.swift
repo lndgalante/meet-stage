@@ -23,6 +23,7 @@ let package = Package(
                 .linkedFramework("QuartzCore"),
                 .linkedFramework("FoundationModels"),
                 .linkedFramework("ScreenCaptureKit"),
+                .linkedFramework("Security"),
                 .linkedFramework("Speech"),
                 .linkedFramework("Vision")
             ]

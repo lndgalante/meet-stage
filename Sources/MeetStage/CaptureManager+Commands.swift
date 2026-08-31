@@ -157,6 +157,11 @@ extension CaptureManager {
 
     func toggleSpotlight() {
         cancelAutoZoomForManualPresentation()
+        // The presenter is taking manual control; relinquish any voice-spotlight
+        // ownership so its auto-dismiss can't turn this off.
+        demoSpotlightGeneration += 1
+        demoSpotlightTask?.cancel()
+        demoSpotlightTask = nil
         spotlightEnabled.toggle()
         if spotlightEnabled {
             focusSelectedSourceIfPossible()

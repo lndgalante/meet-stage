@@ -103,6 +103,11 @@ extension CaptureManager {
         presentationStore.demoSmartUnderstanding = value
     }
 
+    func setDemoCloudConsented(_ value: Bool) {
+        demoCloudConsented = value
+        presentationStore.demoCloudConsented = value
+    }
+
     /// Saves (or clears) the Anthropic API key that powers the conversational
     /// brain, kept in a local file rather than the app bundle.
     func setDemoBrainKey(_ value: String) {
@@ -167,10 +172,12 @@ extension CaptureManager {
         demoModelTask = nil
         demoBrainTask?.cancel()
         demoBrainTask = nil
-        // Clear a still-active voice spotlight (we own it while its task exists).
-        if demoSpotlightTask != nil {
-            demoSpotlightTask?.cancel()
+        // Clear a still-active voice spotlight (we own it only while its task
+        // is live; a manual toggle nils the task and takes ownership).
+        if let task = demoSpotlightTask {
+            task.cancel()
             demoSpotlightTask = nil
+            demoSpotlightGeneration += 1
             if spotlightEnabled {
                 spotlightEnabled = false
                 deactivateSpotlight()
@@ -386,11 +393,11 @@ extension CaptureManager {
         guard demoModeEnabled, isLive, isSelectedSourceFocused, segment.isFinal else { return }
         guard demoSmartUnderstanding, looksLikeDemoCommand(segment.text) else { return }
 
-        // Brain-first: when a key is configured, the conversational vision model
-        // is the SINGLE authority — no deterministic matcher runs ahead of it, so
-        // it can't wrongly grab "the first Sent transaction" as the "Transactions"
-        // button. The deterministic/on-device tiers are the offline fallback only.
-        if demoBrain.isConfigured {
+        // Brain-first: with a key configured AND the presenter's consent to send
+        // a screenshot to Anthropic, the conversational vision model is the SINGLE
+        // authority — no deterministic matcher runs ahead of it. Without consent
+        // (or a key) it falls through to the fully on-device tiers below.
+        if demoBrain.isConfigured, demoCloudConsented {
             resolveWithBrain(transcript: segment.text)
             return
         }
@@ -420,6 +427,15 @@ extension CaptureManager {
             AppLog.demoMode.error("Demo brain: no API key found")
             return
         }
+        // Drop the transcriber's re-emitted duplicate final so we don't pay for a
+        // second identical vision call within a short window.
+        let now = ProcessInfo.processInfo.systemUptime
+        if transcript == lastBrainTranscript, now - lastBrainTranscriptAt < 2 {
+            return
+        }
+        lastBrainTranscript = transcript
+        lastBrainTranscriptAt = now
+
         // Snapshot the index we send so the brain's element id resolves against
         // the exact list it saw — ids are not stable across the 1.5s rebuilds.
         let windowID = source.id
@@ -429,7 +445,7 @@ extension CaptureManager {
         let allowsClicking = demoVoiceActions.allowsClicking
 
         AppLog.demoMode.notice(
-            "Demo brain path for \"\(transcript, privacy: .public)\" (\(controls.count, privacy: .public) controls)"
+            "Demo brain path for \"\(transcript, privacy: .private)\" (\(controls.count, privacy: .public) controls)"
         )
         // Show the presenter that async work is happening (the ~1.5s call).
         demoMode.setCaption(.thinking)
@@ -465,10 +481,7 @@ extension CaptureManager {
             do {
                 decision = try await demoBrain.decide(request)
             } catch {
-                AppLog.demoMode.error(
-                    "Demo brain failed: \(error.localizedDescription, privacy: .public)"
-                )
-                if !Task.isCancelled { endDemoThinking() }
+                if !Task.isCancelled { surfaceDemoBrainError(error) }
                 return
             }
             if Task.isCancelled { return }
@@ -507,34 +520,53 @@ extension CaptureManager {
             return
         }
         AppLog.demoMode.notice(
-            "Demo brain resolved \(decision.action.rawValue, privacy: .public) → \(element.label, privacy: .public)"
+            "Demo brain resolved \(decision.action.rawValue, privacy: .public) → \(element.label, privacy: .private)"
         )
 
-        switch decision.action {
+        // A type without Accessibility trust cannot enter text, so present it as
+        // an honest highlight instead of a "Typing…" pill that silently no-ops.
+        var action = decision.action
+        if action == .type, !DemoActionExecutor.canSynthesizeInput {
+            action = .highlight
+        }
+
+        // highlight/click carry their debounce inside dispatchDemoCommand (shared
+        // with the offline tiers). The effect actions are gated here so a
+        // re-emitted final segment can't re-run a paid call or type text twice.
+        switch action {
         case .none:
             endDemoThinking()
         case .highlight, .click:
             dispatchDemoCommand(
                 DemoResolvedCommand(
-                    kind: decision.action == .click ? .click : .highlight,
+                    kind: action == .click ? .click : .highlight,
                     element: element,
                     matchedPhrase: decision.label.isEmpty ? element.label : decision.label,
                     score: 1
                 ),
                 transcript: transcript
             )
-        case .type:
-            guard let text = decision.text else {
+        case .type, .circle, .spotlight, .zoom:
+            let now = ProcessInfo.processInfo.systemUptime
+            guard demoCommandGate.admit(label: element.label, action: action.rawValue, at: now)
+            else {
                 endDemoThinking()
                 return
             }
-            executeTypeCommand(element: element, text: text, transcript: transcript)
-        case .circle:
-            executeCircleCommand(element: element, transcript: transcript)
-        case .spotlight:
-            executeSpotlightCommand(element: element, transcript: transcript)
-        case .zoom:
-            executeZoomCommand(element: element, transcript: transcript)
+            switch action {
+            case .type:
+                guard let text = decision.text else {
+                    endDemoThinking()
+                    return
+                }
+                executeTypeCommand(element: element, text: text, transcript: transcript)
+            case .circle:
+                executeCircleCommand(element: element, transcript: transcript)
+            case .spotlight:
+                executeSpotlightCommand(element: element, transcript: transcript)
+            default:
+                executeZoomCommand(element: element, transcript: transcript)
+            }
         }
     }
 
@@ -543,6 +575,21 @@ extension CaptureManager {
     private func endDemoThinking() {
         guard demoMode.isListening, demoMode.caption?.status == .thinking else { return }
         demoMode.setCaption(.listening)
+    }
+
+    /// Surfaces a brain failure to the presenter instead of a silent no-op: a
+    /// transient error blips the caption, a persistent one (bad key) is held on
+    /// the control tooltip so a whole session doesn't fail silently.
+    private func surfaceDemoBrainError(_ error: Error) {
+        let brainError = error as? DemoBrainError
+        AppLog.demoMode.error(
+            "Demo brain failed: \(brainError?.userMessage ?? error.localizedDescription, privacy: .public)"
+        )
+        let message = brainError?.userMessage ?? "Assistant unreachable"
+        demoMode.setCaption(.acting(symbol: "exclamationmark.triangle.fill", text: message))
+        if brainError?.isPersistent == true {
+            demoModeUnavailableReason = message
+        }
     }
 
     /// Resolves a brain decision to a target element: an exact element by id, or
@@ -609,6 +656,7 @@ extension CaptureManager {
         guard demoVoiceActions.allowsClicking, let context = demoSourceContext() else { return }
 
         let windowID = context.windowID
+        let pid = context.pid
         let fallbackFrame = context.fallbackFrame
         let normalizedCenter = element.normalizedCenter
         demoActionTask?.cancel()
@@ -625,7 +673,12 @@ extension CaptureManager {
                     normalizedCenter: normalizedCenter
                 )
             else { return }
-            await DemoActionExecutor.performType(text, at: target)
+            await DemoActionExecutor.performType(
+                text,
+                at: target,
+                pid: pid,
+                isStillValid: demoActuationValidator(windowID: windowID)
+            )
             guard !Task.isCancelled else { return }
             demoMode.clearHighlights()
             await rebuildDemoIndex()
@@ -664,6 +717,8 @@ extension CaptureManager {
         // following) and auto-dismiss after a few seconds — a momentary "look here".
         guard !spotlightEnabled else { return }
         spotlightEnabled = true
+        demoSpotlightGeneration += 1
+        let generation = demoSpotlightGeneration
         if let source = activeCaptureSource, isSelectedSourceFocused {
             sourceSpotlightPresenter.show(
                 session: spotlight,
@@ -679,7 +734,13 @@ extension CaptureManager {
             } catch {
                 return
             }
-            guard !Task.isCancelled, let self, spotlightEnabled else { return }
+            guard let self else { return }
+            demoSpotlightTask = nil
+            // Only dismiss the spotlight WE armed; a manual toggle in the meantime
+            // bumps the generation and takes ownership.
+            guard !Task.isCancelled, spotlightEnabled,
+                demoSpotlightGeneration == generation
+            else { return }
             spotlightEnabled = false
             deactivateSpotlight()
             updatePresentationPointerMonitoring()
@@ -907,7 +968,10 @@ extension CaptureManager {
                     normalizedCenter: normalizedCenter
                 )
             else { return }
-            await DemoActionExecutor.performClick(at: target)
+            await DemoActionExecutor.performClick(
+                at: target,
+                isStillValid: demoActuationValidator(windowID: windowID)
+            )
             guard !Task.isCancelled else { return }
             // The click likely navigated: the target is gone, so remove its ring
             // and release the zoom instead of leaving them over the new screen.
@@ -918,6 +982,20 @@ extension CaptureManager {
             // Refresh the control index for the new screen.
             await rebuildDemoIndex()
         }
+    }
+
+    /// A validity check the input executor re-runs at each actuation boundary
+    /// (before a press, and periodically while typing) so a mid-action focus or
+    /// window change aborts before input lands in the wrong app.
+    private func demoActuationValidator(windowID: CGWindowID) -> DemoActionExecutor.ValidityCheck {
+        { [weak self] in
+            await self?.isDemoActuationValid(windowID: windowID) ?? false
+        }
+    }
+
+    func isDemoActuationValid(windowID: CGWindowID) -> Bool {
+        demoModeEnabled && isLive && isSelectedSourceFocused
+            && demoSourceContext()?.windowID == windowID
     }
 
     /// Re-resolves the click point from the live window frame at actuation time,

@@ -80,7 +80,31 @@ struct DemoBrainDecision: Sendable, Equatable {
 
 enum DemoBrainError: Error {
     case missingKey
-    case badResponse(String)
+    /// A non-200 HTTP response, carrying the status so the UI can distinguish a
+    /// persistent auth failure (401) from a transient one (429/5xx).
+    case http(status: Int, detail: String)
+    /// A transport/decoding failure (offline, timeout, malformed body).
+    case transport(String)
+
+    /// A short, presenter-facing description.
+    var userMessage: String {
+        switch self {
+        case .missingKey: "Add an API key to use conversational commands"
+        case let .http(status, _):
+            switch status {
+            case 401, 403: "Check your API key"
+            case 429: "Rate limited — slow down"
+            default: "Assistant error (\(status))"
+            }
+        case .transport: "Assistant unreachable"
+        }
+    }
+
+    /// Whether the failure is persistent (should disable, not just blip).
+    var isPersistent: Bool {
+        if case let .http(status, _) = self { return status == 401 || status == 403 }
+        return false
+    }
 }
 
 /// A conversational intent resolver. Implementations are off-main network or

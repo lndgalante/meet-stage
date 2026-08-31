@@ -84,13 +84,21 @@ to follow while keeping the parts that do not require macOS services testable.
   walk, with the Chromium/Electron enhancement attributes), `DemoTextRecognizer`
   (Vision text recognition over an on-demand captured frame as a fallback for
   sparse AX trees), and `DemoActionExecutor` (the *only* place BetterMeets posts
-  synthesized events — a visible cursor glide plus click, gated on Accessibility
-  trust). Highlights dual-render like every other effect (source overlay plus
+  synthesized events — a visible cursor glide plus click, and typed Unicode
+  keystrokes into a verified text field, both gated on Accessibility trust). An
+  optional conversational tier (`ClaudeDemoBrain`) resolves natural, multi-turn
+  commands against a downscaled window screenshot; it is off unless the presenter
+  both saves an API key (`AnthropicKeyStore`, Keychain) and grants cloud consent
+  (`demoCloudConsented`, default off) — otherwise Demo Mode stays fully on-device.
+  The brain returns a structured action (highlight, click, type, circle,
+  spotlight, zoom); every action is debounced (`DemoCommandGate`) and every
+  input-synthesizing one re-validates the live focused window at each actuation
+  boundary. Highlights dual-render like every other effect (source overlay plus
   Demo Stage); the caption HUD renders only on the presenter's non-captured
-  overlay. Clicking is opt-out via the `Highlight only` voice-actions setting.
-  Actuation requires Accessibility trust; the microphone is a hard requirement
-  re-gated against live authorization at launch, exactly like keystroke
-  highlighting.
+  overlay. Clicking/typing is opt-in via the voice-actions setting (default
+  `Highlight only`). Actuation requires Accessibility trust; the microphone is a
+  hard requirement re-gated against live authorization at launch, exactly like
+  keystroke highlighting.
 - `StageFrameLayout` preserves the source aspect ratio inside configurable
   padding. `StageFrameBackdrop` and `StageView` own the visual composition:
   backdrop, blur, rounded source surface, layered shadow, auto-zoom transform,

@@ -58,6 +58,7 @@ final class CaptureManager: ObservableObject {
     @Published var demoHighlightColor: PresentationColor
     @Published var demoZoomSize: PresentationSize
     @Published var demoSmartUnderstanding: Bool
+    @Published var demoCloudConsented: Bool
     @Published var shortcutPins: [Int: PinnedWindow] = [:]
     @Published var shortcutExclusions: Set<PinnedWindow> = []
 
@@ -134,10 +135,18 @@ final class CaptureManager: ObservableObject {
     var demoSpotlightTask: Task<Void, Never>?
     var demoCommandGate = DemoCommandGate()
     var demoIndexGeneration = 0
+    /// Ownership token for the auto-dismissing voice spotlight. Any manual
+    /// spotlight toggle bumps it so the voice dismiss task never turns off a
+    /// spotlight the presenter enabled themselves.
+    var demoSpotlightGeneration = 0
     /// Label of the last control Demo Mode acted on, so the on-device model can
     /// resolve pronouns like "click it back".
     var lastReferencedControl: String?
     @Published var hasDemoBrainKey = AnthropicKeyStore.hasKey
+    /// Last transcript sent to the brain and when, to drop the transcriber's
+    /// re-emitted duplicate finals without paying for a second vision call.
+    var lastBrainTranscript: String?
+    var lastBrainTranscriptAt: TimeInterval = 0
     var workspaceMonitor: WorkspaceMonitor?
     var windowMonitoringTask: Task<Void, Never>?
     var windowRefreshTask: Task<Void, Never>?
@@ -176,6 +185,7 @@ final class CaptureManager: ObservableObject {
         demoHighlightColor = presentationStore.demoHighlightColor
         demoZoomSize = presentationStore.demoZoomSize
         demoSmartUnderstanding = presentationStore.demoSmartUnderstanding
+        demoCloudConsented = presentationStore.demoCloudConsented
         stageFrameStyle = presentationStore.stageFrameStyle
         stageFramePadding = presentationStore.stageFramePadding
         stageFrameCornerRadius = presentationStore.stageFrameCornerRadius

@@ -31,7 +31,7 @@
     <key>NSScreenCaptureUsageDescription</key>
     <string>BetterMeets needs screen recording access to show the window you choose in the Demo Stage.</string>
     <key>NSMicrophoneUsageDescription</key>
-    <string>BetterMeets listens to your narration on device so Demo Mode can highlight and open the controls you mention. Audio never leaves your Mac.</string>
+    <string>BetterMeets listens to your narration so Demo Mode can highlight and open the controls you mention. Speech is transcribed on your Mac; if you enable Cloud understanding in Settings, a screenshot and transcript are sent to Anthropic to resolve commands.</string>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
 </dict>

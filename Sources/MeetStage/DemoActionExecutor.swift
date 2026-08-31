@@ -29,11 +29,17 @@ enum DemoActionExecutor {
         return status == .success && count > 0
     }
 
+    /// A validity check re-run at each actuation boundary: it must still be the
+    /// same live, focused source window before a real event is posted, so a
+    /// mid-glide focus change never lands input in the wrong app.
+    typealias ValidityCheck = @Sendable () async -> Bool
+
     /// Glides the system cursor to `target` (global Quartz points) and clicks.
-    /// No-op when Accessibility trust is missing. The glide honors cancellation
-    /// so a teardown mid-glide never lands a click, but once the button is
-    /// pressed the matching release always posts so the button is never stuck.
-    static func performClick(at target: CGPoint) async {
+    /// No-op when Accessibility trust is missing. The glide honors cancellation,
+    /// and `isStillValid` is re-checked immediately before the press so a focus
+    /// change during the glide aborts before any button-down is posted; once the
+    /// button is pressed the matching release always posts (never stuck).
+    static func performClick(at target: CGPoint, isStillValid: ValidityCheck = { true }) async {
         guard canSynthesizeInput else {
             AppLog.demoMode.notice("Skipped Demo Mode click: Accessibility not trusted")
             return
@@ -56,6 +62,10 @@ enum DemoActionExecutor {
             }
         }
         if Task.isCancelled { return }
+        guard await isStillValid() else {
+            AppLog.demoMode.notice("Aborted Demo Mode click: window/focus changed mid-glide")
+            return
+        }
 
         postMouseEvent(.leftMouseDown, at: target, clickState: 1)
         try? await Task.sleep(for: .milliseconds(24))
@@ -64,23 +74,70 @@ enum DemoActionExecutor {
 
     /// Delay between typed characters, so entry looks natural and reliably lands.
     static let typeStepDelay = Duration.milliseconds(28)
+    /// Re-check focus/window this often (in characters) while typing.
+    static let typeRevalidateEvery = 8
 
     /// Focuses the field at `target` (a visible click) and types `text` into it as
-    /// synthesized Unicode keystrokes. No-op without Accessibility trust.
-    static func performType(_ text: String, at target: CGPoint) async {
+    /// synthesized Unicode keystrokes. No-op without Accessibility trust. Verifies
+    /// an editable field actually gained focus before typing (so letters never
+    /// become app shortcuts on a non-field), and re-checks validity periodically
+    /// so a mid-type focus change stops entry rather than leaking into another app.
+    static func performType(
+        _ text: String,
+        at target: CGPoint,
+        pid: pid_t,
+        isStillValid: ValidityCheck = { true }
+    ) async {
         guard canSynthesizeInput else {
             AppLog.demoMode.notice("Skipped Demo Mode type: Accessibility not trusted")
             return
         }
-        await performClick(at: target)
+        await performClick(at: target, isStillValid: isStillValid)
         if Task.isCancelled { return }
-        try? await Task.sleep(for: .milliseconds(140))  // let focus settle
+        try? await Task.sleep(for: .milliseconds(160))  // let focus settle
 
-        for character in text {
+        guard await isStillValid() else { return }
+        guard isFocusedElementEditable(pid: pid) else {
+            AppLog.demoMode.notice("Skipped Demo Mode type: focused element is not a text field")
+            return
+        }
+
+        for (offset, character) in text.enumerated() {
             if Task.isCancelled { return }
+            if offset > 0, offset % typeRevalidateEvery == 0 {
+                guard await isStillValid() else { return }
+            }
             postCharacter(character)
             try? await Task.sleep(for: typeStepDelay)
         }
+    }
+
+    /// Whether the app's currently focused Accessibility element accepts text.
+    private static func isFocusedElementEditable(pid: pid_t) -> Bool {
+        let app = AXUIElementCreateApplication(pid)
+        var focused: CFTypeRef?
+        guard
+            AXUIElementCopyAttributeValue(
+                app,
+                kAXFocusedUIElementAttribute as CFString,
+                &focused
+            ) == .success,
+            let element = focused, CFGetTypeID(element) == AXUIElementGetTypeID()
+        else { return false }
+
+        var role: CFTypeRef?
+        guard
+            AXUIElementCopyAttributeValue(
+                unsafeDowncast(element, to: AXUIElement.self),
+                kAXRoleAttribute as CFString,
+                &role
+            ) == .success,
+            let roleString = role as? String
+        else { return false }
+
+        return [
+            "AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"
+        ].contains(roleString)
     }
 
     private static func postCharacter(_ character: Character) {

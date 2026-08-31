@@ -141,6 +141,7 @@ struct PresentationPreferencesStore {
     static let demoHighlightColorKey = "presentation.demoHighlightColor"
     static let demoZoomSizeKey = "presentation.demoZoomSize"
     static let demoSmartUnderstandingKey = "presentation.demoSmartUnderstanding"
+    static let demoCloudConsentedKey = "presentation.demoCloudConsented"
 
     private let defaults: UserDefaults
 
@@ -310,8 +311,17 @@ struct PresentationPreferencesStore {
     }
 
     var demoVoiceActions: DemoVoiceActions {
-        get { value(forKey: Self.demoVoiceActionsKey, default: .highlightAndClick) }
+        // Safe-by-default: new installs highlight only. Clicking/typing (which
+        // synthesize real input into the source app) is an explicit opt-in.
+        get { value(forKey: Self.demoVoiceActionsKey, default: .highlightOnly) }
         nonmutating set { defaults.set(newValue.rawValue, forKey: Self.demoVoiceActionsKey) }
+    }
+
+    var demoCloudConsented: Bool {
+        // Off by default: sending a window screenshot + transcript to Anthropic
+        // requires the presenter's explicit consent.
+        get { defaults.bool(forKey: Self.demoCloudConsentedKey) }
+        nonmutating set { defaults.set(newValue, forKey: Self.demoCloudConsentedKey) }
     }
 
     var demoHighlightColor: PresentationColor {

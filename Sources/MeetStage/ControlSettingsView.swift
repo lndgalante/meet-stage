@@ -156,8 +156,32 @@ struct SettingsPopover: View {
                     }
                     Text(
                         manager.hasDemoBrainKey
-                            ? "Connected — natural, conversational commands use Claude Haiku 4.5 (cloud)."
-                            : "Add a key for natural commands like “now open it”. A window screenshot is sent to Anthropic to resolve the target."
+                            ? "Key saved to your Keychain. Enables natural commands like “now open it”."
+                            : "Add a key for natural commands like “now open it” (Claude Haiku 4.5)."
+                    )
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+
+            SettingsFormRow(title: "Cloud understanding") {
+                VStack(alignment: .leading, spacing: 5) {
+                    Toggle(
+                        "Send screenshots to Anthropic",
+                        isOn: Binding(
+                            get: { manager.demoCloudConsented },
+                            set: { manager.setDemoCloudConsented($0) }
+                        )
+                    )
+                    .labelsHidden()
+                    .toggleStyle(.switch)
+                    .disabled(!manager.hasDemoBrainKey)
+
+                    Text(
+                        "When on, each command sends a screenshot of the shared window and "
+                            + "your spoken words to Anthropic to resolve the target. Turn off to "
+                            + "keep everything on device (understanding is more limited)."
                     )
                     .font(.caption2)
                     .foregroundStyle(.secondary)

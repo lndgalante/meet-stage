@@ -15,7 +15,7 @@ struct DemoCommandGate {
 
     private struct Key: Hashable {
         let label: String
-        let kind: DemoIntentKind
+        let action: String
     }
 
     /// Returns true and records the command when it should fire; false when it
@@ -25,7 +25,19 @@ struct DemoCommandGate {
         at now: TimeInterval,
         cooldown: TimeInterval = defaultCooldown
     ) -> Bool {
-        let key = Key(label: command.element.label, kind: command.kind)
+        admit(label: command.element.label, action: command.kind.rawValue, at: now, cooldown: cooldown)
+    }
+
+    /// Generalized debounce keyed by (target label, action). Covers every action
+    /// kind — highlight, click, type, circle, spotlight, zoom — so a re-emitted
+    /// utterance cannot double-fire a paid call or, worse, type the text twice.
+    mutating func admit(
+        label: String,
+        action: String,
+        at now: TimeInterval,
+        cooldown: TimeInterval = defaultCooldown
+    ) -> Bool {
+        let key = Key(label: label, action: action)
         if let previous = lastFired[key], now - previous < cooldown {
             return false
         }
