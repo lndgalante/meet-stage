@@ -148,13 +148,13 @@ struct ControlBarButton: View {
     }
 
     private var accessibilityValue: String {
-        guard isEnabled else { return "Unavailable" }
+        guard isEnabled else { return String(localized: "Unavailable") }
         if let isPresented {
-            return isPresented ? "Open" : "Closed"
+            return isPresented ? String(localized: "Open") : String(localized: "Closed")
         }
-        guard let isOn else { return "Available" }
-        if showsPermissionWarning { return "Permission required" }
-        return isOn ? "On" : "Off"
+        guard let isOn else { return String(localized: "Available") }
+        if showsPermissionWarning { return String(localized: "Permission required") }
+        return isOn ? String(localized: "On") : String(localized: "Off")
     }
 }
 

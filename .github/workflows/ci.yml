@@ -34,8 +34,46 @@ jobs:
           plutil -lint Resources/Info.plist
           zsh -n build-app.sh dev-app.sh scripts/build-and-package.sh scripts/notarize-app.sh
 
-      - name: Test with compiler warnings as errors
-        run: swift test -Xswiftc -warnings-as-errors
+      - name: Test with compiler warnings as errors and coverage
+        run: swift test --enable-code-coverage -Xswiftc -warnings-as-errors
+
+      - name: Report test coverage
+        run: |
+          TEST_BINARY="$(find .build -path '*debug/MeetStagePackageTests.xctest/Contents/MacOS/MeetStagePackageTests' -print -quit)"
+          PROFILE="$(find .build -path '*debug/codecov/default.profdata' -print -quit)"
+          test -n "$TEST_BINARY"
+          test -n "$PROFILE"
+          xcrun llvm-cov report "$TEST_BINARY" \
+            -instr-profile "$PROFILE" \
+            -ignore-filename-regex='Tests/|\.build/'
+          xcrun llvm-cov report "$TEST_BINARY" \
+            -instr-profile "$PROFILE" \
+            Sources/MeetStageCore/*.swift \
+            | tee .build/core-coverage.txt
+          CORE_LINE_COVERAGE="$(awk '/TOTAL/ { gsub("%", "", $10); print $10 }' .build/core-coverage.txt)"
+          awk -v coverage="$CORE_LINE_COVERAGE" \
+            'BEGIN { if (coverage + 0 < 90) exit 1 }'
+          xcrun llvm-cov export "$TEST_BINARY" \
+            -instr-profile "$PROFILE" \
+            -ignore-filename-regex='Tests/|\.build/' \
+            > .build/coverage.json
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v7
+        with:
+          name: swift-coverage
+          path: .build/coverage.json
 
       - name: Compile optimized build with compiler warnings as errors
         run: swift build -c release -Xswiftc -warnings-as-errors
+
+      - name: Package and verify the application bundle
+        run: |
+          ./build-app.sh
+          test -x dist/BetterMeets.app/Contents/MacOS/MeetStage
+          test -f dist/BetterMeets.app/Contents/Resources/IdleStageChrome.metallib
+          test -d dist/BetterMeets.app/Contents/Resources/Metadata.appintents
+          test -f dist/BetterMeets.app/Contents/Resources/en.lproj/Localizable.strings
+          codesign --verify --strict --verbose=2 dist/BetterMeets.app
+          codesign -d --entitlements - dist/BetterMeets.app 2>&1 \
+            | rg -Uq 'com\.apple\.security\.device\.audio-input\n\s*\[Value\]\n\s*\[Bool\] true'

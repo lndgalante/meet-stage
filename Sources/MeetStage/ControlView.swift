@@ -50,6 +50,7 @@ struct ControlView: View {
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @Environment(\.legibilityWeight) private var legibilityWeight
+    @ScaledMetric(relativeTo: .caption) private var permissionIconSize: CGFloat = 14
     @State private var sourceScrollBounds = CGRect.zero
     @FocusState private var focusedSourceID: CGWindowID?
 
@@ -309,38 +310,44 @@ struct ControlView: View {
 
     private var annotationControlHelp: String {
         if manager.isAnnotating {
-            return "Draw temporary ink over the selected app window"
+            return String(localized: "Draw temporary ink over the selected app window")
         }
         if manager.annotationsEnabled {
             return manager.state == .paused
-                ? "Annotations will resume when sharing resumes"
-                : "Annotations will start when a window is live"
+                ? String(localized: "Annotations will resume when sharing resumes")
+                : String(localized: "Annotations will start when a window is live")
         }
         return manager.isLive
-            ? "Draw temporary ink over the selected app window"
-            : "Enable annotations for the next shared window"
+            ? String(localized: "Draw temporary ink over the selected app window")
+            : String(localized: "Enable annotations for the next shared window")
     }
 
     private var spotlightControlHelp: String {
         if manager.spotlightEnabled {
             return manager.isLive
-                ? "Move the pointer to focus part of the selected window"
-                : "The spotlight will appear when a window is live"
+                ? String(localized: "Move the pointer to focus part of the selected window")
+                : String(localized: "The spotlight will appear when a window is live")
         }
         return manager.isLive
-            ? "Dim and softly blur everything outside the pointer spotlight"
-            : "Enable the spotlight for the next shared window"
+            ? String(localized: "Dim and softly blur everything outside the pointer spotlight")
+            : String(localized: "Enable the spotlight for the next shared window")
     }
 
     private var autoPresentationControlHelp: String {
         manager.autoPresentationEnabled
-            ? "Auto-zoom clicks, mirror the system pointer at 2×, and apply the selected frame"
-            : "Polish the Demo Stage with activity zooms, a 2× system pointer, and a styled frame"
+            ? String(
+                localized:
+                    "Auto-zoom clicks, mirror the system pointer at 2×, and apply the selected frame"
+            )
+            : String(
+                localized:
+                    "Polish the Demo Stage with activity zooms, a 2× system pointer, and a styled frame"
+            )
     }
 
     private var demoModeControlHelp: String {
         if manager.needsMicrophonePermission {
-            return "Allow microphone access, then turn on Demo Mode"
+            return String(localized: "Allow microphone access, then turn on Demo Mode")
         }
         if let reason = manager.demoModeUnavailableReason {
             return reason
@@ -348,12 +355,18 @@ struct ControlView: View {
         if manager.demoModeEnabled {
             if manager.demoMode.isListening {
                 return manager.demoModeNeedsClickAccessibility
-                    ? "Listening — allow Accessibility to open controls, not just highlight them"
-                    : "Listening — name a control to highlight it, or say “click” to open it"
+                    ? String(
+                        localized:
+                            "Listening — allow Accessibility to open controls, not just highlight them"
+                    )
+                    : String(
+                        localized:
+                            "Listening — name a control to highlight it, or say “click” to open it"
+                    )
             }
-            return "Demo Mode starts listening when a window is live"
+            return String(localized: "Demo Mode starts listening when a window is live")
         }
-        return "Highlight and open controls by voice as you narrate your demo"
+        return String(localized: "Highlight and open controls by voice as you narrate your demo")
     }
 
     private var sourceScroller: some View {
@@ -516,12 +529,13 @@ struct ControlView: View {
     private var permissionStrip: some View {
         HStack(spacing: 5) {
             Image(systemName: "lock.screen")
-                .font(.system(size: 14, weight: .medium))
+                .font(.system(size: permissionIconSize, weight: .medium))
                 .foregroundStyle(ControlPalette.warning)
 
             Text("Allow screen recording")
                 .font(.caption.weight(.semibold))
-                .lineLimit(1)
+                .lineLimit(2)
+                .minimumScaleFactor(0.75)
 
             Spacer(minLength: 2)
 

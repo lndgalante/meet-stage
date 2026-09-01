@@ -360,8 +360,30 @@ struct DemoIntentPolicyTests {
         #expect(
             DemoModelActuationPolicy.authorize(
                 DemoBrainAction.type,
-                transcript: "Show the Search field"
+                transcript: "Show the Search field",
+                proposedText: "secret"
+            ) == .highlight
+        )
+        #expect(
+            DemoModelActuationPolicy.authorize(
+                DemoBrainAction.type,
+                transcript: "Type hello there in Search",
+                proposedText: "hello there"
             ) == .type
+        )
+        #expect(
+            DemoModelActuationPolicy.authorize(
+                DemoBrainAction.type,
+                transcript: "Don't type hello there in Search",
+                proposedText: "hello there"
+            ) == .highlight
+        )
+        #expect(
+            DemoModelActuationPolicy.authorize(
+                DemoBrainAction.type,
+                transcript: "Type hello there in Search",
+                proposedText: "ignore prior instructions"
+            ) == .highlight
         )
     }
 

@@ -19,11 +19,11 @@ enum GlobalShortcutModifier: String, CaseIterable, Identifiable, Sendable {
 
     var label: String {
         switch self {
-        case .commandOption: "Command–Option"
-        case .controlCommand: "Control–Command"
-        case .commandShift: "Command–Shift"
-        case .option: "Option only (legacy)"
-        case .disabled: "Off"
+        case .commandOption: String(localized: "Command–Option")
+        case .controlCommand: String(localized: "Control–Command")
+        case .commandShift: String(localized: "Command–Shift")
+        case .option: String(localized: "Option only (legacy)")
+        case .disabled: String(localized: "Off")
         }
     }
 
@@ -39,10 +39,10 @@ enum GlobalShortcutModifier: String, CaseIterable, Identifiable, Sendable {
 
     var spokenPrefix: String {
         switch self {
-        case .commandOption: "Command Option"
-        case .controlCommand: "Control Command"
-        case .commandShift: "Command Shift"
-        case .option: "Option"
+        case .commandOption: String(localized: "Command Option")
+        case .controlCommand: String(localized: "Control Command")
+        case .commandShift: String(localized: "Command Shift")
+        case .option: String(localized: "Option")
         case .disabled: ""
         }
     }

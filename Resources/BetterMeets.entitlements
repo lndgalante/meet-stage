@@ -3,6 +3,13 @@
 <plist version="1.0">
 <dict>
     <!--
+      BetterMeets is a directly distributed utility and intentionally does not
+      enable App Sandbox. ScreenCaptureKit capture, global event observation,
+      Accessibility inspection, and user-authorized input synthesis are core
+      features whose feasibility must be reassessed before an App Store build.
+      See SECURITY.md.
+    -->
+    <!--
       Demo Mode transcribes narration through an AVAudioEngine microphone tap.
       The hardened runtime denies microphone access without this entitlement,
       and ad-hoc dev builds do not enable the hardened runtime, so this file

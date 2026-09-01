@@ -11,8 +11,13 @@ let package = Package(
         .executable(name: "MeetStage", targets: ["MeetStage"])
     ],
     targets: [
+        .target(
+            name: "MeetStageCore",
+            path: "Sources/MeetStageCore"
+        ),
         .executableTarget(
             name: "MeetStage",
+            dependencies: ["MeetStageCore"],
             path: "Sources/MeetStage",
             exclude: ["IdleStageChrome.metal"],
             linkerSettings: [
@@ -30,8 +35,13 @@ let package = Package(
         ),
         .testTarget(
             name: "MeetStageTests",
-            dependencies: ["MeetStage"],
+            dependencies: ["MeetStage", "MeetStageCore"],
             path: "Tests/MeetStageTests"
+        ),
+        .testTarget(
+            name: "MeetStageCoreTests",
+            dependencies: ["MeetStageCore"],
+            path: "Tests/MeetStageCoreTests"
         )
     ],
     swiftLanguageModes: [.v6]

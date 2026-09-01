@@ -57,18 +57,20 @@ extension CaptureManager {
     // MARK: - Thumbnails and shortcut reconciliation
 
     func loadThumbnails(for sources: [WindowSource]) async {
-        for source in sources {
-            do {
-                let thumbnail = try await WindowSourceDiscovery.thumbnail(for: source)
-                guard let index = windows.firstIndex(where: { $0.id == source.id }) else {
-                    continue
-                }
-                windows[index].thumbnail = thumbnail
-            } catch {
+        let results = await thumbnailLoader.load(for: sources)
+        for result in results {
+            if let image = result.image,
+                let index = windows.firstIndex(where: { $0.id == result.windowID })
+            {
+                windows[index].thumbnail = NSImage(
+                    cgImage: image,
+                    size: NSSize(width: image.width, height: image.height)
+                )
+            } else if let errorDescription = result.errorDescription {
                 // A window can close during refresh. Its fallback remains useful
                 // until the next source-list refresh removes it.
                 AppLog.capture.debug(
-                    "Could not update thumbnail for window \(source.id): \(error.localizedDescription, privacy: .public)"
+                    "Could not update thumbnail for window \(result.windowID): \(errorDescription, privacy: .public)"
                 )
             }
         }

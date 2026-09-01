@@ -6,6 +6,11 @@ to follow while keeping the parts that do not require macOS services testable.
 
 ## Ownership boundaries
 
+- `MeetStageCore` is a framework-free SwiftPM target for security and deployment
+  policies that do not depend on AppKit or ScreenCaptureKit. Its tests compile
+  and run without the executable target. `TypedActuationAuthorization` owns the
+  deterministic cloud-typing boundary; `CloudModelConfiguration` owns validated
+  provider model identifiers and deployment overrides.
 - `MeetStageApp`, `ControlView`, and `StageView` own SwiftUI composition only.
   AppKit window mutations live in `WindowConfigurator`.
 - `CaptureManager` is the main-actor coordinator. Its root file owns observable
@@ -13,6 +18,9 @@ to follow while keeping the parts that do not require macOS services testable.
   commands, lifecycle, presentation integration, and stream callbacks. The
   coordinator remains internal to the executable target.
 - `WindowSourceDiscovery` owns ScreenCaptureKit enumeration and thumbnails.
+  `WindowThumbnailLoader` is an injected service that keeps at most four
+  screenshot requests in flight and returns results to the main-actor
+  coordinator. `StageLogoStore` is a separate injected persistence service.
   `WindowDiscoveryPolicy` contains the platform-independent picker eligibility
   rules and is tested without requiring screen-recording permission.
 - `ShortcutAssignmentPolicy` is a pure reconciliation function. It knows
@@ -21,7 +29,9 @@ to follow while keeping the parts that do not require macOS services testable.
   Codable property names are compatibility contracts.
 - `PresentationPreferencesStore` is the typed persistence boundary for drawing,
   click, and keystroke settings. Views and capture orchestration must not read
-  or write its raw `UserDefaults` keys directly.
+  or write its raw `UserDefaults` keys directly. Large assets never live in
+  defaults: legacy logo data migrates to a normalized Application Support file,
+  leaving only a storage-version marker.
 - `WindowCoordinateGeometry` is the canonical coordinate-conversion boundary
   for every presentation effect. `SourceOverlayGeometry` and
   `SourceOverlayFrameTracker` own Quartz-to-AppKit conversion and live overlay
@@ -110,8 +120,10 @@ to follow while keeping the parts that do not require macOS services testable.
   a newly selected vendor without a fresh opt-in.
   The brain returns a structured action (highlight, click, type, circle,
   spotlight, zoom); every action is debounced (`DemoCommandGate`) and every
-  input-synthesizing one re-validates the live focused window at each actuation
-  boundary. Highlights dual-render like every other effect (source overlay plus
+  input-synthesizing one is authorized from the transcript. Typed payloads must
+  be present in an explicit spoken typing command, and the live focused window
+  plus the exact editable AX element are revalidated before every character.
+  Highlights dual-render like every other effect (source overlay plus
   Demo Stage); the caption HUD renders only on the presenter's non-captured
   overlay. Clicking/typing is opt-in via the voice-actions setting (default
   `Highlight only`). Actuation requires Accessibility trust; the microphone is a
@@ -175,8 +187,9 @@ See [TESTING.md](TESTING.md) for the test-layer map, contributor conventions,
 and the manual verification matrix for platform-only behavior.
 
 `.github/workflows/ci.yml` enforces strict Swift formatting, validates metadata
-and shell syntax, runs the complete test suite with warnings as errors, and
-compiles an optimized build on every push and pull request.
+and shell syntax, runs the complete test suite with warnings as errors and
+coverage reporting, compiles an optimized build, then packages and verifies the
+signed app bundle and its resources on every push and pull request.
 
 The `build-app.sh` and `dev-app.sh` entry points share
 `scripts/build-and-package.sh`. The helper derives the signing identifier from

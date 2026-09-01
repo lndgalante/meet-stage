@@ -79,14 +79,53 @@ enum DemoActionExecutor {
 
     /// Delay between typed characters, so entry looks natural and reliably lands.
     static let typeStepDelay = Duration.milliseconds(28)
-    /// Re-check focus/window this often (in characters) while typing.
-    static let typeRevalidateEvery = 8
+
+    /// Retains the exact editable element that gained focus after the visible
+    /// click. AX can vend a new wrapper on each read, so production identity uses
+    /// Core Foundation equality rather than Swift object identity. The testing
+    /// case keeps the security-critical loop independently testable without AX
+    /// permission or real keyboard events.
+    final class EditableFocusToken: @unchecked Sendable {
+        private enum Storage {
+            case accessibility(AXUIElement)
+            case testing(Int)
+        }
+
+        private let storage: Storage
+
+        fileprivate init(element: AXUIElement) {
+            storage = .accessibility(element)
+        }
+
+        static func testing(_ identifier: Int) -> EditableFocusToken {
+            EditableFocusToken(testIdentifier: identifier)
+        }
+
+        private init(testIdentifier: Int) {
+            storage = .testing(testIdentifier)
+        }
+
+        func refersToSameElement(as other: EditableFocusToken) -> Bool {
+            switch (storage, other.storage) {
+            case let (.accessibility(first), .accessibility(second)):
+                CFEqual(first, second)
+            case let (.testing(first), .testing(second)):
+                first == second
+            default:
+                false
+            }
+        }
+    }
+
+    typealias FocusedElementResolver = @Sendable (pid_t) -> EditableFocusToken?
+    typealias CharacterPoster = @Sendable (Character) -> Void
+    typealias Sleeper = @Sendable (Duration) async throws -> Void
 
     /// Focuses the field at `target` (a visible click) and types `text` into it as
     /// synthesized Unicode keystrokes. No-op without Accessibility trust. Verifies
     /// an editable field actually gained focus before typing (so letters never
-    /// become app shortcuts on a non-field), and re-checks validity periodically
-    /// so a mid-type focus change stops entry rather than leaking into another app.
+    /// become app shortcuts on a non-field), then re-checks both the source and
+    /// exact focused field before every character.
     static func performType(
         _ text: String,
         at target: CGPoint,
@@ -99,26 +138,29 @@ enum DemoActionExecutor {
         }
         guard await performClick(at: target, isStillValid: isStillValid) else { return }
         if Task.isCancelled { return }
-        try? await Task.sleep(for: .milliseconds(160))  // let focus settle
+        do {
+            try await Task.sleep(for: .milliseconds(160))  // let focus settle
+        } catch {
+            return
+        }
 
         guard await isStillValid() else { return }
-        guard isFocusedElementEditable(pid: pid) else {
+        guard let focusedElement = focusedEditableElement(pid: pid) else {
             AppLog.demoMode.notice("Skipped Demo Mode type: focused element is not a text field")
             return
         }
 
-        for (offset, character) in text.enumerated() {
-            if Task.isCancelled { return }
-            if offset > 0, offset % typeRevalidateEvery == 0 {
-                guard await isStillValid() else { return }
-            }
-            postCharacter(character)
-            try? await Task.sleep(for: typeStepDelay)
-        }
+        await typeCharacters(
+            text,
+            pid: pid,
+            expectedFocus: focusedElement,
+            isStillValid: isStillValid
+        )
     }
 
-    /// Whether the app's currently focused Accessibility element accepts text.
-    private static func isFocusedElementEditable(pid: pid_t) -> Bool {
+    /// The focused editable element, retained so the typing loop can verify that
+    /// focus never moved—even to another control in the same source window.
+    private static func focusedEditableElement(pid: pid_t) -> EditableFocusToken? {
         let app = AXUIElementCreateApplication(pid)
         var focused: CFTypeRef?
         guard
@@ -128,21 +170,61 @@ enum DemoActionExecutor {
                 &focused
             ) == .success,
             let element = focused, CFGetTypeID(element) == AXUIElementGetTypeID()
-        else { return false }
+        else { return nil }
+
+        let focusedElement = unsafeDowncast(element, to: AXUIElement.self)
 
         var role: CFTypeRef?
         guard
             AXUIElementCopyAttributeValue(
-                unsafeDowncast(element, to: AXUIElement.self),
+                focusedElement,
                 kAXRoleAttribute as CFString,
                 &role
             ) == .success,
             let roleString = role as? String
-        else { return false }
+        else { return nil }
 
-        return [
-            "AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"
-        ].contains(roleString)
+        guard
+            [
+                "AXTextField", "AXTextArea", "AXComboBox", "AXSearchField"
+            ].contains(roleString)
+        else { return nil }
+        return EditableFocusToken(element: focusedElement)
+    }
+
+    /// Testable security boundary used by `performType`. Dependencies are
+    /// injectable so focus drift and cancellation can be verified without
+    /// posting real events.
+    static func typeCharacters(
+        _ text: String,
+        pid: pid_t,
+        expectedFocus: EditableFocusToken,
+        isStillValid: ValidityCheck,
+        resolveFocusedElement: FocusedElementResolver = focusedEditableElement(pid:),
+        post: CharacterPoster = postCharacter,
+        sleep: Sleeper = { try await Task.sleep(for: $0) }
+    ) async {
+        for character in text {
+            if Task.isCancelled { return }
+            guard await isStillValid() else {
+                AppLog.demoMode.notice("Aborted Demo Mode type: window/focus changed")
+                return
+            }
+            guard
+                let currentFocus = resolveFocusedElement(pid),
+                expectedFocus.refersToSameElement(as: currentFocus)
+            else {
+                AppLog.demoMode.notice("Aborted Demo Mode type: focused field changed")
+                return
+            }
+
+            post(character)
+            do {
+                try await sleep(typeStepDelay)
+            } catch {
+                return
+            }
+        }
     }
 
     private static func postCharacter(_ character: Character) {

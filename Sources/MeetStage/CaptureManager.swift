@@ -83,6 +83,9 @@ final class CaptureManager: ObservableObject {
 
     let shortcutStore: ShortcutPreferencesStore
     let presentationStore: PresentationPreferencesStore
+    let stageLogoStore: StageLogoStore
+    let thumbnailLoader: any WindowThumbnailLoading
+    let demoBrainRegistry: DemoBrainRegistry
     let inactiveStageAspectRatio: CGFloat
     let sampleQueue = DispatchQueue(
         label: "dev.poc.meetstage.screen-frames",
@@ -129,13 +132,8 @@ final class CaptureManager: ObservableObject {
     var demoSpeechTranscriber: DemoSpeechListening?
     let demoEmbeddingMatcher = DemoEmbeddingMatcher()
     let demoModelResolver = DemoModelIntentResolver()
-    // Both cloud brains are held so the presenter can switch providers to compare
-    // them; each request snapshots its provider before starting asynchronous work.
-    let claudeDemoBrain = ClaudeDemoBrain()
-    let openAIDemoBrain = OpenAIDemoBrain()
-
     func demoBrain(for provider: DemoBrainProvider) -> any DemoBrain {
-        provider == .openai ? openAIDemoBrain : claudeDemoBrain
+        demoBrainRegistry.brain(for: provider)
     }
     var demoConversation = DemoConversation()
     /// In-memory cache of each provider's API key, so a voice command doesn't
@@ -181,12 +179,20 @@ final class CaptureManager: ObservableObject {
 
     // MARK: - Initialization
 
-    init(defaults: UserDefaults = .standard) {
+    init(
+        defaults: UserDefaults = .standard,
+        stageLogoStore: StageLogoStore = .live(),
+        thumbnailLoader: any WindowThumbnailLoading = WindowThumbnailLoader(),
+        demoBrainRegistry: DemoBrainRegistry = .live()
+    ) {
         let shortcutStore = ShortcutPreferencesStore(defaults: defaults)
         let presentationStore = PresentationPreferencesStore(defaults: defaults)
         let inactiveStageAspectRatio = StageWindowSizing.currentScreenAspectRatio()
         self.shortcutStore = shortcutStore
         self.presentationStore = presentationStore
+        self.stageLogoStore = stageLogoStore
+        self.thumbnailLoader = thumbnailLoader
+        self.demoBrainRegistry = demoBrainRegistry
         self.inactiveStageAspectRatio = inactiveStageAspectRatio
         stageAspectRatio = inactiveStageAspectRatio
         let annotationLifetimeSeconds = presentationStore.annotationLifetimeSeconds
@@ -215,11 +221,28 @@ final class CaptureManager: ObservableObject {
         stageFrameBlur = presentationStore.stageFrameBlur
         stageFrameShadow = presentationStore.stageFrameShadow
         autoZoomSize = presentationStore.autoZoomSize
-        let storedStageLogoData = presentationStore.stageLogoData
-        let storedStageLogo = storedStageLogoData.flatMap(NSImage.init(data:))
-        stageLogo = storedStageLogo
-        if storedStageLogoData != nil, storedStageLogo == nil {
-            presentationStore.stageLogoData = nil
+        if let legacyLogoData = presentationStore.legacyStageLogoData {
+            if let migratedLogo = try? stageLogoStore.save(importedData: legacyLogoData) {
+                stageLogo = migratedLogo
+                presentationStore.stageLogoStorageVersion = StageLogoStore.storageVersion
+                presentationStore.legacyStageLogoData = nil
+            } else {
+                stageLogo = nil
+                // Corrupt legacy data can never become a logo; clear it so each
+                // launch does not repeat an expensive migration attempt. A valid
+                // image is retained when only the filesystem write failed.
+                if (try? StageLogoStore.normalizedPNG(from: legacyLogoData)) == nil {
+                    presentationStore.legacyStageLogoData = nil
+                }
+            }
+        } else if presentationStore.stageLogoStorageVersion == StageLogoStore.storageVersion {
+            let storedLogo = stageLogoStore.load()
+            stageLogo = storedLogo
+            if storedLogo == nil {
+                presentationStore.stageLogoStorageVersion = nil
+            }
+        } else {
+            stageLogo = nil
         }
         annotations = AnnotationSession(
             lifetimeSeconds: annotationLifetimeSeconds,

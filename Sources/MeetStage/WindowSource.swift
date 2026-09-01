@@ -15,8 +15,12 @@ struct WindowSource: Identifiable {
     init(window: SCWindow, reusing presentation: WindowSource? = nil) {
         id = window.windowID
         self.window = window
-        title = window.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "Untitled Window"
-        applicationName = window.owningApplication?.applicationName ?? "Unknown Application"
+        title =
+            window.title?.trimmingCharacters(in: .whitespacesAndNewlines)
+            ?? String(localized: "Untitled Window")
+        applicationName =
+            window.owningApplication?.applicationName
+            ?? String(localized: "Unknown Application")
         bundleIdentifier = window.owningApplication?.bundleIdentifier ?? ""
         processIdentifier = window.owningApplication?.processID ?? 0
 

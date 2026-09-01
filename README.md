@@ -130,6 +130,12 @@ swift --version
 
 BetterMeets has no third-party dependencies or package-install step.
 
+BetterMeets is distributed directly and intentionally runs without App Sandbox
+because window capture, global event observation, Accessibility inspection, and
+opt-in input synthesis are core features. Hardened-runtime builds use a minimal
+microphone entitlement. See [SECURITY.md](SECURITY.md) for the permission,
+cloud-data, input-synthesis, and distribution threat model.
+
 ## Local development
 
 The native equivalent of `pnpm dev` is:
@@ -198,6 +204,8 @@ inside it.
 | Path | Purpose |
 | --- | --- |
 | `Sources/MeetStage/MeetStageApp.swift` | SwiftUI app entry point and windows |
+| `Sources/MeetStageCore/` | Framework-free authorization and cloud configuration policies, compiled as an independent SPM target |
+| `Sources/MeetStage/CaptureServices.swift` | Injected thumbnail and cloud-provider service boundaries |
 | `Sources/MeetStage/ControlView.swift` and `Control*.swift` | Floating controller composition, settings, reusable controls, preview rendering, and source-picker views |
 | `Sources/MeetStage/CaptureManager.swift` and `CaptureManager+*.swift` | Main-actor state plus responsibility-focused discovery, command, lifecycle, presentation, and callback extensions |
 | `Sources/MeetStage/Diagnostics.swift` | Categorized, privacy-aware unified logging |
@@ -215,6 +223,7 @@ inside it.
 | `Sources/MeetStage/Annotations.swift`, `AnnotationShapeRecognizer.swift`, and `AnnotationOverlay.swift` | Temporary ink, closed-shape recognition and rendering, plus AppKit source-overlay presentation |
 | `Sources/MeetStage/ClickHighlights.swift`, `KeystrokeHighlights.swift`, and `SpotlightEffect.swift` | Effect-specific models, monitoring, overlays, and rendering |
 | `Sources/MeetStage/PresentationPreferences.swift` | Shared color, size, and keystroke appearance options |
+| `Sources/MeetStage/StageLogoStore.swift` | Bounded image normalization and Application Support persistence |
 | `Sources/MeetStage/WorkspaceObservationBag.swift` | App lifecycle observation and notification-token ownership |
 | `Tests/MeetStageTests/` | Policy, persistence, geometry, and AppKit interaction tests |
 | `Resources/Info.plist` | Bundle name, version, permissions, and icon metadata |

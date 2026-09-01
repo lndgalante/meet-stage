@@ -17,13 +17,13 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .general: "General"
-        case .demo: "Demo"
-        case .stage: "Stage"
-        case .spotlight: "Focus"
-        case .annotations: "Draw"
-        case .clicks: "Clicks"
-        case .keystrokes: "Keys"
+        case .general: String(localized: "General")
+        case .demo: String(localized: "Demo")
+        case .stage: String(localized: "Stage")
+        case .spotlight: String(localized: "Focus")
+        case .annotations: String(localized: "Draw")
+        case .clicks: String(localized: "Clicks")
+        case .keystrokes: String(localized: "Keys")
         }
     }
 }

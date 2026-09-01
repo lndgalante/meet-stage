@@ -12,7 +12,14 @@ enum PresentationColor: String, CaseIterable, Identifiable, Sendable {
     var id: Self { self }
 
     var label: String {
-        rawValue.capitalized
+        switch self {
+        case .red: String(localized: "Red")
+        case .orange: String(localized: "Orange")
+        case .yellow: String(localized: "Yellow")
+        case .green: String(localized: "Green")
+        case .blue: String(localized: "Blue")
+        case .purple: String(localized: "Purple")
+        }
     }
 
     var color: Color {
@@ -45,7 +52,11 @@ enum PresentationSize: String, CaseIterable, Identifiable, Sendable {
     var id: Self { self }
 
     var label: String {
-        rawValue.capitalized
+        switch self {
+        case .small: String(localized: "Small")
+        case .medium: String(localized: "Medium")
+        case .large: String(localized: "Large")
+        }
     }
 }
 
@@ -56,7 +67,10 @@ enum KeystrokeAppearance: String, CaseIterable, Identifiable, Sendable {
     var id: Self { self }
 
     var label: String {
-        rawValue.capitalized
+        switch self {
+        case .light: String(localized: "Light")
+        case .dark: String(localized: "Dark")
+        }
     }
 }
 
@@ -73,8 +87,8 @@ enum DemoVoiceActions: String, CaseIterable, Identifiable, Sendable {
 
     var label: String {
         switch self {
-        case .highlightOnly: "Highlight only"
-        case .highlightAndClick: "Highlight and click"
+        case .highlightOnly: String(localized: "Highlight only")
+        case .highlightAndClick: String(localized: "Highlight and click")
         }
     }
 
@@ -93,7 +107,13 @@ enum StageFrameStyle: String, CaseIterable, Identifiable, Sendable {
     var id: Self { self }
 
     var label: String {
-        rawValue.capitalized
+        switch self {
+        case .none: String(localized: "None")
+        case .midnight: String(localized: "Midnight")
+        case .ocean: String(localized: "Ocean")
+        case .sunset: String(localized: "Sunset")
+        case .graphite: String(localized: "Graphite")
+        }
     }
 }
 
@@ -134,7 +154,6 @@ enum StageFrameAppearance {
 }
 
 enum StageLogoAppearance {
-    static let maximumDataSize = 10 * 1_024 * 1_024
     static let minimumStagePadding = 0.10
 }
 
@@ -161,6 +180,7 @@ struct PresentationPreferencesStore {
     static let stageFrameShadowKey = "presentation.stageFrameShadow"
     static let autoZoomSizeKey = "presentation.autoZoomSize"
     static let stageLogoDataKey = "presentation.stageLogoData"
+    static let stageLogoStorageVersionKey = "presentation.stageLogoStorageVersion"
     static let demoModeEnabledKey = "presentation.demoModeEnabled"
     static let demoVoiceActionsKey = "presentation.demoVoiceActions"
     static let demoHighlightColorKey = "presentation.demoHighlightColor"
@@ -320,13 +340,30 @@ struct PresentationPreferencesStore {
         nonmutating set { defaults.set(newValue.rawValue, forKey: Self.autoZoomSizeKey) }
     }
 
-    var stageLogoData: Data? {
+    /// Read only for one-time migration from the pre-0.5 UserDefaults blob.
+    var legacyStageLogoData: Data? {
         get { defaults.data(forKey: Self.stageLogoDataKey) }
         nonmutating set {
             if let newValue {
                 defaults.set(newValue, forKey: Self.stageLogoDataKey)
             } else {
                 defaults.removeObject(forKey: Self.stageLogoDataKey)
+            }
+        }
+    }
+
+    var stageLogoStorageVersion: Int? {
+        get {
+            guard defaults.object(forKey: Self.stageLogoStorageVersionKey) != nil else {
+                return nil
+            }
+            return defaults.integer(forKey: Self.stageLogoStorageVersionKey)
+        }
+        nonmutating set {
+            if let newValue {
+                defaults.set(newValue, forKey: Self.stageLogoStorageVersionKey)
+            } else {
+                defaults.removeObject(forKey: Self.stageLogoStorageVersionKey)
             }
         }
     }

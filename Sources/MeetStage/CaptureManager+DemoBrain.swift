@@ -158,7 +158,8 @@ extension CaptureManager {
         // an honest highlight instead of a "Typing…" pill that silently no-ops.
         var action = DemoModelActuationPolicy.authorize(
             decision.action,
-            transcript: transcript
+            transcript: transcript,
+            proposedText: decision.text
         )
         if action == .type, !DemoActionExecutor.canSynthesizeInput {
             action = .highlight
@@ -189,7 +190,12 @@ extension CaptureManager {
             }
             switch action {
             case .type:
-                guard let text = decision.text else {
+                guard
+                    let text = DemoModelActuationPolicy.authorizedTypedText(
+                        decision.text,
+                        transcript: transcript
+                    )
+                else {
                     endDemoThinking()
                     return
                 }

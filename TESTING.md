@@ -22,15 +22,16 @@ Run these before handing off a change:
 
 ```bash
 swift format lint --strict --recursive Sources Tests Package.swift scripts/generate-app-icon.swift
-swift test -Xswiftc -warnings-as-errors
+swift test --enable-code-coverage -Xswiftc -warnings-as-errors
 swift build -c release -Xswiftc -warnings-as-errors
 plutil -lint Resources/Info.plist
 zsh -n build-app.sh dev-app.sh scripts/build-and-package.sh scripts/notarize-app.sh
+./build-app.sh
 git diff --check
 ```
 
-Run `./build-app.sh` as well when changing packaging, resources, entitlements,
-the Metal shader, or code paths that behave differently inside an app bundle.
+CI packages the app on every change. Local runs of `./build-app.sh` verify the
+same Metal, App Intents, resources, entitlements, and signing boundaries.
 
 ## Writing maintainable tests
 
@@ -99,6 +100,11 @@ window configuration, or permissions, build the packaged debug app with
     turns Cloud understanding off until explicitly enabled for the new vendor.
     Verify the microphone prompt names both supported cloud providers and that
     on-device commands still work with cloud consent disabled.
+14. With Cloud understanding and input actuation enabled, confirm “show the
+    Search field” only highlights it, “type hello in Search” enters exactly
+    “hello,” and negated or screen-authored instructions never type. Move focus
+    to another field during a longer command and confirm entry stops before the
+    next character.
 
 Record the macOS version and meeting app when a manual result depends on
 window-server or capture-framework behavior.

@@ -1,4 +1,5 @@
 import Foundation
+import MeetStageCore
 
 /// The alternate Demo Mode brain, backed by OpenAI's GPT-5.6 Luna over the raw
 /// Chat Completions API (Swift has no official OpenAI SDK). It exists so the
@@ -12,11 +13,12 @@ import Foundation
 /// request a strict `json_schema` so the structured action comes back deterministic
 /// and fast enough for a live demo.
 final class OpenAIDemoBrain: DemoBrain {
-    private let model = "gpt-5.6-luna"
+    private let model: String
     private let endpointString = "https://api.openai.com/v1/chat/completions"
     private let session: URLSession
 
-    init() {
+    init(model: String = CloudModelConfiguration().openAIModelID) {
+        self.model = model
         session = DemoBrainTransport.makeEphemeralSession()
     }
 
@@ -46,7 +48,7 @@ final class OpenAIDemoBrain: DemoBrain {
 
     // MARK: - Request assembly
 
-    private func makeURLRequest(_ request: DemoBrainRequest) throws -> URLRequest {
+    func makeURLRequest(_ request: DemoBrainRequest) throws -> URLRequest {
         guard let endpoint = URL(string: endpointString) else {
             throw DemoBrainError.transport("bad endpoint")
         }

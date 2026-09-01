@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import ImageIO
 import Testing
 @testable import MeetStage
 
@@ -11,7 +12,7 @@ struct PresentationPreferencesTests {
         let fixture = try PreferencesFixture()
         defer { fixture.dispose() }
 
-        let manager = CaptureManager(defaults: fixture.defaults)
+        let manager = fixture.makeManager()
 
         #expect(manager.annotationColor == .orange)
         #expect(manager.spotlightSize == .medium)
@@ -35,7 +36,7 @@ struct PresentationPreferencesTests {
         let fixture = try PreferencesFixture()
         defer { fixture.dispose() }
 
-        let manager = CaptureManager(defaults: fixture.defaults)
+        let manager = fixture.makeManager()
         manager.setAnnotationColor(.purple)
         manager.setSpotlightSize(.large)
         manager.setSpotlightOutsideOpacity(0.55)
@@ -52,7 +53,7 @@ struct PresentationPreferencesTests {
         let logoData = try #require(makeLogoData())
         #expect(manager.setStageLogoData(logoData))
 
-        let restoredManager = CaptureManager(defaults: fixture.defaults)
+        let restoredManager = fixture.makeManager()
         #expect(restoredManager.annotationColor == .purple)
         #expect(restoredManager.annotations.inkColor == .purple)
         #expect(restoredManager.spotlightSize == .large)
@@ -70,11 +71,14 @@ struct PresentationPreferencesTests {
         #expect(restoredManager.stageFrameShadow == 0.4)
         #expect(restoredManager.autoZoomSize == .large)
         #expect(restoredManager.stageLogo != nil)
-        #expect(fixture.store.stageLogoData == logoData)
+        #expect(fixture.store.legacyStageLogoData == nil)
+        #expect(fixture.store.stageLogoStorageVersion == StageLogoStore.storageVersion)
+        #expect(FileManager.default.fileExists(atPath: fixture.logoStore.fileURL.path))
 
         restoredManager.removeStageLogo()
         #expect(restoredManager.stageLogo == nil)
-        #expect(fixture.store.stageLogoData == nil)
+        #expect(fixture.store.stageLogoStorageVersion == nil)
+        #expect(!FileManager.default.fileExists(atPath: fixture.logoStore.fileURL.path))
     }
 
     @Test("Ignores unsupported persisted appearance values")
@@ -103,7 +107,7 @@ struct PresentationPreferencesTests {
             forKey: PresentationPreferencesStore.stageFrameStyleKey
         )
 
-        let manager = CaptureManager(defaults: fixture.defaults)
+        let manager = fixture.makeManager()
 
         #expect(manager.annotationColor == .orange)
         #expect(manager.spotlightSize == .medium)
@@ -151,7 +155,7 @@ struct PresentationPreferencesTests {
             forKey: PresentationPreferencesStore.stageFrameShadowKey
         )
 
-        let manager = CaptureManager(defaults: fixture.defaults)
+        let manager = fixture.makeManager()
 
         #expect(manager.spotlightOutsideOpacity == SpotlightAppearance.defaultOutsideOpacity)
         #expect(manager.stageFramePadding == StageFrameAppearance.defaultPadding)
@@ -165,7 +169,7 @@ struct PresentationPreferencesTests {
     func normalizesNonFiniteSetterValues() throws {
         let fixture = try PreferencesFixture()
         defer { fixture.dispose() }
-        let manager = CaptureManager(defaults: fixture.defaults)
+        let manager = fixture.makeManager()
 
         manager.setSpotlightOutsideOpacity(.nan)
         manager.setStageFramePadding(.infinity)
@@ -213,11 +217,61 @@ struct PresentationPreferencesTests {
         let fixture = try PreferencesFixture()
         defer { fixture.dispose() }
 
-        let manager = CaptureManager(defaults: fixture.defaults)
+        let manager = fixture.makeManager()
 
         #expect(!manager.setStageLogoData(Data("not an image".utf8)))
         #expect(manager.stageLogo == nil)
-        #expect(fixture.store.stageLogoData == nil)
+        #expect(fixture.store.legacyStageLogoData == nil)
+        #expect(fixture.store.stageLogoStorageVersion == nil)
+    }
+
+    @Test("Migrates the legacy defaults logo to Application Support storage")
+    @MainActor
+    func migratesLegacyLogo() throws {
+        let fixture = try PreferencesFixture()
+        defer { fixture.dispose() }
+        let logoData = try #require(makeLogoData())
+        fixture.store.legacyStageLogoData = logoData
+
+        let manager = fixture.makeManager()
+
+        #expect(manager.stageLogo != nil)
+        #expect(fixture.store.legacyStageLogoData == nil)
+        #expect(fixture.store.stageLogoStorageVersion == StageLogoStore.storageVersion)
+        #expect(FileManager.default.fileExists(atPath: fixture.logoStore.fileURL.path))
+    }
+
+    @Test("Rejects oversized decoded image dimensions")
+    @MainActor
+    func rejectsOversizedDecodedDimensions() throws {
+        let fixture = try PreferencesFixture()
+        defer { fixture.dispose() }
+        let manager = fixture.makeManager()
+        let oversizedData = try #require(makePNGData(width: 9_000, height: 1))
+
+        #expect(!manager.setStageLogoData(oversizedData))
+        #expect(manager.stageLogo == nil)
+        #expect(!FileManager.default.fileExists(atPath: fixture.logoStore.fileURL.path))
+    }
+
+    @Test("Downsamples imported logos before file persistence")
+    @MainActor
+    func downsamplesImportedLogo() throws {
+        let fixture = try PreferencesFixture()
+        defer { fixture.dispose() }
+        let manager = fixture.makeManager()
+        let sourceData = try #require(makePNGData(width: 2_500, height: 2))
+
+        #expect(manager.setStageLogoData(sourceData))
+        let storedData = try Data(contentsOf: fixture.logoStore.fileURL)
+        let imageSource = try #require(CGImageSourceCreateWithData(storedData as CFData, nil))
+        let properties = try #require(
+            CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? [CFString: Any]
+        )
+        let width = try #require(properties[kCGImagePropertyPixelWidth] as? NSNumber)
+
+        #expect(width.intValue <= StageLogoStore.maximumStoredDimension)
+        #expect(storedData != sourceData)
     }
 
     @MainActor
@@ -229,11 +283,31 @@ struct PresentationPreferencesTests {
         image.unlockFocus()
         return image.tiffRepresentation
     }
+
+    @MainActor
+    private func makePNGData(width: Int, height: Int) -> Data? {
+        guard
+            let bitmap = NSBitmapImageRep(
+                bitmapDataPlanes: nil,
+                pixelsWide: width,
+                pixelsHigh: height,
+                bitsPerSample: 8,
+                samplesPerPixel: 4,
+                hasAlpha: true,
+                isPlanar: false,
+                colorSpaceName: .deviceRGB,
+                bytesPerRow: 0,
+                bitsPerPixel: 0
+            )
+        else { return nil }
+        return bitmap.representation(using: .png, properties: [:])
+    }
 }
 
 private struct PreferencesFixture {
     let suiteName: String
     let defaults: UserDefaults
+    let logoStore: StageLogoStore
 
     var store: PresentationPreferencesStore {
         PresentationPreferencesStore(defaults: defaults)
@@ -242,9 +316,19 @@ private struct PreferencesFixture {
     init() throws {
         suiteName = "PresentationPreferencesTests.\(UUID().uuidString)"
         defaults = try #require(UserDefaults(suiteName: suiteName))
+        logoStore = StageLogoStore(
+            directoryURL: FileManager.default.temporaryDirectory
+                .appendingPathComponent(suiteName, isDirectory: true)
+        )
+    }
+
+    @MainActor
+    func makeManager() -> CaptureManager {
+        CaptureManager(defaults: defaults, stageLogoStore: logoStore)
     }
 
     func dispose() {
         defaults.removePersistentDomain(forName: suiteName)
+        try? FileManager.default.removeItem(at: logoStore.directoryURL)
     }
 }

@@ -1,5 +1,6 @@
 import CoreGraphics
 import Foundation
+import MeetStageCore
 
 /// The prompt shared by every `DemoBrain` cloud provider. Keeping the system
 /// prompt and user-message assembly in one place is what makes a Claude-vs-OpenAI
@@ -207,11 +208,21 @@ enum DemoBrainDecoding {
 
 /// The final, deterministic authorization boundary for model-proposed actions.
 /// Models may resolve a target, but they cannot turn a non-mutating utterance
-/// into a click merely because clicking is enabled in Settings.
+/// into synthesized input merely because input is enabled in Settings.
 enum DemoModelActuationPolicy {
-    static func authorize(_ action: DemoBrainAction, transcript: String) -> DemoBrainAction {
-        guard action == .click else { return action }
-        return transcriptRequestsClick(transcript) ? .click : .highlight
+    static func authorize(
+        _ action: DemoBrainAction,
+        transcript: String,
+        proposedText: String? = nil
+    ) -> DemoBrainAction {
+        switch action {
+        case .click:
+            transcriptRequestsClick(transcript) ? .click : .highlight
+        case .type:
+            authorizedTypedText(proposedText, transcript: transcript) == nil ? .highlight : .type
+        default:
+            action
+        }
     }
 
     static func authorize(_ kind: DemoIntentKind, transcript: String) -> DemoIntentKind {
@@ -222,6 +233,13 @@ enum DemoModelActuationPolicy {
     private static func transcriptRequestsClick(_ transcript: String) -> Bool {
         DemoIntentPolicy.utteranceRequestsClick(
             DemoText.tokenizeTranscript(transcript).tokens
+        )
+    }
+
+    static func authorizedTypedText(_ proposedText: String?, transcript: String) -> String? {
+        TypedActuationAuthorization.authorizedText(
+            proposedText: proposedText,
+            transcript: transcript
         )
     }
 }

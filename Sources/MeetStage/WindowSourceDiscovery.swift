@@ -41,9 +41,6 @@ enum WindowDiscoveryPolicy {
 enum WindowSourceDiscovery {
     // SCStreamConfiguration.backgroundColor is unretained, so this object must
     // outlive every screenshot configuration that references it.
-    private static let thumbnailBackground = CGColor(gray: 0, alpha: 1)
-    private static let thumbnailSize = CGSize(width: 480, height: 270)
-
     static func discover(reusing existingWindows: [CGWindowID: WindowSource]) async throws
         -> [WindowSource]
     {
@@ -72,26 +69,24 @@ enum WindowSourceDiscovery {
             .sorted(by: areInDisplayOrder)
     }
 
-    static func thumbnail(for source: WindowSource) async throws -> NSImage {
-        let filter = SCContentFilter(desktopIndependentWindow: source.window)
+    nonisolated static func thumbnailImage(for window: SCWindow) async throws -> CGImage {
+        let filter = SCContentFilter(desktopIndependentWindow: window)
         let configuration = SCStreamConfiguration()
-        configuration.width = Int(thumbnailSize.width)
-        configuration.height = Int(thumbnailSize.height)
+        let backgroundColor = CGColor(gray: 0, alpha: 1)
+        defer { withExtendedLifetime(backgroundColor) {} }
+        configuration.width = 480
+        configuration.height = 270
         configuration.pixelFormat = kCVPixelFormatType_32BGRA
         configuration.showsCursor = false
         configuration.scalesToFit = true
         configuration.preservesAspectRatio = true
-        configuration.backgroundColor = thumbnailBackground
+        configuration.backgroundColor = backgroundColor
         configuration.ignoreShadowsSingleWindow = true
         configuration.ignoreGlobalClipSingleWindow = true
 
-        let image = try await SCScreenshotManager.captureImage(
+        return try await SCScreenshotManager.captureImage(
             contentFilter: filter,
             configuration: configuration
-        )
-        return NSImage(
-            cgImage: image,
-            size: NSSize(width: image.width, height: image.height)
         )
     }
 

@@ -1,5 +1,6 @@
 import CoreGraphics
 import Foundation
+import MeetStageCore
 
 /// Demo Mode's conversational brain, backed by Claude Haiku 4.5 over the raw
 /// Messages API (Swift has no official Anthropic SDK). It receives a screenshot
@@ -11,11 +12,12 @@ import Foundation
 /// (the coordinator snaps to that element's exact rect), falling back to image
 /// coordinates only for on-screen targets that are not in the list.
 final class ClaudeDemoBrain: DemoBrain {
-    private let model = "claude-haiku-4-5"
+    private let model: String
     private let endpointString = "https://api.anthropic.com/v1/messages"
     private let session: URLSession
 
-    init() {
+    init(model: String = CloudModelConfiguration().anthropicModelID) {
+        self.model = model
         session = DemoBrainTransport.makeEphemeralSession()
     }
 
@@ -45,7 +47,7 @@ final class ClaudeDemoBrain: DemoBrain {
 
     // MARK: - Request assembly
 
-    private func makeURLRequest(_ request: DemoBrainRequest) throws -> URLRequest {
+    func makeURLRequest(_ request: DemoBrainRequest) throws -> URLRequest {
         guard let endpoint = URL(string: endpointString) else {
             throw DemoBrainError.transport("bad endpoint")
         }

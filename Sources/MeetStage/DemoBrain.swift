@@ -143,17 +143,17 @@ enum DemoBrainError: Error {
     /// A short, presenter-facing description.
     var userMessage: String {
         switch self {
-        case .missingKey: "Add an API key to use conversational commands"
+        case .missingKey: String(localized: "Add an API key to use conversational commands")
         case let .http(status, detail):
             switch status {
-            case 401, 403: "Check your API key"
+            case 401, 403: String(localized: "Check your API key")
             // A 429 whose body cites quota is out-of-credit/billing, not throttling.
             case 429 where detail.localizedCaseInsensitiveContains("quota"):
-                "Out of API credits — check billing"
-            case 429: "Rate limited — slow down"
-            default: "Assistant error (\(status))"
+                String(localized: "Out of API credits — check billing")
+            case 429: String(localized: "Rate limited — slow down")
+            default: String(localized: "Assistant error (\(status))")
             }
-        case .transport: "Assistant unreachable"
+        case .transport: String(localized: "Assistant unreachable")
         }
     }
 
@@ -179,16 +179,16 @@ enum DemoBrainProvider: String, CaseIterable, Identifiable, Sendable {
     /// Full model name, shown in the settings picker.
     var label: String {
         switch self {
-        case .claude: "Claude Haiku 4.5"
-        case .openai: "GPT-5.6 Luna"
+        case .claude: String(localized: "Claude Haiku 4.5")
+        case .openai: String(localized: "GPT-5.6 Luna")
         }
     }
 
     /// Vendor name, for the API-key field placeholder and notes.
     var vendor: String {
         switch self {
-        case .claude: "Anthropic"
-        case .openai: "OpenAI"
+        case .claude: String(localized: "Anthropic")
+        case .openai: String(localized: "OpenAI")
         }
     }
 

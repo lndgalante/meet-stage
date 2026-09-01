@@ -48,7 +48,7 @@ struct StageInteractionTests {
         #expect(
             ControlMetrics.sourceTileWidth * ControlMetrics.visibleSourceTileCount
                 + ControlMetrics.sourceTileSpacing
-                    * (ControlMetrics.visibleSourceTileCount - 1)
+                * (ControlMetrics.visibleSourceTileCount - 1)
                 == ControlWindowSizing.sourceAreaWidth
         )
         #expect(

@@ -175,19 +175,23 @@ extension CaptureManager {
 
     @discardableResult
     func setStageLogoData(_ data: Data) -> Bool {
-        guard
-            data.count <= StageLogoAppearance.maximumDataSize,
-            let image = NSImage(data: data),
-            image.isValid
-        else { return false }
-
+        guard let image = try? stageLogoStore.save(importedData: data) else { return false }
         stageLogo = image
-        presentationStore.stageLogoData = data
+        presentationStore.stageLogoStorageVersion = StageLogoStore.storageVersion
+        presentationStore.legacyStageLogoData = nil
         return true
     }
 
     func removeStageLogo() {
         stageLogo = nil
-        presentationStore.stageLogoData = nil
+        presentationStore.stageLogoStorageVersion = nil
+        presentationStore.legacyStageLogoData = nil
+        do {
+            try stageLogoStore.remove()
+        } catch {
+            AppLog.preferences.error(
+                "Could not remove the stage logo: \(error.localizedDescription, privacy: .public)"
+            )
+        }
     }
 }

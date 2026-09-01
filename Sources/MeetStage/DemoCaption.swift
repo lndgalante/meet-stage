@@ -21,10 +21,10 @@ enum DemoCaptionStatus: Equatable, Sendable {
 
     var text: String {
         switch self {
-        case .listening: "Listening"
-        case .thinking: "Thinking…"
-        case let .highlighting(name): "Highlighting \(name)"
-        case let .clicking(name): "Opening \(name)"
+        case .listening: String(localized: "Listening")
+        case .thinking: String(localized: "Thinking…")
+        case let .highlighting(name): String(localized: "Highlighting \(name)")
+        case let .clicking(name): String(localized: "Opening \(name)")
         case let .acting(_, text): text
         }
     }
