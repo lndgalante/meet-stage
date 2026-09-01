@@ -26,28 +26,33 @@ struct SourceScrollFadeMask: View {
     }
 }
 
+/// Edge affordance for the horizontally scrollable source row: a chevron fades
+/// in on whichever side has more windows to reveal, so a clipped row reads as
+/// "scroll this way for more" rather than as a muddy dark cut-off. It pairs with
+/// the scroller's own alpha fade mask (which softens the partial tiles).
 struct SourceScrollEdgeShadow: View {
     let leadingStrength: CGFloat
     let trailingStrength: CGFloat
 
     var body: some View {
         HStack(spacing: 0) {
-            LinearGradient(
-                colors: [Color.black.opacity(0.55 * leadingStrength), .clear],
-                startPoint: .leading,
-                endPoint: .trailing
-            )
-            .frame(width: ControlMetrics.sourceScrollShadowWidth)
-
+            chevron(systemName: "chevron.compact.left", strength: leadingStrength)
             Spacer(minLength: 0)
-
-            LinearGradient(
-                colors: [.clear, Color.black.opacity(0.55 * trailingStrength)],
-                startPoint: .leading,
-                endPoint: .trailing
-            )
-            .frame(width: ControlMetrics.sourceScrollShadowWidth)
+            chevron(systemName: "chevron.compact.right", strength: trailingStrength)
         }
+        .padding(.horizontal, 5)
+        // Center on the tile row (top-aligned within the taller viewport), not
+        // on the extra height reserved for the overhanging app-icon badges.
+        .frame(maxHeight: .infinity, alignment: .top)
+    }
+
+    private func chevron(systemName: String, strength: CGFloat) -> some View {
+        Image(systemName: systemName)
+            .font(.system(size: 16, weight: .semibold))
+            .foregroundStyle(.white.opacity(0.85))
+            .shadow(color: .black.opacity(0.5), radius: 2)
+            .opacity(Double(min(max(strength, 0), 1)))
+            .frame(height: ControlMetrics.sourceTileHeight)
     }
 }
 

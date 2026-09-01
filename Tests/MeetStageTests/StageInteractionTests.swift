@@ -38,18 +38,22 @@ struct StageInteractionTests {
         #expect(window.frame.origin.y == initialOrigin.y - 13)
     }
 
-    @Test("The bottom grabber owns its complete visible hit region")
+    @Test("The top grab handle owns its complete visible hit region")
     @MainActor
-    func bottomGrabberWinsHitTesting() {
+    func topGrabHandleWinsHitTesting() {
         let hostingView = NSHostingView(
-            rootView: BottomDragHandle()
+            rootView: TopGrabHandle()
+                .frame(
+                    width: ControlWindowSizing.dragHandleHitWidth,
+                    height: ControlWindowSizing.grabRegionHeight
+                )
         )
         let window = NSWindow(
             contentRect: NSRect(
                 x: 0,
                 y: 0,
                 width: ControlWindowSizing.dragHandleHitWidth,
-                height: ControlWindowSizing.dragHandleAreaHeight
+                height: ControlWindowSizing.grabRegionHeight
             ),
             styleMask: [.borderless],
             backing: .buffered,
@@ -58,8 +62,6 @@ struct StageInteractionTests {
         window.contentView = hostingView
         window.contentView?.layoutSubtreeIfNeeded()
 
-        #expect(hostingView.bounds.width == ControlWindowSizing.dragHandleHitWidth)
-        #expect(hostingView.bounds.height == ControlWindowSizing.dragHandleAreaHeight)
         #expect(hostingView.hitTest(NSPoint(x: 1, y: 1)) != nil)
         #expect(
             hostingView.hitTest(

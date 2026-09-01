@@ -15,7 +15,9 @@ enum ControlMetrics {
         / visibleSourceTileCount
     static let sourceTileHeight: CGFloat = 44
     static let sourceTileVerticalInset: CGFloat = 0
-    static let sourceViewportHeight: CGFloat = 44
+    // Taller than the tile so the app-icon badge straddling each tile's
+    // bottom-right corner isn't clipped by the scroller's mask.
+    static let sourceViewportHeight: CGFloat = 56
     static let sourceTileRadius: CGFloat = 9
     static let sourcePreviewTrailingInset: CGFloat = 5
     static let sourcePreviewBottomInset: CGFloat = 6
@@ -24,13 +26,17 @@ enum ControlMetrics {
     static let sourceBadgeIconSize: CGFloat = 12
     static let sourceApplicationBadgeSize: CGFloat = 22
     static let sourceApplicationIconSize: CGFloat = 25
-    static let sourceScrollFadeWidth: CGFloat = 14
-    static let sourceScrollShadowWidth: CGFloat = 18
+    // Wide enough that the trailing/leading tile clearly fades into the panel,
+    // leaving a gutter the "more windows" chevron can sit in without touching the
+    // thumbnail.
+    static let sourceScrollFadeWidth: CGFloat = 26
     static let sourceScrollCoordinateSpace = "source-scroll"
     static let dragHandleWidth: CGFloat = 40
     static let dragHandleHeight: CGFloat = 3
     static let controlBarButtonHeight: CGFloat = 30
     static let controlBarIconSize: CGFloat = 12
+    /// Small inset so the outer buttons sit just shy of the panel edge.
+    static let effectBarEdgeInset: CGFloat = 3
     static let clickHighlightGlyphOffset = CGSize(width: -0.5, height: -0.5)
     static let keystrokeHighlightGlyphOffset = CGSize(width: 0.25, height: -0.5)
 }
@@ -42,27 +48,47 @@ struct ControlView: View {
     @State private var sourceScrollBounds = CGRect.zero
     @State private var isSettingsPresented = false
 
+    private var panelShape: ControlPanelShape {
+        ControlPanelShape(
+            cornerRadius: ControlWindowSizing.panelCornerRadius,
+            notchCenterX: ControlWindowSizing.panelWidth / 2,
+            notchCenterY: ControlWindowSizing.heroCenterY,
+            notchRadius: ControlWindowSizing.heroNotchRadius
+        )
+    }
+
     var body: some View {
         ZStack(alignment: .top) {
-            controlBar
-                .offset(
-                    y: ControlWindowSizing.captureSurfaceSize.height
-                        - ControlWindowSizing.controlBarOverlap
+            // One cohesive panel: a single material surface + one border, its
+            // bottom edge cradling the hero in a notch. Inset from the window by
+            // the shadow margin so its drop shadow renders fully.
+            panelShape
+                .fill(.regularMaterial)
+                .overlay(panelShape.strokeBorder(Color.white.opacity(0.16), lineWidth: 1))
+                .frame(
+                    width: ControlWindowSizing.panelWidth,
+                    height: ControlWindowSizing.panelBodyHeight
                 )
+                .shadow(color: .black.opacity(0.30), radius: 13, y: 5)
+                .offset(y: ControlWindowSizing.panelTop)
 
-            bottomDragHandle
-                .offset(y: ControlWindowSizing.dragHandleOffset)
-                .zIndex(0.5)
+            panelContent
+                .frame(
+                    width: ControlWindowSizing.panelWidth,
+                    height: ControlWindowSizing.panelBodyHeight,
+                    alignment: .top
+                )
+                // Round the content (dark source tiles) to the panel silhouette
+                // so nothing squares off at the corners.
+                .clipShape(panelShape)
+                .offset(y: ControlWindowSizing.panelTop)
 
             demoHero
                 .position(
                     x: ControlWindowSizing.size.width / 2,
-                    y: ControlWindowSizing.heroCenterY
+                    y: ControlWindowSizing.heroCenterYAbsolute
                 )
                 .zIndex(1.5)
-
-            captureSurface
-                .zIndex(1)
         }
         .frame(
             width: ControlWindowSizing.size.width,
@@ -77,37 +103,29 @@ struct ControlView: View {
         }
     }
 
-    private var captureSurface: some View {
+    private var panelContent: some View {
+        VStack(spacing: 0) {
+            topGrabHandle
+                .frame(height: ControlWindowSizing.grabRegionHeight)
+
+            sourceRow
+                .frame(height: ControlWindowSizing.sourceRegionHeight)
+
+            effectBar
+                .frame(height: ControlWindowSizing.effectBarHeight)
+        }
+    }
+
+    private var sourceRow: some View {
         Group {
             if manager.needsScreenRecordingPermission {
                 permissionStrip
+                    .padding(.horizontal, ControlMetrics.outerPadding)
             } else {
                 sourcePanel
             }
         }
-        .padding(ControlMetrics.outerPadding)
-        .frame(
-            width: ControlWindowSizing.captureSurfaceSize.width,
-            height: ControlWindowSizing.captureSurfaceSize.height
-        )
-        .background(
-            .regularMaterial,
-            in: RoundedRectangle(cornerRadius: ControlMetrics.cornerRadius, style: .continuous)
-        )
-        .overlay {
-            if !manager.needsScreenRecordingPermission {
-                SourceScrollEdgeShadow(
-                    leadingStrength: leadingSourceFadeStrength,
-                    trailingStrength: trailingSourceFadeStrength
-                )
-                .allowsHitTesting(false)
-            }
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: ControlMetrics.cornerRadius, style: .continuous)
-                .strokeBorder(Color.white.opacity(0.20), lineWidth: 1)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: ControlMetrics.cornerRadius, style: .continuous))
+        .frame(maxWidth: .infinity)
     }
 
     private var demoHero: some View {
@@ -121,57 +139,22 @@ struct ControlView: View {
         )
     }
 
-    private var controlBar: some View {
+    private var effectBar: some View {
         HStack(spacing: 0) {
             leftControlGroup
-                .frame(width: sideGroupWidth)
+                .frame(maxWidth: .infinity)
 
-            // Center gap the hero button nests into.
+            // Center gap the hero button's notch occupies.
             Color.clear.frame(width: ControlWindowSizing.heroGap)
 
             rightControlGroup
-                .frame(width: sideGroupWidth)
+                .frame(maxWidth: .infinity)
         }
-        .padding(.top, ControlWindowSizing.controlBarOverlap)
-        .frame(
-            width: ControlWindowSizing.controlBarWidth,
-            height: ControlWindowSizing.controlBarHeight
-        )
-        .background(
-            .regularMaterial,
-            in: UnevenRoundedRectangle(
-                topLeadingRadius: 0,
-                bottomLeadingRadius: ControlMetrics.controlBarCornerRadius,
-                bottomTrailingRadius: ControlMetrics.controlBarCornerRadius,
-                topTrailingRadius: 0,
-                style: .continuous
-            )
-        )
-        .overlay {
-            UnevenRoundedRectangle(
-                topLeadingRadius: 0,
-                bottomLeadingRadius: ControlMetrics.controlBarCornerRadius,
-                bottomTrailingRadius: ControlMetrics.controlBarCornerRadius,
-                topTrailingRadius: 0,
-                style: .continuous
-            )
-            .strokeBorder(Color.white.opacity(0.16), lineWidth: 1)
-        }
-        .clipShape(
-            UnevenRoundedRectangle(
-                topLeadingRadius: 0,
-                bottomLeadingRadius: ControlMetrics.controlBarCornerRadius,
-                bottomTrailingRadius: ControlMetrics.controlBarCornerRadius,
-                topTrailingRadius: 0,
-                style: .continuous
-            )
-        )
+        .padding(.horizontal, ControlMetrics.effectBarEdgeInset)
     }
 
-    private var sideGroupWidth: CGFloat {
-        (ControlWindowSizing.controlBarWidth - ControlWindowSizing.heroGap) / 2
-    }
-
+    // Three equal-width slots; each button fills its slot and centers its glyph,
+    // so the icons are evenly distributed with equal gaps between them.
     private var leftControlGroup: some View {
         HStack(spacing: 0) {
             ControlBarButton(
@@ -181,8 +164,7 @@ struct ControlView: View {
                 isOn: manager.autoPresentationEnabled,
                 action: manager.toggleAutoPresentation
             )
-
-            controlBarDivider
+            .frame(maxWidth: .infinity)
 
             ControlBarButton(
                 systemImage: "magnifyingglass",
@@ -191,8 +173,7 @@ struct ControlView: View {
                 isOn: manager.spotlightEnabled,
                 action: manager.toggleSpotlight
             )
-
-            controlBarDivider
+            .frame(maxWidth: .infinity)
 
             ControlBarButton(
                 systemImage: "pencil.and.outline",
@@ -201,6 +182,7 @@ struct ControlView: View {
                 isOn: manager.annotationsEnabled,
                 action: manager.toggleAnnotations
             )
+            .frame(maxWidth: .infinity)
         }
     }
 
@@ -214,8 +196,7 @@ struct ControlView: View {
                 glyphOffset: ControlMetrics.clickHighlightGlyphOffset,
                 action: manager.toggleMouseClickHighlighting
             )
-
-            controlBarDivider
+            .frame(maxWidth: .infinity)
 
             ControlBarButton(
                 systemImage: "command.square",
@@ -228,8 +209,7 @@ struct ControlView: View {
                 showsPermissionWarning: manager.needsKeystrokeAccessibilityPermission,
                 action: manager.toggleKeystrokeHighlighting
             )
-
-            controlBarDivider
+            .frame(maxWidth: .infinity)
 
             ControlBarButton(
                 systemImage: "gearshape",
@@ -238,6 +218,7 @@ struct ControlView: View {
                 isPresented: isSettingsPresented,
                 action: { isSettingsPresented.toggle() }
             )
+            .frame(maxWidth: .infinity)
             .popover(
                 isPresented: $isSettingsPresented,
                 attachmentAnchor: .rect(.bounds),
@@ -248,19 +229,23 @@ struct ControlView: View {
         }
     }
 
-    private var controlBarDivider: some View {
-        Rectangle()
-            .fill(Color.white.opacity(0.10))
-            .frame(width: 1, height: ControlMetrics.controlBarButtonHeight)
-    }
-
     private var sourcePanel: some View {
         sourceScroller
-            .frame(width: ControlWindowSizing.contentWidth, height: ControlMetrics.contentHeight)
+            .frame(
+                width: ControlWindowSizing.contentWidth,
+                height: ControlMetrics.sourceViewportHeight
+            )
+            .overlay {
+                SourceScrollEdgeShadow(
+                    leadingStrength: leadingSourceFadeStrength,
+                    trailingStrength: trailingSourceFadeStrength
+                )
+                .allowsHitTesting(false)
+            }
     }
 
-    private var bottomDragHandle: some View {
-        BottomDragHandle()
+    private var topGrabHandle: some View {
+        TopGrabHandle()
     }
 
     private var annotationControlHelp: String {
@@ -350,6 +335,9 @@ struct ControlView: View {
                             }
                     }
                 }
+                // Top-align the tiles so the badge straddling each tile's bottom
+                // corner overhangs into the scroller's extra height, not clipped.
+                .frame(maxHeight: .infinity, alignment: .top)
             }
             .coordinateSpace(name: ControlMetrics.sourceScrollCoordinateSpace)
             .frame(width: ControlWindowSizing.sourceAreaWidth, height: ControlMetrics.sourceViewportHeight)
@@ -462,31 +450,82 @@ struct ControlView: View {
 
 }
 
-struct BottomDragHandle: View {
+/// A grab affordance at the top of the panel: a short pill in a full-width hit
+/// strip, so the panel reads like a draggable sheet with a clear handle.
+struct TopGrabHandle: View {
     var body: some View {
-        handle
-            .gesture(WindowDragGesture())
-    }
-
-    private var handle: some View {
         ZStack {
-            // Keep the full hit target in the composited window region while
-            // preserving the minimal line treatment.
             Color.white.opacity(0.001)
 
             Capsule(style: .continuous)
-                .fill(Color.white.opacity(0.30))
+                .fill(Color.white.opacity(0.28))
                 .frame(
                     width: ControlMetrics.dragHandleWidth,
                     height: ControlMetrics.dragHandleHeight
                 )
         }
-        .frame(
-            width: ControlWindowSizing.dragHandleHitWidth,
-            height: ControlWindowSizing.dragHandleAreaHeight
-        )
+        .frame(maxWidth: .infinity)
+        .frame(height: ControlWindowSizing.grabRegionHeight)
         .contentShape(Rectangle())
+        .gesture(WindowDragGesture())
         .help("Drag to move BetterMeets")
         .accessibilityHidden(true)
+    }
+}
+
+/// The controller's single rounded surface: a rounded rectangle whose bottom
+/// edge dips into a downward semicircular notch at center, cradling the hero
+/// voice button so it reads as part of the panel rather than a pasted-on disc.
+struct ControlPanelShape: Shape, InsettableShape {
+    var cornerRadius: CGFloat
+    var notchCenterX: CGFloat
+    /// The disc center's Y (from the panel top). Above the bottom edge, so only
+    /// the disc's lower cap protrudes and the notch traces just that cap.
+    var notchCenterY: CGFloat
+    var notchRadius: CGFloat
+    var inset: CGFloat = 0
+
+    func inset(by amount: CGFloat) -> ControlPanelShape {
+        var copy = self
+        copy.inset += amount
+        return copy
+    }
+
+    func path(in rect: CGRect) -> Path {
+        let rect = rect.insetBy(dx: inset, dy: inset)
+        let radius = max(0, min(cornerRadius - inset, min(rect.width, rect.height) / 2))
+        let notch = max(0, notchRadius - inset)
+        let cx = rect.minX + notchCenterX - inset
+        let cy = rect.minY + notchCenterY
+        let bottom = rect.maxY
+
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX + radius, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX - radius, y: rect.minY))
+        path.addArc(
+            center: CGPoint(x: rect.maxX - radius, y: rect.minY + radius),
+            radius: radius, startAngle: .degrees(-90), endAngle: .degrees(0), clockwise: false)
+        path.addLine(to: CGPoint(x: rect.maxX, y: bottom - radius))
+        path.addArc(
+            center: CGPoint(x: rect.maxX - radius, y: bottom - radius),
+            radius: radius, startAngle: .degrees(0), endAngle: .degrees(90), clockwise: false)
+        // Bottom edge dips DOWN to trace only the disc's protruding lower cap
+        // (the disc center sits above the edge, so most of it is embedded).
+        let rise = max(0, bottom - cy)
+        let half = notch > rise ? (notch * notch - rise * rise).squareRoot() : 0
+        let start = Angle(radians: atan2(rise, half))
+        let end = Angle(radians: atan2(rise, -half))
+        path.addLine(to: CGPoint(x: cx + half, y: bottom))
+        path.addArc(center: CGPoint(x: cx, y: cy), radius: notch, startAngle: start, endAngle: end, clockwise: true)
+        path.addLine(to: CGPoint(x: rect.minX + radius, y: bottom))
+        path.addArc(
+            center: CGPoint(x: rect.minX + radius, y: bottom - radius),
+            radius: radius, startAngle: .degrees(90), endAngle: .degrees(180), clockwise: false)
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.minY + radius))
+        path.addArc(
+            center: CGPoint(x: rect.minX + radius, y: rect.minY + radius),
+            radius: radius, startAngle: .degrees(180), endAngle: .degrees(270), clockwise: false)
+        path.closeSubpath()
+        return path
     }
 }

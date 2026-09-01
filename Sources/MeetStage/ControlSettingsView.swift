@@ -7,6 +7,12 @@ struct SettingsPopover: View {
     @State private var isChoosingLogo = false
     @State private var logoImportError: String?
     @State private var brainKeyDraft = ""
+    /// Popover content is capped to this height and scrolls beyond it, so a tall
+    /// tab (Demo) never overflows the screen above the button and overlaps rows.
+    private static let maxTabContentHeight: CGFloat = 560
+    // Start at the cap so the popover opens correctly sized for a tall tab, then
+    // settles to the exact measured height (avoids a first-frame zero-height pop).
+    @State private var tabContentHeight: CGFloat = maxTabContentHeight
 
     var body: some View {
         VStack(spacing: 16) {
@@ -23,22 +29,38 @@ struct SettingsPopover: View {
             .pickerStyle(.segmented)
             .frame(width: 432)
 
-            Group {
-                switch selectedTab {
-                case .demo:
-                    demoSettings
-                case .stage:
-                    stageSettings
-                case .spotlight:
-                    spotlightSettings
-                case .annotations:
-                    annotationSettings
-                case .clicks:
-                    clickSettings
-                case .keystrokes:
-                    keystrokeSettings
+            // Some tabs (Demo especially) are taller than the popover can be on
+            // shorter screens; scroll past the cap rather than clip or overlap
+            // the last rows. Below the cap the popover fits the content exactly.
+            ScrollView(.vertical, showsIndicators: false) {
+                Group {
+                    switch selectedTab {
+                    case .demo:
+                        demoSettings
+                    case .stage:
+                        stageSettings
+                    case .spotlight:
+                        spotlightSettings
+                    case .annotations:
+                        annotationSettings
+                    case .clicks:
+                        clickSettings
+                    case .keystrokes:
+                        keystrokeSettings
+                    }
+                }
+                // Keep the content clear of the scroll edges, and measure its
+                // natural height so the popover fits it exactly until the cap.
+                .padding(.horizontal, 2)
+                .padding(.bottom, 2)
+                .onGeometryChange(for: CGFloat.self) {
+                    $0.size.height
+                } action: {
+                    tabContentHeight = $0
                 }
             }
+            .scrollBounceBehavior(.basedOnSize)
+            .frame(height: min(tabContentHeight, Self.maxTabContentHeight))
         }
         .padding(18)
         .frame(width: 504)
@@ -430,10 +452,12 @@ struct SettingsPopover: View {
 }
 
 private enum SettingsTab: String, CaseIterable, Identifiable {
-    case demo
+    // Ordered to mirror the control bar left-to-right: Auto polish, Focus, and
+    // Draw on the left, then Demo (the center hero), then Clicks and Keys.
     case stage
     case spotlight
     case annotations
+    case demo
     case clicks
     case keystrokes
 

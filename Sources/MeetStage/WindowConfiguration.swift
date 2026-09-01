@@ -2,37 +2,60 @@ import AppKit
 import SwiftUI
 
 enum ControlWindowSizing {
-    // The control bar carries the six effect toggles (Auto Polish, Spotlight,
-    // Annotate, Clicks, Keystrokes, Settings) split three-per-side around a
-    // center gap. The Demo Mode voice control is promoted to a circular hero
-    // button that nests into that gap and protrudes below the bar, making the
-    // headline "talk to your demo" action unmistakable.
-    static let sourceAreaWidth: CGFloat = 228
+    // The controller is one cohesive panel: a top drag grip, the source row, a
+    // hairline divider, then the six effect toggles split three-per-side around
+    // a center notch. The Demo Mode voice control is a circular hero button the
+    // panel bottom cradles and that protrudes just below it — the headline
+    // "talk to your demo" action, unmistakable and part of the whole.
+    static let panelWidth: CGFloat = 262
+    static let panelCornerRadius: CGFloat = 15
+
+    // Vertical bands that stack inside the panel — kept trim so the widget reads
+    // slim rather than chunky.
+    static let grabRegionHeight: CGFloat = 10
+    static let sourceRegionHeight: CGFloat = 58
+    static let effectBarHeight: CGFloat = 32
+    static let panelBodyHeight =
+        grabRegionHeight + sourceRegionHeight + effectBarHeight
+
+    /// Widths retained by the source picker and effect groups. The source row
+    /// sits just 6pt inside each panel edge so the tiles read as filling the
+    /// widget rather than floating in a margin.
+    static let sourceAreaWidth: CGFloat = 250
     static let contentWidth = sourceAreaWidth
-    static let captureSurfaceSize = NSSize(width: contentWidth + 10, height: 54)
-    static let controlBarWidth: CGFloat = 216
-    static let controlBarHeight: CGFloat = 36
-    static let controlBarOverlap: CGFloat = 6
-    static let joinedSurfaceHeight =
-        captureSurfaceSize.height + controlBarHeight - controlBarOverlap
+    static let controlBarWidth: CGFloat = 244
 
-    /// Hero (Demo Mode) button geometry. The gap reserves horizontal room in the
-    /// bar so the two effect groups clear the protruding circle.
-    static let heroDiameter: CGFloat = 46
+    /// Hero (Demo Mode) geometry. Its center sits on the panel's bottom edge; the
+    /// panel bottom scoops UP in a concave semicircle the disc seats into — top
+    /// half embedded, bottom half protruding — so there is a single clean edge,
+    /// not a disc floating inside an oversized hole.
+    static let heroDiameter: CGFloat = 44
     static let heroGap: CGFloat = 60
-    /// How far the hero's bottom edge extends below the bar's bottom edge.
-    static let heroProtrusion: CGFloat = 18
-    static let heroBottomY = joinedSurfaceHeight + heroProtrusion
-    static let heroCenterY = heroBottomY - heroDiameter / 2
+    /// Slightly smaller than the disc so the disc covers the cut: one visible edge.
+    static let heroNotchRadius: CGFloat = heroDiameter / 2 - 0.5
+    /// How far the disc center sits ABOVE the panel's bottom edge, so the disc is
+    /// mostly embedded and only its lower ~third protrudes (feels part of the UI).
+    static let heroRise: CGFloat = 9
+    /// Center/bottom of the hero, measured from the panel's top edge.
+    static let heroCenterY = panelBodyHeight - heroRise
+    static let heroBottomInPanel = heroCenterY + heroDiameter / 2
 
-    static let dragHandleHitWidth: CGFloat = 72
-    static let dragHandleAreaHeight: CGFloat = 12
-    /// Drag grip sits just beneath the hero's lowest point.
-    static let dragHandleOffset = heroBottomY + 6
+    /// Transparent margin around the panel — wider than the shadow's reach so the
+    /// soft shadow fades to nothing (a rounded halo) well before the window's
+    /// rectangular edge, instead of saturating the margin into a light rectangle.
+    static let shadowMargin: CGFloat = 30
     static let size = NSSize(
-        width: captureSurfaceSize.width,
-        height: dragHandleOffset + dragHandleAreaHeight
+        width: panelWidth + shadowMargin * 2,
+        height: heroBottomInPanel + shadowMargin * 2
     )
+
+    // Absolute positions inside the window (panel is inset by the shadow margin).
+    static let panelTop = shadowMargin
+    static let heroCenterYAbsolute = shadowMargin + heroCenterY
+
+    // Legacy accessors kept for the source-picker layout math.
+    static let captureSurfaceSize = NSSize(width: panelWidth, height: sourceRegionHeight)
+    static let dragHandleHitWidth: CGFloat = 96
 }
 
 /// Applies AppKit-only window behavior that SwiftUI scenes cannot express.
@@ -91,7 +114,9 @@ struct WindowConfigurator: NSViewRepresentable {
             window.styleMask = [.borderless]
             window.isOpaque = false
             window.backgroundColor = .clear
-            window.hasShadow = true
+            // The panel draws its own soft SwiftUI shadow; the native window
+            // shadow would trace the notched silhouette as a crisp dark line.
+            window.hasShadow = false
             window.isMovable = true
             window.isMovableByWindowBackground = true
             window.setContentSize(compactSize)
