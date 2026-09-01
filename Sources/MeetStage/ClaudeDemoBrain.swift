@@ -22,7 +22,7 @@ final class ClaudeDemoBrain: DemoBrain {
     }
 
     var isConfigured: Bool {
-        AnthropicKeyStore.hasKey
+        AnthropicKeyStore().hasKey
     }
 
     /// Max attempts on a 429 before giving up (one retry honoring Retry-After).
@@ -30,85 +30,39 @@ final class ClaudeDemoBrain: DemoBrain {
 
     func decide(_ request: DemoBrainRequest) async throws -> DemoBrainDecision? {
         guard !request.apiKey.isEmpty else { throw DemoBrainError.missingKey }
-        guard let endpoint = URL(string: endpointString) else {
-            throw DemoBrainError.transport("bad endpoint")
-        }
-
-        let body = makeRequestBody(request)
-        let httpBody = try JSONEncoder().encode(body)
-
-        let modelName = model
-        let hasImage = request.imageJPEGBase64 != nil ? "yes" : "no"
         AppLog.demoMode.notice(
-            "Anthropic → model=\(modelName, privacy: .public) controls=\(request.controls.count, privacy: .public) image=\(hasImage, privacy: .public) history=\(request.history.count, privacy: .public)"
+            "Anthropic → model=\(self.model, privacy: .public) controls=\(request.controls.count, privacy: .public) image=\(request.imageJPEGBase64 != nil ? "yes" : "no", privacy: .public) history=\(request.history.count, privacy: .public)"
         )
-
-        var attempt = 0
-        while true {
-            var urlRequest = URLRequest(url: endpoint)
-            urlRequest.httpMethod = "POST"
-            urlRequest.setValue(request.apiKey, forHTTPHeaderField: "x-api-key")
-            urlRequest.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
-            urlRequest.setValue("application/json", forHTTPHeaderField: "content-type")
-            urlRequest.httpBody = httpBody
-
-            let started = ContinuousClock.now
-            let data: Data
-            let response: URLResponse
-            do {
-                (data, response) = try await session.data(for: urlRequest)
-            } catch {
-                throw DemoBrainError.transport(error.localizedDescription)
-            }
-            let elapsedMs = Int((ContinuousClock.now - started) / .milliseconds(1))
-            guard let http = response as? HTTPURLResponse else {
-                throw DemoBrainError.transport("no HTTP response")
-            }
+        let text = try await DemoBrainTransport.fetchReply(
+            tag: "Anthropic",
+            maxRetries: maxRetries,
+            session: session,
+            makeRequest: { try self.makeURLRequest(request) },
+            extractText: Self.extractText(from:)
+        )
+        let decision = DemoBrainDecoding.parse(from: text, allowsClicking: request.allowsClicking)
+        if decision == nil {
             AppLog.demoMode.notice(
-                "Anthropic ← HTTP \(http.statusCode, privacy: .public) in \(elapsedMs, privacy: .public)ms"
+                "Anthropic reply (unparsed/none): \(text.prefix(300), privacy: .private)"
             )
-
-            if http.statusCode == 429 {
-                let body = String(data: data, encoding: .utf8) ?? ""
-                // Out-of-credit/quota won't clear on retry — fail fast so the UI
-                // can show a billing message instead of spending another call.
-                let isQuota = body.localizedCaseInsensitiveContains("quota")
-                if !isQuota, attempt < maxRetries, !Task.isCancelled {
-                    attempt += 1
-                    let retryAfter = (http.value(forHTTPHeaderField: "retry-after")).flatMap(
-                        Double.init)
-                    let delay = min(max(retryAfter ?? 2, 0.5), 8)
-                    try? await Task.sleep(for: .seconds(delay))
-                    continue
-                }
-                throw DemoBrainError.http(status: 429, detail: String(body.prefix(300)))
-            }
-            guard http.statusCode == 200 else {
-                let detail = String(data: data, encoding: .utf8)?.prefix(300).description ?? ""
-                throw DemoBrainError.http(status: http.statusCode, detail: detail)
-            }
-
-            let decoded: AnthropicResponse
-            do {
-                decoded = try JSONDecoder().decode(AnthropicResponse.self, from: data)
-            } catch {
-                throw DemoBrainError.transport("decode failed")
-            }
-            if decoded.stopReason == "max_tokens" {
-                AppLog.demoMode.notice("Anthropic reply truncated (max_tokens)")
-            }
-            let text = decoded.content.compactMap(\.text).joined()
-            let decision = DemoBrainDecoding.parse(from: text, allowsClicking: request.allowsClicking)
-            if decision == nil {
-                AppLog.demoMode.notice(
-                    "Anthropic reply (unparsed/none): \(text.prefix(300), privacy: .private)"
-                )
-            }
-            return decision
         }
+        return decision
     }
 
     // MARK: - Request assembly
+
+    private func makeURLRequest(_ request: DemoBrainRequest) throws -> URLRequest {
+        guard let endpoint = URL(string: endpointString) else {
+            throw DemoBrainError.transport("bad endpoint")
+        }
+        var urlRequest = URLRequest(url: endpoint)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue(request.apiKey, forHTTPHeaderField: "x-api-key")
+        urlRequest.setValue("2023-06-01", forHTTPHeaderField: "anthropic-version")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "content-type")
+        urlRequest.httpBody = try JSONEncoder().encode(makeRequestBody(request))
+        return urlRequest
+    }
 
     private func makeRequestBody(_ request: DemoBrainRequest) -> AnthropicRequest {
         var messages: [AnthropicMessage] = []
@@ -130,6 +84,21 @@ final class ClaudeDemoBrain: DemoBrain {
             system: [SystemBlock(text: DemoBrainPrompt.system)],
             messages: messages
         )
+    }
+
+    // MARK: - Response parsing
+
+    private static func extractText(from data: Data) throws -> String {
+        let decoded: AnthropicResponse
+        do {
+            decoded = try JSONDecoder().decode(AnthropicResponse.self, from: data)
+        } catch {
+            throw DemoBrainError.transport("decode failed")
+        }
+        if decoded.stopReason == "max_tokens" {
+            AppLog.demoMode.notice("Anthropic reply truncated (max_tokens)")
+        }
+        return decoded.content.compactMap(\.text).joined()
     }
 }
 

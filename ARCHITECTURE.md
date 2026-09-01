@@ -91,8 +91,11 @@ to follow while keeping the parts that do not require macOS services testable.
   (Claude Haiku 4.5) and `OpenAIDemoBrain` (GPT-5.6 Luna) are both held, and
   `demoBrainProvider` selects the active one so the presenter can compare them on
   their own demo. Both share one system prompt and user-message assembly
-  (`DemoBrainPrompt`) and one reply validator (`DemoBrainDecoding`) — only the
-  wire format and model differ, keeping the comparison fair. The tier is off
+  (`DemoBrainPrompt`), one HTTP request/retry loop (`DemoBrainTransport`), and one
+  reply validator (`DemoBrainDecoding`), so the comparison is close to apples to
+  apples — the caveat being that OpenAI additionally enforces the reply shape with
+  a strict `json_schema`, while Claude relies on prompt-only JSON plus the
+  validator's salvage. The tier is off
   unless the presenter both saves that provider's API key (`AnthropicKeyStore` /
   `OpenAIKeyStore`, each Keychain) and grants cloud consent (`demoCloudConsented`,
   default off) — otherwise Demo Mode stays fully on-device.

@@ -137,6 +137,15 @@ enum DemoBrainProvider: String, CaseIterable, Identifiable, Sendable {
         case .openai: "OpenAI"
         }
     }
+
+    /// The Keychain store holding this provider's API key. Centralizing the
+    /// mapping here keeps the coordinator free of provider→store branching.
+    var keyStore: any DemoKeyStore {
+        switch self {
+        case .claude: AnthropicKeyStore()
+        case .openai: OpenAIKeyStore()
+        }
+    }
 }
 
 /// A conversational intent resolver. Implementations are off-main network or

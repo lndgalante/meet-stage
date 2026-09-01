@@ -153,7 +153,8 @@ final class CaptureManager: ObservableObject {
     /// Label of the last control Demo Mode acted on, so the on-device model can
     /// resolve pronouns like "click it back".
     var lastReferencedControl: String?
-    @Published var hasDemoBrainKey = AnthropicKeyStore.hasKey
+    // Real value is set in init once the persisted provider is known.
+    @Published var hasDemoBrainKey = false
     /// Last transcript sent to the brain and when, to drop the transcriber's
     /// re-emitted duplicate finals without paying for a second vision call.
     var lastBrainTranscript: String?
@@ -199,8 +200,7 @@ final class CaptureManager: ObservableObject {
         demoCloudConsented = presentationStore.demoCloudConsented
         let demoBrainProvider = presentationStore.demoBrainProvider
         self.demoBrainProvider = demoBrainProvider
-        hasDemoBrainKey =
-            demoBrainProvider == .openai ? OpenAIKeyStore.hasKey : AnthropicKeyStore.hasKey
+        hasDemoBrainKey = demoBrainProvider.keyStore.hasKey
         stageFrameStyle = presentationStore.stageFrameStyle
         stageFramePadding = presentationStore.stageFramePadding
         stageFrameCornerRadius = presentationStore.stageFrameCornerRadius

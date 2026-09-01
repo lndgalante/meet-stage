@@ -4,8 +4,9 @@ import Foundation
 /// Chat Completions API (Swift has no official OpenAI SDK). It exists so the
 /// conversational grounding can be compared head-to-head with `ClaudeDemoBrain`:
 /// both receive the identical system prompt (`DemoBrainPrompt`), the same
-/// screenshot + control inventory + dialogue, and run their reply through the
-/// same validation (`DemoBrainDecoding`). Only the wire format and model differ.
+/// screenshot + control inventory + dialogue, run the same transport
+/// (`DemoBrainTransport`), and validate through the same `DemoBrainDecoding`. Only
+/// the wire format and model differ.
 ///
 /// Luna is the low-cost, reasoning-capable tier; we pin `reasoning_effort` low and
 /// request a strict `json_schema` so the structured action comes back deterministic
@@ -22,7 +23,7 @@ final class OpenAIDemoBrain: DemoBrain {
     }
 
     var isConfigured: Bool {
-        OpenAIKeyStore.hasKey
+        OpenAIKeyStore().hasKey
     }
 
     /// Max attempts on a 429 before giving up (one retry honoring Retry-After).
@@ -30,150 +31,223 @@ final class OpenAIDemoBrain: DemoBrain {
 
     func decide(_ request: DemoBrainRequest) async throws -> DemoBrainDecision? {
         guard !request.apiKey.isEmpty else { throw DemoBrainError.missingKey }
-        guard let endpoint = URL(string: endpointString) else {
-            throw DemoBrainError.transport("bad endpoint")
-        }
-
-        let httpBody: Data
-        do {
-            httpBody = try JSONSerialization.data(withJSONObject: makeRequestBody(request))
-        } catch {
-            throw DemoBrainError.transport("encode failed")
-        }
-
-        let modelName = model
-        let hasImage = request.imageJPEGBase64 != nil ? "yes" : "no"
         AppLog.demoMode.notice(
-            "OpenAI → model=\(modelName, privacy: .public) controls=\(request.controls.count, privacy: .public) image=\(hasImage, privacy: .public) history=\(request.history.count, privacy: .public)"
+            "OpenAI → model=\(self.model, privacy: .public) controls=\(request.controls.count, privacy: .public) image=\(request.imageJPEGBase64 != nil ? "yes" : "no", privacy: .public) history=\(request.history.count, privacy: .public)"
         )
-
-        var attempt = 0
-        while true {
-            var urlRequest = URLRequest(url: endpoint)
-            urlRequest.httpMethod = "POST"
-            urlRequest.setValue("Bearer \(request.apiKey)", forHTTPHeaderField: "Authorization")
-            urlRequest.setValue("application/json", forHTTPHeaderField: "content-type")
-            urlRequest.httpBody = httpBody
-
-            let started = ContinuousClock.now
-            let data: Data
-            let response: URLResponse
-            do {
-                (data, response) = try await session.data(for: urlRequest)
-            } catch {
-                throw DemoBrainError.transport(error.localizedDescription)
-            }
-            let elapsedMs = Int((ContinuousClock.now - started) / .milliseconds(1))
-            guard let http = response as? HTTPURLResponse else {
-                throw DemoBrainError.transport("no HTTP response")
-            }
+        let text = try await DemoBrainTransport.fetchReply(
+            tag: "OpenAI",
+            maxRetries: maxRetries,
+            session: session,
+            makeRequest: { try self.makeURLRequest(request) },
+            extractText: Self.extractText(from:)
+        )
+        let decision = DemoBrainDecoding.parse(from: text, allowsClicking: request.allowsClicking)
+        if decision == nil {
             AppLog.demoMode.notice(
-                "OpenAI ← HTTP \(http.statusCode, privacy: .public) in \(elapsedMs, privacy: .public)ms"
+                "OpenAI reply (unparsed/none): \(text.prefix(300), privacy: .private)"
             )
-
-            if http.statusCode == 429 {
-                let body = String(data: data, encoding: .utf8) ?? ""
-                // Out-of-credit/quota won't clear on retry — fail fast so the UI
-                // can show a billing message instead of spending another call.
-                let isQuota = body.localizedCaseInsensitiveContains("quota")
-                if !isQuota, attempt < maxRetries, !Task.isCancelled {
-                    attempt += 1
-                    let retryAfter = (http.value(forHTTPHeaderField: "retry-after")).flatMap(
-                        Double.init)
-                    let delay = min(max(retryAfter ?? 2, 0.5), 8)
-                    try? await Task.sleep(for: .seconds(delay))
-                    continue
-                }
-                throw DemoBrainError.http(status: 429, detail: String(body.prefix(300)))
-            }
-            guard http.statusCode == 200 else {
-                let detail = String(data: data, encoding: .utf8)?.prefix(300).description ?? ""
-                throw DemoBrainError.http(status: http.statusCode, detail: detail)
-            }
-
-            let decoded: OpenAIResponse
-            do {
-                decoded = try JSONDecoder().decode(OpenAIResponse.self, from: data)
-            } catch {
-                throw DemoBrainError.transport("decode failed")
-            }
-            let choice = decoded.choices.first
-            if choice?.finishReason == "length" {
-                AppLog.demoMode.notice("OpenAI reply truncated (length)")
-            }
-            let text = choice?.message.content ?? ""
-            let decision = DemoBrainDecoding.parse(from: text, allowsClicking: request.allowsClicking)
-            if decision == nil {
-                AppLog.demoMode.notice(
-                    "OpenAI reply (unparsed/none): \(text.prefix(300), privacy: .private)"
-                )
-            }
-            return decision
         }
+        return decision
     }
 
     // MARK: - Request assembly
 
-    private func makeRequestBody(_ request: DemoBrainRequest) -> [String: Any] {
-        var messages: [[String: Any]] = [
-            ["role": "system", "content": DemoBrainPrompt.system]
-        ]
-        for turn in request.history {
-            messages.append(["role": "user", "content": turn.user])
-            messages.append(["role": "assistant", "content": turn.assistant])
+    private func makeURLRequest(_ request: DemoBrainRequest) throws -> URLRequest {
+        guard let endpoint = URL(string: endpointString) else {
+            throw DemoBrainError.transport("bad endpoint")
         }
-
-        var parts: [[String: Any]] = []
-        if let image = request.imageJPEGBase64 {
-            parts.append([
-                "type": "image_url",
-                "image_url": ["url": "data:image/jpeg;base64,\(image)"]
-            ])
-        }
-        parts.append(["type": "text", "text": DemoBrainPrompt.userText(for: request)])
-        messages.append(["role": "user", "content": parts])
-
-        return [
-            "model": model,
-            // Reasoning tokens count against this budget, so leave headroom above
-            // the small JSON answer; keep effort low for live-demo latency.
-            "max_completion_tokens": 700,
-            "reasoning_effort": "low",
-            "messages": messages,
-            "response_format": [
-                "type": "json_schema",
-                "json_schema": [
-                    "name": "demo_action",
-                    "strict": true,
-                    "schema": Self.responseSchema
-                ]
-            ]
-        ]
+        var urlRequest = URLRequest(url: endpoint)
+        urlRequest.httpMethod = "POST"
+        urlRequest.setValue("Bearer \(request.apiKey)", forHTTPHeaderField: "Authorization")
+        urlRequest.setValue("application/json", forHTTPHeaderField: "content-type")
+        urlRequest.httpBody = try JSONEncoder().encode(makeRequestBody(request))
+        return urlRequest
     }
 
-    /// Strict JSON schema matching `DemoBrainDecoding.RawBrainDecision`. Under
-    /// `strict`, every property must be listed in `required` (nullable ones use a
-    /// `[type, "null"]` union) and `additionalProperties` must be false.
-    private static var responseSchema: [String: Any] {
-        [
-            "type": "object",
-            "properties": [
-                "action": [
-                    "type": "string",
-                    "enum": ["highlight", "click", "type", "circle", "spotlight", "zoom", "none"]
-                ],
-                "element_id": ["type": ["integer", "null"]],
-                "point": ["type": ["array", "null"], "items": ["type": "number"]],
-                "text": ["type": ["string", "null"]],
-                "label": ["type": "string"]
-            ],
-            "required": ["action", "element_id", "point", "text", "label"],
-            "additionalProperties": false
+    private func makeRequestBody(_ request: DemoBrainRequest) -> OpenAIRequest {
+        var messages: [OpenAIMessage] = [
+            OpenAIMessage(role: "system", content: .text(DemoBrainPrompt.system))
         ]
+        for turn in request.history {
+            messages.append(OpenAIMessage(role: "user", content: .text(turn.user)))
+            messages.append(OpenAIMessage(role: "assistant", content: .text(turn.assistant)))
+        }
+
+        var parts: [OpenAIPart] = []
+        if let image = request.imageJPEGBase64 {
+            parts.append(.image(dataURL: "data:image/jpeg;base64,\(image)"))
+        }
+        parts.append(.text(DemoBrainPrompt.userText(for: request)))
+        messages.append(OpenAIMessage(role: "user", content: .parts(parts)))
+
+        return OpenAIRequest(
+            model: model,
+            // Reasoning tokens count against this budget, so leave headroom above
+            // the small JSON answer; keep effort low for live-demo latency.
+            maxCompletionTokens: 700,
+            reasoningEffort: "low",
+            messages: messages
+        )
+    }
+
+    // MARK: - Response parsing
+
+    private static func extractText(from data: Data) throws -> String {
+        let decoded: OpenAIResponse
+        do {
+            decoded = try JSONDecoder().decode(OpenAIResponse.self, from: data)
+        } catch {
+            throw DemoBrainError.transport("decode failed")
+        }
+        let choice = decoded.choices.first
+        if choice?.finishReason == "length" {
+            AppLog.demoMode.notice("OpenAI reply truncated (length)")
+        }
+        return choice?.message.content ?? ""
     }
 }
 
-// MARK: - Wire types
+// MARK: - Request wire types
+
+private struct OpenAIRequest: Encodable {
+    let model: String
+    let maxCompletionTokens: Int
+    let reasoningEffort: String
+    let messages: [OpenAIMessage]
+    let responseFormat = OpenAIResponseFormat()
+
+    enum CodingKeys: String, CodingKey {
+        case model, messages
+        case maxCompletionTokens = "max_completion_tokens"
+        case reasoningEffort = "reasoning_effort"
+        case responseFormat = "response_format"
+    }
+}
+
+private struct OpenAIMessage: Encodable {
+    let role: String
+    let content: OpenAIContent
+}
+
+/// A message's content is either a bare string (system/history turns) or an array
+/// of typed parts (the final user turn, which carries the screenshot).
+private enum OpenAIContent: Encodable {
+    case text(String)
+    case parts([OpenAIPart])
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case let .text(value): try container.encode(value)
+        case let .parts(parts): try container.encode(parts)
+        }
+    }
+}
+
+private enum OpenAIPart: Encodable {
+    case text(String)
+    case image(dataURL: String)
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        switch self {
+        case let .text(value):
+            try container.encode("text", forKey: .type)
+            try container.encode(value, forKey: .text)
+        case let .image(dataURL):
+            try container.encode("image_url", forKey: .type)
+            try container.encode(["url": dataURL], forKey: .imageURL)
+        }
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case type, text
+        case imageURL = "image_url"
+    }
+}
+
+private struct OpenAIResponseFormat: Encodable {
+    let type = "json_schema"
+    let jsonSchema = DemoActionSchema()
+
+    enum CodingKeys: String, CodingKey {
+        case type
+        case jsonSchema = "json_schema"
+    }
+}
+
+/// Strict JSON schema matching `DemoBrainDecoding.RawBrainDecision`. Under
+/// `strict`, every property must appear in `required` (nullable ones use a
+/// `[type, "null"]` union) and `additionalProperties` must be false.
+private struct DemoActionSchema: Encodable {
+    let name = "demo_action"
+    let strict = true
+    let schema = Schema()
+
+    struct Schema: Encodable {
+        let type = "object"
+        let properties = Properties()
+        let required = ["action", "element_id", "point", "text", "label"]
+        let additionalProperties = false
+
+        struct Properties: Encodable {
+            let action = SchemaProperty(
+                type: .single("string"),
+                enumValues: ["highlight", "click", "type", "circle", "spotlight", "zoom", "none"]
+            )
+            let elementID = SchemaProperty(type: .union(["integer", "null"]))
+            let point = SchemaProperty(
+                type: .union(["array", "null"]),
+                items: .init(type: "number")
+            )
+            let text = SchemaProperty(type: .union(["string", "null"]))
+            let label = SchemaProperty(type: .single("string"))
+
+            enum CodingKeys: String, CodingKey {
+                case action
+                case elementID = "element_id"
+                case point, text, label
+            }
+        }
+    }
+}
+
+/// A JSON-schema property whose `type` is a single string or a `[type, "null"]`
+/// nullable union. `enum`/`items` are omitted when nil (synthesized as optional).
+private struct SchemaProperty: Encodable {
+    let type: TypeField
+    var enumValues: [String]?
+    var items: Items?
+
+    init(type: TypeField, enumValues: [String]? = nil, items: Items? = nil) {
+        self.type = type
+        self.enumValues = enumValues
+        self.items = items
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case type
+        case enumValues = "enum"
+        case items
+    }
+
+    struct Items: Encodable { let type: String }
+
+    enum TypeField: Encodable {
+        case single(String)
+        case union([String])
+
+        func encode(to encoder: Encoder) throws {
+            var container = encoder.singleValueContainer()
+            switch self {
+            case let .single(value): try container.encode(value)
+            case let .union(values): try container.encode(values)
+            }
+        }
+    }
+}
+
+// MARK: - Response wire types
 
 private struct OpenAIResponse: Decodable {
     let choices: [Choice]
