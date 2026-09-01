@@ -6,7 +6,7 @@ import OSLog
 /// Console without scattering subsystem strings throughout the app.
 enum AppLog {
     private static let subsystem =
-        Bundle.main.bundleIdentifier ?? "dev.poc.meetstage.v2"
+        Bundle.main.bundleIdentifier ?? "com.lndgalante.bettermeets"
 
     static let application = Logger(subsystem: subsystem, category: "application")
     static let capture = Logger(subsystem: subsystem, category: "capture")

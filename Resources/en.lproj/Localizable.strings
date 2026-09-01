@@ -1,0 +1,48 @@
+/* Main menus and window actions */
+"Refresh Windows" = "Refresh Windows";
+"Stop Capture" = "Stop Capture";
+"Source Slots" = "Source Slots";
+"Show Controller" = "Show Controller";
+"Hide Controller" = "Hide Controller";
+"Minimize Controller" = "Minimize Controller";
+"Show Demo Stage" = "Show Demo Stage";
+"Minimize Demo Stage" = "Minimize Demo Stage";
+"Close Demo Stage" = "Close Demo Stage";
+"Enter Full Screen" = "Enter Full Screen";
+"Exit Full Screen" = "Exit Full Screen";
+"Toggle Demo Stage Full Screen" = "Toggle Demo Stage Full Screen";
+"BetterMeets Help" = "BetterMeets Help";
+
+/* Controller */
+"Auto polish" = "Auto polish";
+"Focus spotlight" = "Focus spotlight";
+"Annotate" = "Annotate";
+"Highlight clicks" = "Highlight clicks";
+"Highlight keystrokes" = "Highlight keystrokes";
+"Demo mode" = "Demo mode";
+"Settings" = "Settings";
+"Available windows" = "Available windows";
+"Allow screen recording" = "Allow screen recording";
+"Open Screen Recording Settings" = "Open Screen Recording Settings";
+"Restart BetterMeets" = "Restart BetterMeets";
+
+/* Settings sections */
+"General" = "General";
+"Stage" = "Stage";
+"Focus" = "Focus";
+"Draw" = "Draw";
+"Demo" = "Demo";
+"Clicks" = "Clicks";
+"Keys" = "Keys";
+"Global shortcuts" = "Global shortcuts";
+"Conversation AI" = "Conversation AI";
+"Cloud understanding" = "Cloud understanding";
+"Remove Key" = "Remove Key";
+"Cancel" = "Cancel";
+"Save" = "Save";
+
+/* Demo Stage states */
+"Nothing is on stage" = "Nothing is on stage";
+"Preparing the stage" = "Preparing the stage";
+"Sharing is paused" = "Sharing is paused";
+"Waiting for the first video frame" = "Waiting for the first video frame";

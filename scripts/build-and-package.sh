@@ -60,6 +60,13 @@ cp "$PROJECT_DIR/.build/$CONFIGURATION/MeetStage" "$CONTENTS_DIR/MacOS/MeetStage
 cp "$PROJECT_DIR/Resources/Info.plist" "$CONTENTS_DIR/Info.plist"
 cp "$PROJECT_DIR/Resources/BetterMeets.icns" "$CONTENTS_DIR/Resources/BetterMeets.icns"
 cp "$METAL_LIBRARY" "$CONTENTS_DIR/Resources/IdleStageChrome.metallib"
+cp -R "$PROJECT_DIR/Resources/en.lproj" "$CONTENTS_DIR/Resources/en.lproj"
+
+"$PROJECT_DIR/scripts/extract-app-intents-metadata.sh" \
+    "$CONFIGURATION" \
+    "$APP_DIR" \
+    "$SDK_PATH" \
+    "$BUNDLE_IDENTIFIER"
 
 ENTITLEMENTS="$PROJECT_DIR/Resources/BetterMeets.entitlements"
 

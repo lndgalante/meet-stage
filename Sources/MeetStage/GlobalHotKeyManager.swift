@@ -1,7 +1,7 @@
 import Carbon.HIToolbox
 import Foundation
 
-/// Owns Carbon registrations for the app-wide Option+number shortcuts.
+/// Owns Carbon registrations for the configurable app-wide source shortcuts.
 @MainActor
 final class GlobalHotKeyManager {
     typealias Handler = @MainActor (Int) -> Void
@@ -21,14 +21,28 @@ final class GlobalHotKeyManager {
 
     private let handler: Handler
     private let resources = GlobalHotKeyResources()
+    private var registeredModifier: GlobalShortcutModifier?
 
     init(handler: @escaping Handler) {
         self.handler = handler
     }
 
-    func updateRegisteredSlots(_ slots: Set<Int>) -> Set<Int> {
+    func updateRegisteredSlots(
+        _ slots: Set<Int>,
+        modifier: GlobalShortcutModifier
+    ) -> Set<Int> {
         let validSlots = Set(slots.filter(ShortcutSlot.isValid))
+        guard let carbonModifiers = modifier.carbonModifiers else {
+            resources.unregisterAllHotKeys()
+            registeredModifier = modifier
+            return []
+        }
         guard installEventHandlerIfNeeded() else { return slots }
+
+        if registeredModifier != modifier {
+            resources.unregisterAllHotKeys()
+            registeredModifier = modifier
+        }
 
         for slot in Set(resources.hotKeyReferences.keys).subtracting(validSlots) {
             if let reference = resources.hotKeyReferences.removeValue(forKey: slot) {
@@ -47,7 +61,7 @@ final class GlobalHotKeyManager {
             )
             let status = RegisterEventHotKey(
                 keyCode,
-                UInt32(optionKey),
+                carbonModifiers,
                 identifier,
                 GetApplicationEventTarget(),
                 0,
@@ -119,10 +133,15 @@ private final class GlobalHotKeyResources: @unchecked Sendable {
     var eventHandler: EventHandlerRef?
     var hotKeyReferences: [Int: EventHotKeyRef] = [:]
 
-    deinit {
+    func unregisterAllHotKeys() {
         hotKeyReferences.values.forEach { reference in
             UnregisterEventHotKey(reference)
         }
+        hotKeyReferences.removeAll()
+    }
+
+    deinit {
+        unregisterAllHotKeys()
         if let eventHandler {
             RemoveEventHandler(eventHandler)
         }

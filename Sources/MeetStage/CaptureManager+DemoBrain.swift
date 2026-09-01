@@ -334,8 +334,15 @@ extension CaptureManager {
         let widthPixels = element.normalizedBounds.width * frame.width
         let heightPixels = element.normalizedBounds.height * frame.height
         let diameter = (max(widthPixels, heightPixels) * 1.5 + 28) / minDimension
+        let undoSnapshot = annotations.snapshot()
         annotations.addShape(
             .circle(center: element.normalizedCenter, diameter: diameter),
+            reducesMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        )
+        annotations.registerUndo(
+            restoring: undoSnapshot,
+            with: annotationUndoManager,
+            actionName: "Circle Control",
             reducesMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         )
     }

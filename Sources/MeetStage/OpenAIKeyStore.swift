@@ -5,9 +5,10 @@ import Foundation
 /// brain can refer to it directly.
 struct OpenAIKeyStore: DemoKeyStore {
     private let secret = KeychainSecret(
-        service: "dev.poc.meetstage.openai",
+        service: "com.lndgalante.bettermeets.openai",
         account: "conversational-brain",
-        environmentVariable: "OPENAI_API_KEY"
+        environmentVariable: "OPENAI_API_KEY",
+        legacyServices: ["dev.poc.meetstage.openai"]
     )
 
     var key: String? { secret.key }

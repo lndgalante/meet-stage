@@ -95,7 +95,8 @@ extension CaptureManager {
 
     func refreshHotKeyRegistrations() {
         unavailableShortcutSlots = hotKeyManager.updateRegisteredSlots(
-            Set(shortcutWindowIDs.keys)
+            Set(shortcutWindowIDs.keys),
+            modifier: globalShortcutModifier
         )
         if !unavailableShortcutSlots.isEmpty {
             let slots = unavailableShortcutSlots.sorted().map(String.init).joined(separator: ", ")

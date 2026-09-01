@@ -96,6 +96,28 @@ final class AnnotationSession: ObservableObject {
         strokes.isEmpty
     }
 
+    func snapshot() -> [AnnotationStroke] {
+        strokes
+    }
+
+    func registerUndo(
+        restoring snapshot: [AnnotationStroke],
+        with undoManager: UndoManager?,
+        actionName: String,
+        reducesMotion: Bool
+    ) {
+        guard let undoManager else { return }
+        undoManager.registerUndo(withTarget: self) { session in
+            session.restoreForUndo(
+                snapshot,
+                with: undoManager,
+                actionName: actionName,
+                reducesMotion: reducesMotion
+            )
+        }
+        undoManager.setActionName(actionName)
+    }
+
     @discardableResult
     func beginStroke(at point: NormalizedWindowPoint) -> UUID {
         let stroke = AnnotationStroke(
@@ -188,6 +210,31 @@ final class AnnotationSession: ObservableObject {
         strokes.removeAll()
     }
 
+    private func restoreForUndo(
+        _ snapshot: [AnnotationStroke],
+        with undoManager: UndoManager,
+        actionName: String,
+        reducesMotion: Bool
+    ) {
+        let inverse = strokes
+        registerUndo(
+            restoring: inverse,
+            with: undoManager,
+            actionName: actionName,
+            reducesMotion: reducesMotion
+        )
+
+        fadeTasks.values.forEach { $0.cancel() }
+        fadeTasks.removeAll()
+        strokes = snapshot.map { stroke in
+            var restored = stroke
+            restored.opacity = 1
+            restored.fadeDuration = AnnotationTiming.standardFadeDuration
+            return restored
+        }
+        strokes.forEach { scheduleFade(for: $0.id, reducesMotion: reducesMotion) }
+    }
+
     func setLifetimeSeconds(_ value: Int) {
         lifetimeSeconds = AnnotationTiming.normalizedLifetimeSeconds(value)
     }
@@ -216,6 +263,7 @@ final class AnnotationSession: ObservableObject {
 struct AnnotationInputController {
     private(set) var activeStrokeID: UUID?
     private var activeCanvasSize: CGSize?
+    private var undoSnapshot: [AnnotationStroke]?
 
     mutating func update(
         location: CGPoint,
@@ -232,6 +280,7 @@ struct AnnotationInputController {
         if let activeStrokeID {
             session.append(point, to: activeStrokeID)
         } else {
+            undoSnapshot = session.snapshot()
             activeStrokeID = session.beginStroke(at: point)
         }
         activeCanvasSize = canvasSize
@@ -239,7 +288,8 @@ struct AnnotationInputController {
 
     mutating func finish(
         session: AnnotationSession,
-        reducesMotion: Bool
+        reducesMotion: Bool,
+        undoManager: UndoManager? = nil
     ) {
         guard let activeStrokeID else { return }
         session.endStroke(
@@ -247,14 +297,24 @@ struct AnnotationInputController {
             canvasSize: activeCanvasSize,
             reducesMotion: reducesMotion
         )
+        if let undoSnapshot {
+            session.registerUndo(
+                restoring: undoSnapshot,
+                with: undoManager,
+                actionName: "Draw Annotation",
+                reducesMotion: reducesMotion
+            )
+        }
         self.activeStrokeID = nil
         activeCanvasSize = nil
+        undoSnapshot = nil
     }
 }
 
 struct AnnotationInkLayer: View {
     @ObservedObject var session: AnnotationSession
     let acceptsInput: Bool
+    var undoManager: UndoManager? = nil
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var inputController = AnnotationInputController()
@@ -333,7 +393,8 @@ struct AnnotationInkLayer: View {
     private func finishActiveStroke() {
         inputController.finish(
             session: session,
-            reducesMotion: reduceMotion
+            reducesMotion: reduceMotion,
+            undoManager: undoManager
         )
     }
 

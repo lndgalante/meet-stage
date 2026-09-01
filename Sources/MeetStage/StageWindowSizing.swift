@@ -110,6 +110,39 @@ enum StageWindowSizing {
         return NSSize(width: width.rounded(), height: height.rounded())
     }
 
+    /// Changes aspect ratio without discarding the size the presenter chose.
+    /// The current longest edge is retained, then reduced only when the new shape
+    /// would exceed the visible screen.
+    static func resizedContentSize(
+        preserving currentSize: NSSize,
+        aspectRatio: CGFloat,
+        fitting visibleSize: NSSize
+    ) -> NSSize {
+        let safeAspectRatio = normalizedAspectRatio(aspectRatio)
+        guard currentSize.width > 0, currentSize.height > 0,
+            visibleSize.width > 0, visibleSize.height > 0
+        else {
+            return windowContentSize(aspectRatio: safeAspectRatio, fitting: visibleSize)
+        }
+
+        let longestEdge = max(currentSize.width, currentSize.height)
+        var size: NSSize
+        if safeAspectRatio >= 1 {
+            size = NSSize(width: longestEdge, height: longestEdge / safeAspectRatio)
+        } else {
+            size = NSSize(width: longestEdge * safeAspectRatio, height: longestEdge)
+        }
+
+        let fitScale = min(
+            1,
+            visibleSize.width / max(size.width, 1),
+            visibleSize.height / max(size.height, 1)
+        )
+        size.width *= fitScale
+        size.height *= fitScale
+        return size
+    }
+
     @MainActor
     private static func currentScreen() -> NSScreen? {
         NSScreen.main ?? NSScreen.screens.first

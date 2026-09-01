@@ -7,6 +7,7 @@ import Foundation
 struct ShortcutPreferencesStore {
     static let pinsKey = "MeetStage.shortcutPins.v1"
     static let exclusionsKey = "MeetStage.shortcutExclusions.v1"
+    static let modifierKey = "MeetStage.globalShortcutModifier.v1"
 
     private let defaults: UserDefaults
 
@@ -45,6 +46,17 @@ struct ShortcutPreferencesStore {
             )
             return []
         }
+    }
+
+    func loadGlobalShortcutModifier() -> GlobalShortcutModifier {
+        guard let rawValue = defaults.string(forKey: Self.modifierKey) else {
+            return .commandOption
+        }
+        return GlobalShortcutModifier(rawValue: rawValue) ?? .commandOption
+    }
+
+    func saveGlobalShortcutModifier(_ modifier: GlobalShortcutModifier) {
+        defaults.set(modifier.rawValue, forKey: Self.modifierKey)
     }
 
     func savePins(_ pins: [Int: PinnedWindow]) {

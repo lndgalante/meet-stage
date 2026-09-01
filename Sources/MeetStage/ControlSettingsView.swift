@@ -1,12 +1,42 @@
+import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
-struct SettingsPopover: View {
+enum SettingsTab: String, CaseIterable, Identifiable {
+    static let storageKey = "MeetStage.settings.selectedTab.v1"
+
+    case general
+    case stage
+    case spotlight
+    case annotations
+    case demo
+    case clicks
+    case keystrokes
+
+    var id: Self { self }
+
+    var title: String {
+        switch self {
+        case .general: "General"
+        case .demo: "Demo"
+        case .stage: "Stage"
+        case .spotlight: "Focus"
+        case .annotations: "Draw"
+        case .clicks: "Clicks"
+        case .keystrokes: "Keys"
+        }
+    }
+}
+
+struct BetterMeetsSettingsView: View {
     @ObservedObject var manager: CaptureManager
-    @State private var selectedTab: SettingsTab = .stage
+    @Environment(\.legibilityWeight) private var legibilityWeight
+    @AppStorage(SettingsTab.storageKey) private var selectedTabRawValue = SettingsTab.general.rawValue
     @State private var isChoosingLogo = false
+    @State private var isLogoDropTargeted = false
     @State private var logoImportError: String?
     @State private var brainKeyDraft = ""
+    @State private var isConfirmingKeyRemoval = false
     /// Popover content is capped to this height and scrolls beyond it, so a tall
     /// tab (Demo) never overflows the screen above the button and overlaps rows.
     private static let maxTabContentHeight: CGFloat = 560
@@ -18,7 +48,7 @@ struct SettingsPopover: View {
         VStack(spacing: 16) {
             Picker(
                 "Settings section",
-                selection: $selectedTab
+                selection: selectedTabBinding
             ) {
                 ForEach(SettingsTab.allCases) { tab in
                     Text(tab.title)
@@ -27,7 +57,7 @@ struct SettingsPopover: View {
             }
             .labelsHidden()
             .pickerStyle(.segmented)
-            .frame(width: 432)
+            .frame(width: 500)
 
             // Some tabs (Demo especially) are taller than the popover can be on
             // shorter screens; scroll past the cap rather than clip or overlap
@@ -35,6 +65,8 @@ struct SettingsPopover: View {
             ScrollView(.vertical, showsIndicators: false) {
                 Group {
                     switch selectedTab {
+                    case .general:
+                        generalSettings
                     case .demo:
                         demoSettings
                     case .stage:
@@ -63,7 +95,8 @@ struct SettingsPopover: View {
             .frame(height: min(tabContentHeight, Self.maxTabContentHeight))
         }
         .padding(18)
-        .frame(width: 504)
+        .frame(width: 568)
+        .fontWeight(legibilityWeight == .bold ? .bold : nil)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Settings")
         .fileImporter(
@@ -84,6 +117,78 @@ struct SettingsPopover: View {
             }
         } message: {
             Text(logoImportError ?? "Choose another image and try again.")
+        }
+        .alert(
+            "Remove \(manager.demoBrainProvider.vendor) API Key?",
+            isPresented: $isConfirmingKeyRemoval
+        ) {
+            Button("Remove Key", role: .destructive) {
+                manager.setDemoBrainKey("")
+                brainKeyDraft = ""
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("The key will be deleted from your Keychain and cloud understanding will turn off.")
+        }
+        .onChange(of: manager.demoBrainProvider) { _, _ in
+            brainKeyDraft = ""
+        }
+    }
+
+    private var selectedTab: SettingsTab {
+        SettingsTab(rawValue: selectedTabRawValue) ?? .general
+    }
+
+    private var selectedTabBinding: Binding<SettingsTab> {
+        Binding(
+            get: { selectedTab },
+            set: { selectedTabRawValue = $0.rawValue }
+        )
+    }
+
+    private var generalSettings: some View {
+        VStack(spacing: 12) {
+            SettingsPreviewWell {
+                HStack(spacing: 12) {
+                    Image(nsImage: NSApp.applicationIconImage)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 42, height: 42)
+                        .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("BetterMeets")
+                            .font(.headline)
+                        Text("Global source switching")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+
+            SettingsFormRow(title: "Global shortcuts") {
+                Picker(
+                    "Global shortcuts",
+                    selection: Binding(
+                        get: { manager.globalShortcutModifier },
+                        set: { manager.setGlobalShortcutModifier($0) }
+                    )
+                ) {
+                    ForEach(GlobalShortcutModifier.allCases) { modifier in
+                        Text(modifier.label)
+                            .tag(modifier)
+                    }
+                }
+                .labelsHidden()
+                .frame(maxWidth: 240)
+            }
+
+            DemoSettingsNote(
+                symbol: "keyboard",
+                text:
+                    manager.globalShortcutModifier == .disabled
+                    ? "Global shortcuts are off. Source slots and pins remain available in BetterMeets."
+                    : "Source slots use \(manager.globalShortcutModifier.symbolPrefix)1 through \(manager.globalShortcutModifier.symbolPrefix)9. Choose Off if another app needs those shortcuts."
+            )
         }
     }
 
@@ -194,7 +299,16 @@ struct SettingsPopover: View {
                             manager.setDemoBrainKey(brainKeyDraft)
                             brainKeyDraft = ""
                         }
-                        .disabled(brainKeyDraft.isEmpty)
+                        .keyboardShortcut(.defaultAction)
+                        .disabled(
+                            brainKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                        )
+
+                        if manager.hasDemoBrainKey {
+                            Button("Remove…", role: .destructive) {
+                                isConfirmingKeyRemoval = true
+                            }
+                        }
                     }
                     Text(
                         manager.hasDemoBrainKey
@@ -246,6 +360,19 @@ struct SettingsPopover: View {
                 )
                 .frame(width: 112, height: 63)
             }
+            .overlay {
+                if isLogoDropTargeted {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .strokeBorder(Color.accentColor, lineWidth: 2)
+                }
+            }
+            .dropDestination(for: URL.self) { urls, _ in
+                guard let url = urls.first else { return false }
+                return importLogoURL(url)
+            } isTargeted: { isTargeted in
+                isLogoDropTargeted = isTargeted
+            }
+            .help("Drop an image here to use it as the Stage logo")
 
             SettingsFormRow(title: "Backdrop") {
                 Picker(
@@ -280,25 +407,36 @@ struct SettingsPopover: View {
     }
 
     private func importLogo(_ result: Result<[URL], any Error>) {
-        do {
-            guard let url = try result.get().first else {
-                return
-            }
-            let isAccessing = url.startAccessingSecurityScopedResource()
-            defer {
-                if isAccessing {
-                    url.stopAccessingSecurityScopedResource()
-                }
-            }
+        switch result {
+        case let .success(urls):
+            guard let url = urls.first else { return }
+            _ = importLogoURL(url)
+        case .failure:
+            logoImportError =
+                "The selected image couldn’t be opened. Choose another image and try again."
+        }
+    }
 
+    @discardableResult
+    private func importLogoURL(_ url: URL) -> Bool {
+        let isAccessing = url.startAccessingSecurityScopedResource()
+        defer {
+            if isAccessing {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+
+        do {
             let data = try Data(contentsOf: url, options: .mappedIfSafe)
             guard manager.setStageLogoData(data) else {
                 logoImportError = "Choose a valid image smaller than 10 MB."
-                return
+                return false
             }
+            return true
         } catch {
             logoImportError =
                 "The selected image couldn’t be opened. Choose another image and try again."
+            return false
         }
     }
 
@@ -471,39 +609,16 @@ struct SettingsPopover: View {
     }
 }
 
-private enum SettingsTab: String, CaseIterable, Identifiable {
-    // Ordered to mirror the control bar left-to-right: Auto polish, Focus, and
-    // Draw on the left, then Demo (the center hero), then Clicks and Keys.
-    case stage
-    case spotlight
-    case annotations
-    case demo
-    case clicks
-    case keystrokes
-
-    var id: Self { self }
-
-    var title: String {
-        switch self {
-        case .demo: "Demo"
-        case .stage: "Stage"
-        case .spotlight: "Focus"
-        case .annotations: "Draw"
-        case .clicks: "Clicks"
-        case .keystrokes: "Keys"
-        }
-    }
-}
-
 /// An inline advisory note inside a settings tab, with an optional action.
 private struct DemoSettingsNote: View {
+    var symbol = "exclamationmark.triangle.fill"
     let text: String
     var actionTitle: String?
     var action: (() -> Void)?
 
     var body: some View {
         HStack(alignment: .top, spacing: 7) {
-            Image(systemName: "exclamationmark.triangle.fill")
+            Image(systemName: symbol)
                 .font(.system(size: 11))
                 .foregroundStyle(.orange)
             Text(text)

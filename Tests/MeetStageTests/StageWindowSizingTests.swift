@@ -103,6 +103,25 @@ struct StageWindowSizingTests {
         #expect(size == .zero)
     }
 
+    @Test("Aspect changes preserve the user's chosen longest edge")
+    func preservesUserWindowSizeAcrossAspectChanges() {
+        let landscape = StageWindowSizing.resizedContentSize(
+            preserving: NSSize(width: 900, height: 600),
+            aspectRatio: 16 / 9,
+            fitting: NSSize(width: 1_440, height: 900)
+        )
+        #expect(abs(landscape.width - 900) < 0.001)
+        #expect(abs(landscape.height - 506.25) < 0.001)
+
+        let portrait = StageWindowSizing.resizedContentSize(
+            preserving: NSSize(width: 900, height: 600),
+            aspectRatio: 0.75,
+            fitting: NSSize(width: 1_440, height: 900)
+        )
+        #expect(abs(portrait.width - 675) < 0.001)
+        #expect(abs(portrait.height - 900) < 0.001)
+    }
+
     @Test
     func testCapturePixelCountsArePositiveAndEven() {
         #expect(StageWindowSizing.evenPixelCount(.nan) == 2)

@@ -140,11 +140,11 @@ final class LatestMainActorDelivery<Value: Sendable>: @unchecked Sendable {
             if minimumInterval > .zero {
                 try? await Task.sleep(for: minimumInterval)
             }
-            let value: Value? = lock.withLock {
-                guard generationToSchedule == deliveryGeneration else { return nil }
-                isDeliveryScheduled = false
-                defer { pendingValue = nil }
-                return pendingValue
+            let value: Value? = self.lock.withLock {
+                guard generationToSchedule == self.deliveryGeneration else { return nil }
+                self.isDeliveryScheduled = false
+                defer { self.pendingValue = nil }
+                return self.pendingValue
             }
             if let value {
                 handler(value)

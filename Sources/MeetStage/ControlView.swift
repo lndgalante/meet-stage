@@ -36,19 +36,22 @@ enum ControlMetrics {
 }
 
 enum ControlPalette {
-    /// BetterMeets' product accent: reserved for the live source and active tools.
-    static let accent = Color(red: 0.212, green: 0.839, blue: 1)
+    /// Follow the user's system accent for selection and active controls.
+    static let accent = Color.accentColor
     static let warning = Color.orange
-    static let panelTopTint = Color.black.opacity(0.08)
-    static let panelBottomTint = Color.black.opacity(0.24)
 }
 
 struct ControlView: View {
     @ObservedObject var manager: CaptureManager
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    @Environment(\.legibilityWeight) private var legibilityWeight
     @State private var sourceScrollBounds = CGRect.zero
-    @State private var isSettingsPresented = false
+    @FocusState private var focusedSourceID: CGWindowID?
 
     private var panelShape: ControlPanelShape {
         ControlPanelShape(
@@ -65,11 +68,11 @@ struct ControlView: View {
             // bottom edge cradling the hero in a notch. Inset from the window by
             // the shadow margin so its drop shadow renders fully.
             panelShape
-                .fill(.regularMaterial)
+                .fill(panelBackground)
                 .overlay {
                     panelShape.fill(
                         LinearGradient(
-                            colors: [ControlPalette.panelTopTint, ControlPalette.panelBottomTint],
+                            colors: panelTintColors,
                             startPoint: .top,
                             endPoint: .bottom
                         )
@@ -78,7 +81,7 @@ struct ControlView: View {
                 .overlay {
                     panelShape.strokeBorder(
                         LinearGradient(
-                            colors: [Color.white.opacity(0.24), Color.white.opacity(0.10)],
+                            colors: panelBorderColors,
                             startPoint: .top,
                             endPoint: .bottom
                         ),
@@ -116,12 +119,48 @@ struct ControlView: View {
             height: ControlWindowSizing.size.height,
             alignment: .top
         )
+        .fontWeight(legibilityWeight == .bold ? .bold : nil)
         .background(WindowConfigurator(kind: .control))
+        .contextMenu {
+            Button("Settings…") {
+                openSettings()
+            }
+
+            Divider()
+
+            Button("Minimize Controller") {
+                BetterMeetsWindowActions.minimizeController()
+            }
+
+            Button("Hide Controller") {
+                BetterMeetsWindowActions.hideController()
+            }
+        }
         .task {
             openWindow(id: "stage")
             manager.startWindowMonitoring()
             manager.refreshWindows()
         }
+    }
+
+    private var panelBackground: AnyShapeStyle {
+        if reduceTransparency {
+            return AnyShapeStyle(Color(nsColor: .windowBackgroundColor))
+        }
+        return AnyShapeStyle(.regularMaterial)
+    }
+
+    private var panelTintColors: [Color] {
+        if colorScheme == .dark {
+            return [Color.black.opacity(0.06), Color.black.opacity(0.20)]
+        }
+        return [Color.white.opacity(0.12), Color.black.opacity(0.05)]
+    }
+
+    private var panelBorderColors: [Color] {
+        let topOpacity = colorSchemeContrast == .increased ? 0.55 : 0.28
+        let bottomOpacity = colorSchemeContrast == .increased ? 0.32 : 0.12
+        return [Color.primary.opacity(topOpacity), Color.primary.opacity(bottomOpacity)]
     }
 
     private var panelContent: some View {
@@ -153,7 +192,8 @@ struct ControlView: View {
                 || manager.demoModeNeedsClickAccessibility
                 || manager.demoModeUnavailableReason != nil,
             help: demoModeControlHelp,
-            action: manager.toggleDemoMode
+            action: manager.toggleDemoMode,
+            settingsAction: { showSettings(.demo) }
         )
     }
 
@@ -180,7 +220,8 @@ struct ControlView: View {
                 title: "Auto polish",
                 help: autoPresentationControlHelp,
                 isOn: manager.autoPresentationEnabled,
-                action: manager.toggleAutoPresentation
+                action: manager.toggleAutoPresentation,
+                settingsAction: { showSettings(.stage) }
             )
             .frame(width: ControlMetrics.controlBarActionSize)
 
@@ -191,7 +232,8 @@ struct ControlView: View {
                 title: "Focus spotlight",
                 help: spotlightControlHelp,
                 isOn: manager.spotlightEnabled,
-                action: manager.toggleSpotlight
+                action: manager.toggleSpotlight,
+                settingsAction: { showSettings(.spotlight) }
             )
             .frame(width: ControlMetrics.controlBarActionSize)
 
@@ -202,7 +244,8 @@ struct ControlView: View {
                 title: "Annotate",
                 help: annotationControlHelp,
                 isOn: manager.annotationsEnabled,
-                action: manager.toggleAnnotations
+                action: manager.toggleAnnotations,
+                settingsAction: { showSettings(.annotations) }
             )
             .frame(width: ControlMetrics.controlBarActionSize)
         }
@@ -216,7 +259,8 @@ struct ControlView: View {
                 help: "Show click ripples on the selected window and Demo Stage",
                 isOn: manager.highlightsMouseClicks,
                 glyphOffset: ControlMetrics.clickHighlightGlyphOffset,
-                action: manager.toggleMouseClickHighlighting
+                action: manager.toggleMouseClickHighlighting,
+                settingsAction: { showSettings(.clicks) }
             )
             .frame(width: ControlMetrics.controlBarActionSize)
 
@@ -231,7 +275,8 @@ struct ControlView: View {
                 isOn: manager.highlightsKeystrokes,
                 glyphOffset: ControlMetrics.keystrokeHighlightGlyphOffset,
                 showsPermissionWarning: manager.needsKeystrokeAccessibilityPermission,
-                action: manager.toggleKeystrokeHighlighting
+                action: manager.toggleKeystrokeHighlighting,
+                settingsAction: { showSettings(.keystrokes) }
             )
             .frame(width: ControlMetrics.controlBarActionSize)
 
@@ -241,17 +286,9 @@ struct ControlView: View {
                 systemImage: "gearshape",
                 title: "Settings",
                 help: "Open Settings",
-                isPresented: isSettingsPresented,
-                action: { isSettingsPresented.toggle() }
+                action: { openSettings() }
             )
             .frame(width: ControlMetrics.controlBarActionSize)
-            .popover(
-                isPresented: $isSettingsPresented,
-                attachmentAnchor: .rect(.bounds),
-                arrowEdge: .bottom
-            ) {
-                SettingsPopover(manager: manager)
-            }
         }
     }
 
@@ -330,7 +367,8 @@ struct ControlView: View {
                         } else {
                             EmptyShortcutSlot(
                                 slot: slot,
-                                pinnedWindowDescription: manager.shortcutOwnerDescription(for: slot)
+                                pinnedWindowDescription: manager.shortcutOwnerDescription(for: slot),
+                                shortcutModifier: manager.globalShortcutModifier
                             )
                             .id("empty-shortcut-\(slot)")
                         }
@@ -370,6 +408,7 @@ struct ControlView: View {
             }
             .accessibilityLabel("Available windows")
             .accessibilityHint("Scroll horizontally to browse windows")
+            .onMoveCommand(perform: moveSourceFocus)
             .onAppear {
                 scrollToFocusedSource(using: proxy)
             }
@@ -420,17 +459,20 @@ struct ControlView: View {
         return CompactWindowButton(
             source: source,
             shortcut: shortcut,
+            shortcutModifier: manager.globalShortcutModifier,
             isShortcutAvailable: shortcut.map {
                 !manager.unavailableShortcutSlots.contains($0)
             } ?? true,
             isSelected: isSelected,
             isPaused: isSelected && manager.state == .paused,
             isPending: source.id == manager.pendingWindowID,
+            isKeyboardFocused: focusedSourceID == source.id,
             shortcutOwner: manager.shortcutOwnerDescription(for:),
             action: { manager.select(source) },
             pin: { manager.pin(source, to: $0) },
             unpin: { manager.unpin(source) }
         )
+        .focused($focusedSourceID, equals: source.id)
     }
 
     private func scrollToFocusedSource(using proxy: ScrollViewProxy) {
@@ -442,6 +484,24 @@ struct ControlView: View {
                 proxy.scrollTo(focusedID, anchor: .center)
             }
         }
+    }
+
+    private func moveSourceFocus(_ direction: MoveCommandDirection) {
+        guard direction == .left || direction == .right else { return }
+        let sourceIDs = manager.displayedWindows.map(\.id)
+        guard !sourceIDs.isEmpty else { return }
+
+        let currentID = focusedSourceID ?? manager.selectedWindowID
+        let currentIndex = currentID.flatMap { sourceIDs.firstIndex(of: $0) }
+            ?? (direction == .right ? -1 : sourceIDs.count)
+        let offset = direction == .right ? 1 : -1
+        let nextIndex = min(max(currentIndex + offset, 0), sourceIDs.count - 1)
+        focusedSourceID = sourceIDs[nextIndex]
+    }
+
+    private func showSettings(_ tab: SettingsTab) {
+        UserDefaults.standard.set(tab.rawValue, forKey: SettingsTab.storageKey)
+        openSettings()
     }
 
     private var permissionStrip: some View {

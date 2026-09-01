@@ -59,6 +59,7 @@ struct SourceScrollEdgeShadow: View {
 struct EmptyShortcutSlot: View {
     let slot: Int
     let pinnedWindowDescription: String?
+    let shortcutModifier: GlobalShortcutModifier
 
     private var isUnavailablePin: Bool { pinnedWindowDescription != nil }
 
@@ -75,8 +76,8 @@ struct EmptyShortcutSlot: View {
                     style: StrokeStyle(lineWidth: 1, dash: [3, 3])
                 )
 
-            Text("⌥\(slot)")
-                .font(.system(.caption2, design: .rounded, weight: .bold))
+            Text(shortcutModifier.displayName(for: slot))
+                .font(.caption2.bold().monospaced())
                 .foregroundStyle(Color.white.opacity(isUnavailablePin ? 0.72 : 0.46))
                 .padding(.horizontal, 4)
                 .padding(.vertical, 2)
@@ -95,15 +96,15 @@ struct EmptyShortcutSlot: View {
         .frame(width: ControlMetrics.sourceTileWidth, height: ControlMetrics.sourceTileHeight)
         .help(helpText)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Option \(slot), empty shortcut slot")
+        .accessibilityLabel("\(shortcutModifier.spokenName(for: slot)), empty shortcut slot")
         .accessibilityHint(accessibilityHint)
     }
 
     private var helpText: String {
         if let pinnedWindowDescription {
-            return "Option+\(slot): \(pinnedWindowDescription) is unavailable"
+            return "\(shortcutModifier.displayName(for: slot)): \(pinnedWindowDescription) is unavailable"
         }
-        return "Option+\(slot): Empty shortcut slot"
+        return "\(shortcutModifier.displayName(for: slot)): Empty shortcut slot"
     }
 
     private var accessibilityHint: String {
@@ -117,10 +118,12 @@ struct EmptyShortcutSlot: View {
 struct CompactWindowButton: View {
     let source: WindowSource
     let shortcut: Int?
+    let shortcutModifier: GlobalShortcutModifier
     let isShortcutAvailable: Bool
     let isSelected: Bool
     let isPaused: Bool
     let isPending: Bool
+    let isKeyboardFocused: Bool
     let shortcutOwner: (Int) -> String?
     let action: () -> Void
     let pin: (Int) -> Void
@@ -147,8 +150,14 @@ struct CompactWindowButton: View {
                 }
         }
         .buttonStyle(CompactIconButtonStyle())
+        .overlay {
+            RoundedRectangle(cornerRadius: ControlMetrics.sourceTileRadius, style: .continuous)
+                .strokeBorder(ControlPalette.accent, lineWidth: 2)
+                .padding(-2)
+                .opacity(isKeyboardFocused ? 1 : 0)
+        }
         .contextMenu {
-            Menu("Pin Global Shortcut") {
+            Menu(shortcutModifier == .disabled ? "Pin Source Slot" : "Pin Global Shortcut") {
                 ForEach(ShortcutSlot.all, id: \.self) { slot in
                     Button {
                         pin(slot)
@@ -160,7 +169,11 @@ struct CompactWindowButton: View {
 
             if let shortcut {
                 Divider()
-                Button("Unpin ⌥\(shortcut)", role: .destructive, action: unpin)
+                Button(
+                    "Unpin \(shortcutModifier.displayName(for: shortcut))",
+                    role: .destructive,
+                    action: unpin
+                )
             }
         }
         .onHover { isHovering in
@@ -185,6 +198,7 @@ struct CompactWindowButton: View {
             WindowHoverPreview(
                 source: source,
                 shortcut: shortcut,
+                shortcutModifier: shortcutModifier,
                 isShortcutAvailable: isShortcutAvailable
             )
         }
@@ -234,8 +248,8 @@ struct CompactWindowButton: View {
             VStack {
                 HStack {
                     if let shortcut {
-                        Text("⌥\(shortcut)")
-                            .font(.system(size: 9, weight: .semibold, design: .rounded))
+                        Text(shortcutModifier.displayName(for: shortcut))
+                            .font(.caption2.bold().monospaced())
                             .padding(.horizontal, 4)
                             .padding(.vertical, 2)
                             .foregroundStyle(.white)
@@ -313,7 +327,7 @@ struct CompactWindowButton: View {
         let action = isPaused ? "Resume sharing" : isSelected ? "Pause sharing" : "Share"
         let name = "\(action) \(source.applicationName), \(source.title)"
         guard let shortcut else { return name }
-        return "\(name), shortcut Option \(shortcut)"
+        return "\(name), shortcut \(shortcutModifier.spokenName(for: shortcut))"
     }
 
     private var accessibilityHint: String {
@@ -329,11 +343,11 @@ struct CompactWindowButton: View {
     @ViewBuilder
     private func shortcutMenuLabel(for slot: Int) -> some View {
         if shortcut == slot {
-            Label("Option+\(slot) — Current", systemImage: "checkmark")
+            Label("\(shortcutModifier.displayName(for: slot)) — Current", systemImage: "checkmark")
         } else if let owner = shortcutOwner(slot) {
-            Text("Option+\(slot) — Replace \(owner)")
+            Text("\(shortcutModifier.displayName(for: slot)) — Replace \(owner)")
         } else {
-            Text("Option+\(slot)")
+            Text(shortcutModifier.displayName(for: slot))
         }
     }
 }
@@ -370,6 +384,7 @@ private struct ApplicationIconBadge: View {
 private struct WindowHoverPreview: View {
     let source: WindowSource
     let shortcut: Int?
+    let shortcutModifier: GlobalShortcutModifier
     let isShortcutAvailable: Bool
 
     @Environment(\.colorScheme) private var colorScheme
@@ -423,8 +438,12 @@ private struct WindowHoverPreview: View {
                 Spacer()
 
                 if let shortcut {
-                    Text(isShortcutAvailable ? "⌥\(shortcut)" : "⌥\(shortcut) unavailable")
-                        .font(.system(.caption, design: .rounded, weight: .bold))
+                    Text(
+                        isShortcutAvailable
+                            ? shortcutModifier.displayName(for: shortcut)
+                            : "\(shortcutModifier.displayName(for: shortcut)) unavailable"
+                    )
+                        .font(.caption.bold().monospaced())
                         .foregroundStyle(isShortcutAvailable ? Color.primary : Color.red)
                         .padding(.horizontal, 7)
                         .padding(.vertical, 4)

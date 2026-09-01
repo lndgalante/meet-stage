@@ -6,17 +6,23 @@ struct PermissionActionButton: View {
     let action: () -> Void
 
     @State private var isHovering = false
+    @FocusState private var isFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
     var body: some View {
         Button(action: action) {
             ZStack {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .fill(Color.white.opacity(isHovering ? 0.10 : 0))
+                    .fill(Color.primary.opacity(isHovering ? 0.10 : 0))
 
                 Image(systemName: systemImage)
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Color.white.opacity(isHovering ? 0.96 : 0.72))
+                    .foregroundStyle(
+                        Color.primary.opacity(
+                            isHovering || colorSchemeContrast == .increased ? 0.96 : 0.72
+                        )
+                    )
             }
             .frame(
                 width: ControlMetrics.permissionActionSize,
@@ -25,6 +31,12 @@ struct PermissionActionButton: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(CompactIconButtonStyle())
+        .focused($isFocused)
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .strokeBorder(ControlPalette.accent, lineWidth: 2)
+                .opacity(isFocused ? 1 : 0)
+        }
         .onHover { isHovering = $0 }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: isHovering)
         .help(title)
@@ -42,9 +54,12 @@ struct ControlBarButton: View {
     var isEnabled = true
     var showsPermissionWarning = false
     let action: () -> Void
+    var settingsAction: (() -> Void)? = nil
 
     @State private var isHovering = false
+    @FocusState private var isFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
     var body: some View {
         Button(action: action) {
@@ -69,7 +84,9 @@ struct ControlBarButton: View {
                 .foregroundStyle(
                     isActive
                         ? ControlPalette.accent
-                        : Color.white.opacity(isHovering && isEnabled ? 0.88 : 0.56)
+                        : Color.primary.opacity(
+                            isHovering && isEnabled || colorSchemeContrast == .increased ? 0.92 : 0.62
+                        )
                 )
             }
             .frame(
@@ -80,6 +97,7 @@ struct ControlBarButton: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(CompactIconButtonStyle())
+        .focused($isFocused)
         .disabled(!isEnabled)
         .help(help)
         .accessibilityLabel(title)
@@ -90,6 +108,19 @@ struct ControlBarButton: View {
         .frame(height: ControlMetrics.controlBarButtonHeight)
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
+        .contextMenu {
+            if let settingsAction {
+                Button("\(title) Settings…", action: settingsAction)
+            }
+        }
+        .overlay {
+            RoundedRectangle(
+                cornerRadius: ControlMetrics.controlBarActionCornerRadius,
+                style: .continuous
+            )
+            .strokeBorder(ControlPalette.accent, lineWidth: 2)
+            .opacity(isFocused ? 1 : 0)
+        }
         .animation(
             reduceMotion ? nil : .easeOut(duration: 0.12),
             value: isHovering
@@ -109,7 +140,7 @@ struct ControlBarButton: View {
         if isActive {
             return ControlPalette.accent.opacity(isHovering ? 0.20 : 0.14)
         }
-        return isHovering ? Color.white.opacity(0.08) : .clear
+        return isHovering ? Color.primary.opacity(0.08) : .clear
     }
 
     private var isActive: Bool {
@@ -144,6 +175,7 @@ struct PermissionWarningBadge: View {
 
 struct CompactIconButtonStyle: ButtonStyle {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -166,9 +198,12 @@ struct DemoHeroButton: View {
     let showsPermissionWarning: Bool
     let help: String
     let action: () -> Void
+    var settingsAction: (() -> Void)? = nil
 
     @State private var isHovering = false
+    @FocusState private var isFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
     private var diameter: CGFloat { ControlWindowSizing.heroDiameter }
 
@@ -193,7 +228,19 @@ struct DemoHeroButton: View {
             .contentShape(Circle())
         }
         .buttonStyle(HeroPressStyle())
+        .focused($isFocused)
         .onHover { isHovering = $0 }
+        .contextMenu {
+            if let settingsAction {
+                Button("Demo Mode Settings…", action: settingsAction)
+            }
+        }
+        .overlay {
+            Circle()
+                .strokeBorder(ControlPalette.accent, lineWidth: 2)
+                .padding(-3)
+                .opacity(isFocused ? 1 : 0)
+        }
         .help(help)
         .accessibilityLabel("Demo mode")
         .accessibilityValue(showsPermissionWarning ? "Permission required" : (isListening ? "On" : "Off"))
@@ -228,8 +275,8 @@ struct DemoHeroButton: View {
                     .fill(
                         LinearGradient(
                             colors: [
-                                Color.white.opacity(isListening ? 0.22 : 0.16),
-                                Color.white.opacity(0)
+                                Color.primary.opacity(isListening ? 0.22 : 0.16),
+                                Color.primary.opacity(0)
                             ],
                             startPoint: .top,
                             endPoint: .center
@@ -241,8 +288,10 @@ struct DemoHeroButton: View {
                 Circle().strokeBorder(
                     LinearGradient(
                         colors: [
-                            Color.white.opacity(isListening ? 0.62 : 0.30),
-                            Color.white.opacity(isListening ? 0.26 : 0.10)
+                            Color.primary.opacity(
+                                colorSchemeContrast == .increased ? 0.82 : (isListening ? 0.62 : 0.30)
+                            ),
+                            Color.primary.opacity(isListening ? 0.26 : 0.12)
                         ],
                         startPoint: .top,
                         endPoint: .bottom
@@ -263,7 +312,7 @@ struct DemoHeroButton: View {
                 LinearGradient(
                     colors: [
                         ControlPalette.accent,
-                        Color(red: 0.08, green: 0.58, blue: 0.78)
+                        ControlPalette.accent.opacity(0.72)
                     ],
                     startPoint: .top,
                     endPoint: .bottom
@@ -273,8 +322,8 @@ struct DemoHeroButton: View {
         return AnyShapeStyle(
             LinearGradient(
                 colors: [
-                    Color(red: 0.24, green: 0.25, blue: 0.26),
-                    Color(red: 0.12, green: 0.13, blue: 0.14)
+                    Color(nsColor: .controlBackgroundColor),
+                    Color(nsColor: .underPageBackgroundColor)
                 ],
                 startPoint: .top,
                 endPoint: .bottom
@@ -283,8 +332,10 @@ struct DemoHeroButton: View {
     }
 
     private var iconStyle: Color {
-        if isListening { return .white }
-        return Color.white.opacity(isHovering ? 0.92 : 0.68)
+        if isListening { return Color(nsColor: .selectedControlTextColor) }
+        return Color.primary.opacity(
+            isHovering || colorSchemeContrast == .increased ? 0.94 : 0.72
+        )
     }
 }
 

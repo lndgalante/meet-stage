@@ -49,6 +49,19 @@ struct ShortcutPreferencesStoreTests {
         #expect(fixture.store.loadExclusions().isEmpty)
     }
 
+    @Test
+    func globalShortcutModifierUsesSafeDefaultAndPersistsChoice() throws {
+        let fixture = try makeFixture()
+        defer { fixture.clear() }
+
+        #expect(fixture.store.loadGlobalShortcutModifier() == .commandOption)
+        fixture.store.saveGlobalShortcutModifier(.disabled)
+        #expect(fixture.store.loadGlobalShortcutModifier() == .disabled)
+
+        fixture.defaults.set("not-a-modifier", forKey: ShortcutPreferencesStore.modifierKey)
+        #expect(fixture.store.loadGlobalShortcutModifier() == .commandOption)
+    }
+
     private func makeFixture() throws -> PreferencesFixture {
         let suiteName = "ShortcutPreferencesStoreTests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))

@@ -5,6 +5,7 @@ import ScreenCaptureKit
 /// Coordinates source discovery, ScreenCaptureKit lifecycle, and UI-facing state.
 @MainActor
 final class CaptureManager: ObservableObject {
+    static let shared = CaptureManager()
     // Stored state is module-internal so responsibility-focused extensions can
     // coordinate it without exposing any API outside the executable target.
     // SCStreamConfiguration.backgroundColor is an unretained CGColorRef. Keep
@@ -62,6 +63,9 @@ final class CaptureManager: ObservableObject {
     @Published var demoBrainProvider: DemoBrainProvider
     @Published var shortcutPins: [Int: PinnedWindow] = [:]
     @Published var shortcutExclusions: Set<PinnedWindow> = []
+    @Published var globalShortcutModifier: GlobalShortcutModifier
+
+    let annotationUndoManager = UndoManager()
 
     let renderer = SampleBufferRenderer()
     let annotations: AnnotationSession
@@ -236,6 +240,7 @@ final class CaptureManager: ObservableObject {
             && DemoSpeechTranscriber.isMicrophoneAuthorized
         shortcutPins = shortcutStore.loadPins()
         shortcutExclusions = shortcutStore.loadExclusions()
+        globalShortcutModifier = shortcutStore.loadGlobalShortcutModifier()
 
         if highlightsKeystrokes {
             startKeystrokeMonitor()

@@ -134,7 +134,7 @@ extension CaptureManager {
     func activateShortcut(_ slot: Int) {
         guard !unavailableShortcutSlots.contains(slot) else {
             AppLog.shortcuts.warning(
-                "Shortcut Option+\(slot) is reserved by another application"
+                "Shortcut \(self.globalShortcutModifier.spokenName(for: slot), privacy: .public) is reserved by another application"
             )
             NSSound.beep()
             return
@@ -144,13 +144,20 @@ extension CaptureManager {
         else {
             if let pin = shortcutPins[slot] {
                 AppLog.shortcuts.notice(
-                    "Shortcut Option+\(slot) is waiting for \(pin.description, privacy: .private)"
+                    "Shortcut \(self.globalShortcutModifier.spokenName(for: slot), privacy: .public) is waiting for \(pin.description, privacy: .private)"
                 )
                 NSSound.beep()
             }
             return
         }
         select(source)
+    }
+
+    func setGlobalShortcutModifier(_ modifier: GlobalShortcutModifier) {
+        guard globalShortcutModifier != modifier else { return }
+        globalShortcutModifier = modifier
+        shortcutStore.saveGlobalShortcutModifier(modifier)
+        refreshHotKeyRegistrations()
     }
 
     // MARK: - Presentation commands and preferences
@@ -197,7 +204,15 @@ extension CaptureManager {
     }
 
     func clearAnnotations() {
+        guard !annotations.isEmpty else { return }
+        let snapshot = annotations.snapshot()
         annotations.clear()
+        annotations.registerUndo(
+            restoring: snapshot,
+            with: annotationUndoManager,
+            actionName: "Clear Annotations",
+            reducesMotion: NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        )
     }
 
     func finishAnnotations() {

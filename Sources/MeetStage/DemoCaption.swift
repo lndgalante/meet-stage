@@ -52,6 +52,9 @@ struct DemoCaptionHUD: View {
 
     @State private var isPulsing = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    @Environment(\.legibilityWeight) private var legibilityWeight
 
     private var isThinking: Bool { caption.status == .thinking }
 
@@ -73,16 +76,25 @@ struct DemoCaptionHUD: View {
                 }
 
             Text(caption.status.text)
-                .font(.caption.weight(.semibold))
+                .font(.caption)
+                .fontWeight(legibilityWeight == .bold ? .bold : .semibold)
                 .lineLimit(1)
         }
         .padding(.leading, 11)
         .padding(.trailing, 13)
         .padding(.vertical, 7)
-        .background(.regularMaterial, in: Capsule())
+        .background(
+            reduceTransparency
+                ? AnyShapeStyle(Color(nsColor: .windowBackgroundColor))
+                : AnyShapeStyle(.regularMaterial),
+            in: Capsule()
+        )
         .overlay {
             Capsule()
-                .strokeBorder(Color.white.opacity(0.18), lineWidth: 1)
+                .strokeBorder(
+                    Color.primary.opacity(colorSchemeContrast == .increased ? 0.58 : 0.22),
+                    lineWidth: colorSchemeContrast == .increased ? 1.5 : 1
+                )
         }
         .shadow(color: Color.black.opacity(0.28), radius: 8, y: 3)
         .accessibilityElement(children: .combine)

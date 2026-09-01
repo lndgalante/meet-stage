@@ -50,6 +50,14 @@ enum ControlWindowSizing {
 
 /// Applies AppKit-only window behavior that SwiftUI scenes cannot express.
 struct WindowConfigurator: NSViewRepresentable {
+    static let controlStyleMask: NSWindow.StyleMask = [
+        .titled,
+        .closable,
+        .miniaturizable,
+        .utilityWindow,
+        .fullSizeContentView
+    ]
+
     static let stageStyleMask: NSWindow.StyleMask = [
         .titled,
         .closable,
@@ -65,9 +73,11 @@ struct WindowConfigurator: NSViewRepresentable {
 
     let kind: Kind
 
+    @MainActor
     final class Coordinator {
         var lastStageAspectRatio: CGFloat?
         var stageDragView: WindowDragView?
+        let stageActionTarget = StageWindowActionTarget()
     }
 
     func makeCoordinator() -> Coordinator {
@@ -99,14 +109,29 @@ struct WindowConfigurator: NSViewRepresentable {
         switch kind {
         case .control:
             let compactSize = ControlWindowSizing.size
+            window.identifier = BetterMeetsWindowID.control
+            window.setFrameAutosaveName("BetterMeets.ControlWindow")
+            window.isReleasedWhenClosed = false
             window.level = .floating
             window.collectionBehavior.formUnion([.canJoinAllSpaces, .fullScreenAuxiliary])
-            window.styleMask = [.borderless]
+            window.styleMask = Self.controlStyleMask
             window.isOpaque = false
             window.backgroundColor = .clear
             // The panel draws its own soft SwiftUI shadow; the native window
             // shadow would trace the notched silhouette as a crisp dark line.
             window.hasShadow = false
+            window.titleVisibility = .hidden
+            window.titlebarAppearsTransparent = true
+            window.titlebarSeparatorStyle = .none
+            window.toolbar = nil
+            // A standard titled window is retained so the controller can become
+            // key and participate in keyboard focus. Its tiny custom silhouette
+            // cannot accommodate the minimum native titlebar width, so lifecycle
+            // actions live in the Window menu, Dock menu, ⌘W, and context menu.
+            window.standardWindowButton(.closeButton)?.isHidden = true
+            window.standardWindowButton(.miniaturizeButton)?.isHidden = true
+            window.standardWindowButton(.zoomButton)?.isHidden = true
+            window.standardWindowButton(.closeButton)?.superview?.isHidden = true
             window.isMovable = true
             window.isMovableByWindowBackground = true
             window.setContentSize(compactSize)
@@ -127,6 +152,9 @@ struct WindowConfigurator: NSViewRepresentable {
         coordinator: Coordinator
     ) {
         let safeAspectRatio = StageWindowSizing.normalizedAspectRatio(aspectRatio)
+        window.identifier = BetterMeetsWindowID.stage
+        window.setFrameAutosaveName("BetterMeets.StageWindow")
+        window.isReleasedWhenClosed = false
         // Keep the shared window's capture bounds stable from the empty state
         // through live presentation. Any stage frame or shadow can be flattened
         // onto black by meeting apps that do not carry window alpha.
@@ -146,18 +174,26 @@ struct WindowConfigurator: NSViewRepresentable {
         window.isMovable = true
         window.isMovableByWindowBackground = true
         window.contentAspectRatio = NSSize(width: safeAspectRatio, height: 1)
-        window.collectionBehavior.formUnion([.canJoinAllSpaces, .fullScreenAuxiliary])
+        window.collectionBehavior.remove(.fullScreenAuxiliary)
+        window.collectionBehavior.formUnion([.canJoinAllSpaces, .fullScreenPrimary])
+        coordinator.stageActionTarget.window = window
         installStageDragSurface(in: window, coordinator: coordinator)
 
-        guard coordinator.lastStageAspectRatio.map({ abs($0 - safeAspectRatio) > 0.001 }) ?? true else {
+        guard let previousAspectRatio = coordinator.lastStageAspectRatio else {
+            coordinator.lastStageAspectRatio = safeAspectRatio
+            return
+        }
+        guard abs(previousAspectRatio - safeAspectRatio) > 0.001 else {
             return
         }
 
         let previousCenter = NSPoint(x: window.frame.midX, y: window.frame.midY)
         let screen = window.screen ?? NSScreen.main
-        let contentSize = StageWindowSizing.defaultWindowContentSize(
+        let currentContentSize = window.contentView?.bounds.size ?? window.contentLayoutRect.size
+        let contentSize = StageWindowSizing.resizedContentSize(
+            preserving: currentContentSize,
             aspectRatio: safeAspectRatio,
-            on: screen
+            fitting: screen?.visibleFrame.size ?? currentContentSize
         )
         window.setContentSize(contentSize)
 
@@ -189,6 +225,7 @@ struct WindowConfigurator: NSViewRepresentable {
             frameView.addSubview(dragView, positioned: .above, relativeTo: contentView)
             coordinator.stageDragView = dragView
         }
+        dragView.actionTarget = coordinator.stageActionTarget
 
         // Keep native resize hit regions reachable around the stage perimeter.
         dragView.frame = contentView.frame.insetBy(dx: 6, dy: 6)
@@ -213,6 +250,7 @@ struct WindowConfigurator: NSViewRepresentable {
 final class WindowDragView: NSView {
     private var dragStartPointerLocation: NSPoint?
     private var dragStartWindowOrigin: NSPoint?
+    weak var actionTarget: StageWindowActionTarget?
 
     // Keep AppKit from consuming the gesture as a background-window drag.
     // This view tracks the pointer itself so movement stays 1:1 and testable.
@@ -229,6 +267,10 @@ final class WindowDragView: NSView {
 
     override func cursorUpdate(with event: NSEvent) {
         NSCursor.openHand.set()
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        actionTarget?.makeMenu()
     }
 
     override func mouseDown(with event: NSEvent) {

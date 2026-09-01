@@ -101,6 +101,37 @@ struct AnnotationTests {
         session.clear()
     }
 
+    @Test("Drawn annotations participate in Undo and Redo")
+    @MainActor
+    func undoesAndRedoesDrawnStroke() {
+        let session = AnnotationSession(lifetimeSeconds: 10)
+        let undoManager = UndoManager()
+        var inputController = AnnotationInputController()
+
+        inputController.update(
+            location: CGPoint(x: 40, y: 40),
+            canvasSize: CGSize(width: 200, height: 100),
+            session: session
+        )
+        inputController.update(
+            location: CGPoint(x: 120, y: 70),
+            canvasSize: CGSize(width: 200, height: 100),
+            session: session
+        )
+        inputController.finish(
+            session: session,
+            reducesMotion: false,
+            undoManager: undoManager
+        )
+
+        #expect(session.strokes.count == 1)
+        undoManager.undo()
+        #expect(session.strokes.isEmpty)
+        undoManager.redo()
+        #expect(session.strokes.count == 1)
+        session.clear()
+    }
+
     @Test("Drops sub-pixel duplicate points")
     func coalescesDensePointerEvents() {
         let origin = NormalizedWindowPoint(x: 0.5, y: 0.5)

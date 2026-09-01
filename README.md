@@ -25,9 +25,11 @@ Idle, paused, permission, and error screens all use the same default stage size.
 The stage keeps standard macOS window semantics beneath its hidden chrome, so it
 can be dragged from its surface and selected by window-capture utilities.
 
-BetterMeets automatically assigns **Option+1** through **Option+9** to the first
-nine available windows. Right-click a source to move it to a specific shortcut
-or unpin it. Manual pins remain stable across refreshes and app launches, and an
+BetterMeets automatically assigns **Command–Option–1** through
+**Command–Option–9** to the first nine available windows. Choose another global
+modifier—or turn global shortcuts off—in **BetterMeets → Settings → General**.
+Right-click a source to move it to a specific shortcut or unpin it. Manual pins
+remain stable across refreshes and app launches, and an
 explicitly unpinned window stays unassigned until you pin it again. If the exact
 window for a manual pin is unavailable or ambiguous, BetterMeets keeps the
 shortcut reserved instead of silently pointing it somewhere else.
@@ -38,7 +40,7 @@ temporarily leave the strip and return when restored, while their pinned slots
 stay reserved. Closed windows are removed automatically. The four default
 shortcut slots remain visible even when none currently resolve to a window.
 When you switch with a global shortcut, BetterMeets brings that source into view
-automatically. Click the live source, or press its Option shortcut again, to
+automatically. Click the live source, or press its configured shortcut again, to
 pause sharing. Repeat the same action to resume it.
 
 Use the attached control bar below the strip to draw temporary annotations,
@@ -182,8 +184,8 @@ identity.
 3. If macOS asks for a restart, select **Restart** in the controller.
 4. Select a source window.
 5. In your meeting, share **BetterMeets — Demo Stage**.
-6. Switch sources from BetterMeets or your pinned Option shortcuts.
-7. Repeat the current source click or Option shortcut to pause or resume it.
+6. Switch sources from BetterMeets or your pinned global shortcuts.
+7. Repeat the current source click or global shortcut to pause or resume it.
 8. Optional: turn on Auto Polish and choose its framing and motion in Settings
    → Stage.
 
@@ -209,7 +211,7 @@ inside it.
 | `Sources/MeetStage/AutoPresentation.swift` and `CaptureManager+AutoPresentation.swift` | Click-driven zoom camera, read-only pointer tracking, and 2× native system-cursor mirroring |
 | `Sources/MeetStage/StageFramePresentation.swift` | Styled-frame layout, built-in backdrops, blur, corners, and shadows |
 | `Sources/MeetStage/WindowConfiguration.swift` | AppKit window behavior used by SwiftUI scenes |
-| `Sources/MeetStage/GlobalHotKeyManager.swift` | Option+1 through Option+9 registration |
+| `Sources/MeetStage/GlobalHotKeyManager.swift` | Configurable global source-slot shortcut registration |
 | `Sources/MeetStage/Annotations.swift`, `AnnotationShapeRecognizer.swift`, and `AnnotationOverlay.swift` | Temporary ink, closed-shape recognition and rendering, plus AppKit source-overlay presentation |
 | `Sources/MeetStage/ClickHighlights.swift`, `KeystrokeHighlights.swift`, and `SpotlightEffect.swift` | Effect-specific models, monitoring, overlays, and rendering |
 | `Sources/MeetStage/PresentationPreferences.swift` | Shared color, size, and keystroke appearance options |
@@ -231,7 +233,7 @@ the automated and manual verification strategy.
 ## Screen Recording permission
 
 Both development and release builds use bundle identifier
-`dev.poc.meetstage.v2` and the same designated signing requirement. Keep these
+`com.lndgalante.bettermeets` and the same designated signing requirement. Keep these
 values stable: changing either can make macOS treat the build as a different
 Screen Recording client.
 
@@ -245,7 +247,7 @@ As a last resort, reset only BetterMeets' Screen Recording decision, then launch
 the app and grant access again:
 
 ```bash
-tccutil reset ScreenCapture dev.poc.meetstage.v2
+tccutil reset ScreenCapture com.lndgalante.bettermeets
 ```
 
 Demo Mode adds two more permissions, keyed to the same stable identity:
@@ -255,8 +257,8 @@ Privacy & Security → Microphone** and **→ Accessibility**. If either becomes
 stuck, reset only BetterMeets' decision and re-grant it:
 
 ```bash
-tccutil reset Microphone dev.poc.meetstage.v2
-tccutil reset Accessibility dev.poc.meetstage.v2
+tccutil reset Microphone com.lndgalante.bettermeets
+tccutil reset Accessibility com.lndgalante.bettermeets
 ```
 
 Pinned shortcuts use the legacy `MeetStage.shortcutPins.v1` defaults key, and

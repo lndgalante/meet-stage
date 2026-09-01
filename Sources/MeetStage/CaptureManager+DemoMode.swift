@@ -143,6 +143,10 @@ extension CaptureManager {
         // so this session never reads the Keychain back and never prompts for it.
         cachedBrainKeys[provider] = trimmed.isEmpty ? nil : trimmed
         hasDemoBrainKey = provider.keyStore.hasKey
+        if trimmed.isEmpty {
+            setDemoCloudConsented(false)
+        }
+        demoModeUnavailableReason = nil
     }
 
     /// The selected provider's key. Cached in memory after the first read (or the

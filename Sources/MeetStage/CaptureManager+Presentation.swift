@@ -230,6 +230,7 @@ extension CaptureManager {
         isAnnotating = true
         sourceAnnotationPresenter.show(
             session: annotations,
+            undoManager: annotationUndoManager,
             sourceWindowID: source.id,
             fallbackSourceFrame: source.window.frame,
             onFinish: { [weak self] in
@@ -243,6 +244,7 @@ extension CaptureManager {
         sourceAnnotationPresenter.dismiss()
         if clearStrokes {
             annotations.clear()
+            annotationUndoManager.removeAllActions(withTarget: annotations)
         }
     }
 

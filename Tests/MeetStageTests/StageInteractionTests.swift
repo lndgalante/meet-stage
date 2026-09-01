@@ -66,6 +66,22 @@ struct StageInteractionTests {
         #expect(WindowConfigurator.stageStyleMask.contains(.fullSizeContentView))
     }
 
+    @Test("The controller can become key for Full Keyboard Access")
+    @MainActor
+    func controllerUsesKeyCapableWindowStyle() {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 170),
+            styleMask: WindowConfigurator.controlStyleMask,
+            backing: .buffered,
+            defer: false
+        )
+
+        #expect(window.canBecomeKey)
+        #expect(window.styleMask.contains(.titled))
+        #expect(window.styleMask.contains(.closable))
+        #expect(window.styleMask.contains(.miniaturizable))
+    }
+
     @Test("The native drag surface wins stage hit testing")
     @MainActor
     func dragSurfaceWinsStageHitTesting() async throws {

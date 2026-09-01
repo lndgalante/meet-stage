@@ -1,4 +1,80 @@
+import Carbon.HIToolbox
 import CoreGraphics
+import SwiftUI
+
+/// The system-wide modifier chord used by source slots 1–9.
+///
+/// Option-only shortcuts were the original BetterMeets behavior, but they steal
+/// useful characters on many keyboard layouts. New installs use a safer chord,
+/// while existing users can still opt into the legacy behavior or disable global
+/// shortcuts entirely.
+enum GlobalShortcutModifier: String, CaseIterable, Identifiable, Sendable {
+    case commandOption
+    case controlCommand
+    case commandShift
+    case option
+    case disabled
+
+    var id: Self { self }
+
+    var label: String {
+        switch self {
+        case .commandOption: "Command–Option"
+        case .controlCommand: "Control–Command"
+        case .commandShift: "Command–Shift"
+        case .option: "Option only (legacy)"
+        case .disabled: "Off"
+        }
+    }
+
+    var symbolPrefix: String {
+        switch self {
+        case .commandOption: "⌘⌥"
+        case .controlCommand: "⌃⌘"
+        case .commandShift: "⇧⌘"
+        case .option: "⌥"
+        case .disabled: ""
+        }
+    }
+
+    var spokenPrefix: String {
+        switch self {
+        case .commandOption: "Command Option"
+        case .controlCommand: "Control Command"
+        case .commandShift: "Command Shift"
+        case .option: "Option"
+        case .disabled: ""
+        }
+    }
+
+    var carbonModifiers: UInt32? {
+        switch self {
+        case .commandOption: UInt32(cmdKey | optionKey)
+        case .controlCommand: UInt32(controlKey | cmdKey)
+        case .commandShift: UInt32(cmdKey | shiftKey)
+        case .option: UInt32(optionKey)
+        case .disabled: nil
+        }
+    }
+
+    var eventModifiers: SwiftUI.EventModifiers? {
+        switch self {
+        case .commandOption: [.command, .option]
+        case .controlCommand: [.control, .command]
+        case .commandShift: [.command, .shift]
+        case .option: [.option]
+        case .disabled: nil
+        }
+    }
+
+    func displayName(for slot: Int) -> String {
+        carbonModifiers == nil ? "Slot \(slot)" : "\(symbolPrefix)\(slot)"
+    }
+
+    func spokenName(for slot: Int) -> String {
+        carbonModifiers == nil ? "source slot \(slot)" : "\(spokenPrefix) \(slot)"
+    }
+}
 
 /// The global keyboard-shortcut slots supported by BetterMeets.
 enum ShortcutSlot {

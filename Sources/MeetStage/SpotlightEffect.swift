@@ -144,6 +144,8 @@ struct SpotlightSurface: View {
 struct SpotlightEffectLayer: View {
     let aperture: CGRect
     let outsideOpacity: Double
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
     var body: some View {
         let outside = SpotlightOutsideShape(aperture: aperture)
@@ -151,7 +153,7 @@ struct SpotlightEffectLayer: View {
         ZStack {
             outside
                 .fill(.ultraThinMaterial, style: FillStyle(eoFill: true))
-                .opacity(SpotlightAppearance.outsideBlurOpacity)
+                .opacity(reduceTransparency ? 0 : SpotlightAppearance.outsideBlurOpacity)
 
             outside
                 .fill(
@@ -162,7 +164,10 @@ struct SpotlightEffectLayer: View {
                 )
 
             Circle()
-                .strokeBorder(Color.white.opacity(0.26), lineWidth: 1)
+                .strokeBorder(
+                    Color.white.opacity(colorSchemeContrast == .increased ? 0.72 : 0.30),
+                    lineWidth: colorSchemeContrast == .increased ? 2 : 1
+                )
                 .frame(width: aperture.width, height: aperture.height)
                 .position(x: aperture.midX, y: aperture.midY)
                 .shadow(color: Color.black.opacity(0.32), radius: 3, y: 1)

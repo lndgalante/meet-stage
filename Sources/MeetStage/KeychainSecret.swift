@@ -23,15 +23,30 @@ struct KeychainSecret: DemoKeyStore {
     let service: String
     let account: String
     let environmentVariable: String
+    var legacyServices: [String] = []
 
     var key: String? {
         if let env = environmentOverride { return env }
-        return read()
+        if let current = read(service: service) { return current }
+
+        for legacyService in legacyServices {
+            guard let legacy = read(service: legacyService) else { continue }
+            if write(legacy) {
+                _ = delete(service: legacyService)
+            }
+            return legacy
+        }
+        return nil
     }
 
     var hasKey: Bool {
         if environmentOverride != nil { return true }
-        var query = baseQuery()
+        if itemExists(service: service) { return true }
+        return legacyServices.contains { itemExists(service: $0) }
+    }
+
+    private func itemExists(service: String) -> Bool {
+        var query = baseQuery(service: service)
         query[kSecMatchLimit as String] = kSecMatchLimitOne
         return SecItemCopyMatching(query as CFDictionary, nil) == errSecSuccess
     }
@@ -39,7 +54,14 @@ struct KeychainSecret: DemoKeyStore {
     @discardableResult
     func save(_ value: String) -> Bool {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        return trimmed.isEmpty ? delete() : write(trimmed)
+        if trimmed.isEmpty {
+            let removedCurrent = delete(service: service)
+            let removedLegacy = legacyServices.allSatisfy { delete(service: $0) }
+            return removedCurrent && removedLegacy
+        }
+
+        guard write(trimmed) else { return false }
+        return legacyServices.allSatisfy { delete(service: $0) }
     }
 
     private var environmentOverride: String? {
@@ -49,16 +71,16 @@ struct KeychainSecret: DemoKeyStore {
 
     // MARK: - Keychain primitives
 
-    private func baseQuery() -> [String: Any] {
+    private func baseQuery(service: String? = nil) -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: service,
+            kSecAttrService as String: service ?? self.service,
             kSecAttrAccount as String: account
         ]
     }
 
-    private func read() -> String? {
-        var query = baseQuery()
+    private func read(service: String) -> String? {
+        var query = baseQuery(service: service)
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
 
@@ -110,8 +132,8 @@ struct KeychainSecret: DemoKeyStore {
     }
 
     @discardableResult
-    private func delete() -> Bool {
-        let status = SecItemDelete(baseQuery() as CFDictionary)
+    private func delete(service: String) -> Bool {
+        let status = SecItemDelete(baseQuery(service: service) as CFDictionary)
         return status == errSecSuccess || status == errSecItemNotFound
     }
 }

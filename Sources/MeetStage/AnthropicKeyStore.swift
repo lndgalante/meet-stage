@@ -5,9 +5,10 @@ import Foundation
 /// deletes) any key left by the earlier `~/.config/bettermeets` plaintext file.
 struct AnthropicKeyStore: DemoKeyStore {
     private let secret = KeychainSecret(
-        service: "dev.poc.meetstage.anthropic",
+        service: "com.lndgalante.bettermeets.anthropic",
         account: "conversational-brain",
-        environmentVariable: "ANTHROPIC_API_KEY"
+        environmentVariable: "ANTHROPIC_API_KEY",
+        legacyServices: ["dev.poc.meetstage.anthropic"]
     )
 
     private var legacyFileURL: URL {

@@ -9,7 +9,7 @@
     <key>CFBundleExecutable</key>
     <string>MeetStage</string>
     <key>CFBundleIdentifier</key>
-    <string>dev.poc.meetstage.v2</string>
+    <string>com.lndgalante.bettermeets</string>
     <key>CFBundleIconFile</key>
     <string>BetterMeets.icns</string>
     <key>CFBundleInfoDictionaryVersion</key>

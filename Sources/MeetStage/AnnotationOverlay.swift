@@ -11,6 +11,7 @@ final class SourceAnnotationPresenter {
 
     func show(
         session: AnnotationSession,
+        undoManager: UndoManager,
         sourceWindowID: CGWindowID,
         fallbackSourceFrame: CGRect,
         onFinish: @escaping @MainActor () -> Void
@@ -31,6 +32,7 @@ final class SourceAnnotationPresenter {
         panel.contentView = NSHostingView(
             rootView: SourceAnnotationSurface(
                 session: session,
+                undoManager: undoManager,
                 onFinish: onFinish
             )
         )
@@ -98,14 +100,19 @@ final class AnnotationPanel: NSPanel {
 
 struct SourceAnnotationSurface: View {
     @ObservedObject var session: AnnotationSession
+    let undoManager: UndoManager
     let onFinish: @MainActor () -> Void
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    @Environment(\.legibilityWeight) private var legibilityWeight
 
     var body: some View {
         GeometryReader { geometry in
             ZStack(alignment: .top) {
                 AnnotationInkLayer(
                     session: session,
-                    acceptsInput: true
+                    acceptsInput: true,
+                    undoManager: undoManager
                 )
 
                 if geometry.size.width >= 320, geometry.size.height >= 160 {
@@ -124,7 +131,8 @@ struct SourceAnnotationSurface: View {
                 .foregroundStyle(Color(red: 0.21, green: 0.84, blue: 1))
 
             Text("Drawing")
-                .font(.caption.weight(.semibold))
+                .font(.caption)
+                .fontWeight(legibilityWeight == .bold ? .bold : .semibold)
 
             Text("Esc")
                 .font(.system(.caption2, design: .rounded, weight: .medium))
@@ -135,15 +143,25 @@ struct SourceAnnotationSurface: View {
 
             Button("Done", action: onFinish)
                 .buttonStyle(.borderless)
-                .font(.caption.weight(.semibold))
+                .font(.caption)
+                .fontWeight(legibilityWeight == .bold ? .bold : .semibold)
+                .keyboardShortcut(.defaultAction)
         }
         .padding(.leading, 10)
         .padding(.trailing, 8)
         .padding(.vertical, 6)
-        .background(.regularMaterial, in: Capsule())
+        .background(
+            reduceTransparency
+                ? AnyShapeStyle(Color(nsColor: .windowBackgroundColor))
+                : AnyShapeStyle(.regularMaterial),
+            in: Capsule()
+        )
         .overlay {
             Capsule()
-                .strokeBorder(Color.white.opacity(0.18), lineWidth: 1)
+                .strokeBorder(
+                    Color.primary.opacity(colorSchemeContrast == .increased ? 0.58 : 0.22),
+                    lineWidth: colorSchemeContrast == .increased ? 1.5 : 1
+                )
         }
         .shadow(color: Color.black.opacity(0.28), radius: 8, y: 3)
         .accessibilityElement(children: .contain)
