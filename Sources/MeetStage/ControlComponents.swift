@@ -5,14 +5,28 @@ struct PermissionActionButton: View {
     let title: String
     let action: () -> Void
 
+    @State private var isHovering = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     var body: some View {
         Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.system(size: 13, weight: .medium))
-                .frame(width: 24, height: ControlMetrics.contentHeight)
-                .contentShape(Rectangle())
+            ZStack {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(Color.white.opacity(isHovering ? 0.10 : 0))
+
+                Image(systemName: systemImage)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Color.white.opacity(isHovering ? 0.96 : 0.72))
+            }
+            .frame(
+                width: ControlMetrics.permissionActionSize,
+                height: ControlMetrics.permissionActionSize
+            )
+            .contentShape(Rectangle())
         }
         .buttonStyle(CompactIconButtonStyle())
+        .onHover { isHovering = $0 }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: isHovering)
         .help(title)
         .accessibilityLabel(title)
     }
@@ -33,11 +47,14 @@ struct ControlBarButton: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        ZStack {
-            Rectangle()
-                .fill(buttonBackground)
+        Button(action: action) {
+            ZStack {
+                RoundedRectangle(
+                    cornerRadius: ControlMetrics.controlBarActionCornerRadius,
+                    style: .continuous
+                )
+                    .fill(buttonBackground)
 
-            Button(action: action) {
                 ZStack {
                     Image(systemName: systemImage)
                         .font(.system(size: ControlMetrics.controlBarIconSize, weight: .medium))
@@ -46,27 +63,29 @@ struct ControlBarButton: View {
 
                     if showsPermissionWarning {
                         PermissionWarningBadge()
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-                            .padding(.top, 2)
-                            .padding(.trailing, 2)
+                            .offset(x: 9, y: -9)
                     }
                 }
                 .foregroundStyle(
                     isActive
-                        ? Color.primary
-                        : (isHovering && isEnabled ? Color.primary : Color.secondary)
+                        ? ControlPalette.accent
+                        : Color.white.opacity(isHovering && isEnabled ? 0.88 : 0.56)
                 )
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .contentShape(Rectangle())
             }
-            .buttonStyle(CompactIconButtonStyle())
-            .disabled(!isEnabled)
-            .help(help)
-            .accessibilityLabel(title)
-            .accessibilityValue(accessibilityValue)
-            .accessibilityHint(help)
-            .accessibilityAddTraits(isOn == true ? .isSelected : [])
+            .frame(
+                width: ControlMetrics.controlBarActionSize,
+                height: ControlMetrics.controlBarActionSize
+            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(CompactIconButtonStyle())
+        .disabled(!isEnabled)
+        .help(help)
+        .accessibilityLabel(title)
+        .accessibilityValue(accessibilityValue)
+        .accessibilityHint(help)
+        .accessibilityAddTraits(isOn == true ? .isSelected : [])
         .frame(maxWidth: .infinity)
         .frame(height: ControlMetrics.controlBarButtonHeight)
         .contentShape(Rectangle())
@@ -88,9 +107,9 @@ struct ControlBarButton: View {
     private var buttonBackground: Color {
         guard isEnabled else { return .clear }
         if isActive {
-            return Color.primary.opacity(isHovering ? 0.16 : 0.11)
+            return ControlPalette.accent.opacity(isHovering ? 0.20 : 0.14)
         }
-        return isHovering ? Color.primary.opacity(0.07) : .clear
+        return isHovering ? Color.white.opacity(0.08) : .clear
     }
 
     private var isActive: Bool {
@@ -113,10 +132,10 @@ struct ControlBarButton: View {
 struct PermissionWarningBadge: View {
     var body: some View {
         Image(systemName: "exclamationmark")
-            .font(.system(size: 8, weight: .black))
+            .font(.system(size: 7, weight: .black))
             .foregroundStyle(.white)
-            .frame(width: 13, height: 13)
-            .background(Circle().fill(Color.orange))
+            .frame(width: 12, height: 12)
+            .background(Circle().fill(ControlPalette.warning))
             .overlay(Circle().strokeBorder(Color.black.opacity(0.35), lineWidth: 0.5))
             .shadow(color: .black.opacity(0.35), radius: 1.5, y: 0.5)
             .accessibilityHidden(true)
@@ -129,7 +148,7 @@ struct CompactIconButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .scaleEffect(reduceMotion ? 1 : (configuration.isPressed ? 0.96 : 1))
-            .opacity(configuration.isPressed ? 0.72 : 1)
+            .opacity(configuration.isPressed ? 0.82 : 1)
             .animation(
                 reduceMotion ? nil : .easeOut(duration: 0.1),
                 value: configuration.isPressed
@@ -139,7 +158,7 @@ struct CompactIconButtonStyle: ButtonStyle {
 
 /// The promoted Demo Mode voice control: a circular hero button that nests into
 /// the control bar's center gap and protrudes below it. When listening it takes
-/// on an accent fill with a breathing halo so "live" reads at a glance; off, it
+/// on an accent fill and restrained halo so "live" reads at a glance; off, it
 /// is a calm elevated disc. Emphasis by size, elevation, and color — never by
 /// motion alone (there is always a static color/icon cue).
 struct DemoHeroButton: View {
@@ -149,11 +168,9 @@ struct DemoHeroButton: View {
     let action: () -> Void
 
     @State private var isHovering = false
-    @State private var isBreathing = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var diameter: CGFloat { ControlWindowSizing.heroDiameter }
-    private static let accent = Color(red: 0.20, green: 0.72, blue: 1)
 
     var body: some View {
         Button(action: action) {
@@ -161,7 +178,7 @@ struct DemoHeroButton: View {
                 halo
                 disc
                 Image(systemName: "waveform.badge.mic")
-                    .font(.system(size: 18, weight: .semibold))
+                    .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(iconStyle)
                     // Optically center the mic glyph (its badge sits lower-right).
                     .offset(x: -0.5, y: -0.5)
@@ -169,6 +186,7 @@ struct DemoHeroButton: View {
                 if showsPermissionWarning {
                     PermissionWarningBadge()
                         .frame(width: diameter, height: diameter, alignment: .topTrailing)
+                        .offset(x: 1, y: -1)
                 }
             }
             .frame(width: diameter, height: diameter)
@@ -181,28 +199,22 @@ struct DemoHeroButton: View {
         .accessibilityValue(showsPermissionWarning ? "Permission required" : (isListening ? "On" : "Off"))
         .accessibilityAddTraits(isListening ? [.isSelected] : [])
         .accessibilityHint(help)
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: isListening)
+        .animation(
+            reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 1),
+            value: isListening
+        )
         .animation(reduceMotion ? nil : .easeOut(duration: 0.14), value: isHovering)
-        .task(id: isListening) {
-            isBreathing = isListening && !reduceMotion
-        }
     }
 
-    // Soft outer glow that breathes while listening — a "live mic" cue paired
-    // with the accent fill and icon, so removing motion loses no information.
+    // The static halo marks the live state without implying an audio level or
+    // creating perpetual motion in a widget that stays on screen for long demos.
     private var halo: some View {
         Circle()
-            .fill(Self.accent)
+            .fill(ControlPalette.accent)
             .frame(width: diameter, height: diameter)
-            .blur(radius: 10)
-            .opacity(isListening ? (isBreathing ? 0.55 : 0.32) : 0)
-            .scaleEffect(isListening ? (isBreathing ? 1.28 : 1.12) : 1)
-            .animation(
-                isBreathing
-                    ? .easeInOut(duration: 1.6).repeatForever(autoreverses: true)
-                    : .easeOut(duration: 0.25),
-                value: isBreathing
-            )
+            .blur(radius: 12)
+            .opacity(isListening ? 0.28 : 0)
+            .scaleEffect(isListening ? 1.16 : 1)
             .allowsHitTesting(false)
     }
 
@@ -216,7 +228,7 @@ struct DemoHeroButton: View {
                     .fill(
                         LinearGradient(
                             colors: [
-                                Color.white.opacity(isListening ? 0.22 : 0.14),
+                                Color.white.opacity(isListening ? 0.22 : 0.16),
                                 Color.white.opacity(0)
                             ],
                             startPoint: .top,
@@ -227,15 +239,22 @@ struct DemoHeroButton: View {
             )
             .overlay(
                 Circle().strokeBorder(
-                    isListening ? Color.white.opacity(0.55) : Color.white.opacity(0.20),
+                    LinearGradient(
+                        colors: [
+                            Color.white.opacity(isListening ? 0.62 : 0.30),
+                            Color.white.opacity(isListening ? 0.26 : 0.10)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    ),
                     lineWidth: 1
                 )
             )
             // Layered elevation: a wide ambient shadow plus a tight contact
             // shadow lift the disc off the bar (shadows for depth, border for edge).
-            .shadow(color: .black.opacity(0.32), radius: 8, y: 3)
-            .shadow(color: .black.opacity(0.22), radius: 2, y: 1)
-            .brightness(isHovering ? 0.05 : 0)
+            .shadow(color: .black.opacity(0.42), radius: 10, y: 5)
+            .shadow(color: .black.opacity(0.26), radius: 2, y: 1)
+            .brightness(isHovering ? 0.035 : 0)
     }
 
     private var discFill: AnyShapeStyle {
@@ -243,20 +262,29 @@ struct DemoHeroButton: View {
             return AnyShapeStyle(
                 LinearGradient(
                     colors: [
-                        Self.accent.opacity(0.98),
-                        Self.accent.opacity(0.78)
+                        ControlPalette.accent,
+                        Color(red: 0.08, green: 0.58, blue: 0.78)
                     ],
                     startPoint: .top,
                     endPoint: .bottom
                 )
             )
         }
-        return AnyShapeStyle(.regularMaterial)
+        return AnyShapeStyle(
+            LinearGradient(
+                colors: [
+                    Color(red: 0.24, green: 0.25, blue: 0.26),
+                    Color(red: 0.12, green: 0.13, blue: 0.14)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
     }
 
     private var iconStyle: Color {
         if isListening { return .white }
-        return isHovering ? .primary : .secondary
+        return Color.white.opacity(isHovering ? 0.92 : 0.68)
     }
 }
 
@@ -268,7 +296,7 @@ private struct HeroPressStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .scaleEffect(reduceMotion ? 1 : (configuration.isPressed ? 0.96 : 1))
-            .opacity(configuration.isPressed ? 0.85 : 1)
+            .opacity(configuration.isPressed ? 0.90 : 1)
             .animation(
                 reduceMotion ? nil : .easeOut(duration: 0.12),
                 value: configuration.isPressed

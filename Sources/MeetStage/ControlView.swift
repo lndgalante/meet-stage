@@ -2,9 +2,6 @@ import SwiftUI
 
 enum ControlMetrics {
     static let outerPadding: CGFloat = 5
-    static let cornerRadius: CGFloat = 14
-    static let controlBarCornerRadius: CGFloat = 12
-    static let contentHeight: CGFloat = 44
     static let sourceTileSpacing: CGFloat = 4
     static let sourceTileHorizontalInset: CGFloat = 1
     static let visibleSourceTileCount: CGFloat = 4
@@ -14,31 +11,39 @@ enum ControlMetrics {
             - sourceTileSpacing * (visibleSourceTileCount - 1))
         / visibleSourceTileCount
     static let sourceTileHeight: CGFloat = 44
-    static let sourceTileVerticalInset: CGFloat = 0
-    // Taller than the tile so the app-icon badge straddling each tile's
-    // bottom-right corner isn't clipped by the scroller's mask.
-    static let sourceViewportHeight: CGFloat = 56
-    static let sourceTileRadius: CGFloat = 9
-    static let sourcePreviewTrailingInset: CGFloat = 5
-    static let sourcePreviewBottomInset: CGFloat = 6
-    static let sourcePreviewWidth = sourceTileWidth - sourcePreviewTrailingInset
-    static let sourcePreviewHeight = sourceTileHeight - sourcePreviewBottomInset
+    static let sourceTileVerticalInset: CGFloat = 1
+    static let sourceViewportHeight: CGFloat = 46
+    static let sourceTileRadius: CGFloat = 8
+    static let sourcePreviewWidth = sourceTileWidth
+    static let sourcePreviewHeight = sourceTileHeight
     static let sourceBadgeIconSize: CGFloat = 12
-    static let sourceApplicationBadgeSize: CGFloat = 22
-    static let sourceApplicationIconSize: CGFloat = 25
+    static let sourceApplicationBadgeSize: CGFloat = 18
+    static let sourceApplicationIconSize: CGFloat = 16
     // Wide enough that the trailing/leading tile clearly fades into the panel,
     // leaving a gutter the "more windows" chevron can sit in without touching the
     // thumbnail.
-    static let sourceScrollFadeWidth: CGFloat = 26
+    static let sourceScrollFadeWidth: CGFloat = 22
     static let sourceScrollCoordinateSpace = "source-scroll"
-    static let dragHandleWidth: CGFloat = 40
+    static let dragHandleWidth: CGFloat = 38
     static let dragHandleHeight: CGFloat = 3
     static let controlBarButtonHeight: CGFloat = 30
-    static let controlBarIconSize: CGFloat = 12
-    /// Small inset so the outer buttons sit just shy of the panel edge.
-    static let effectBarEdgeInset: CGFloat = 3
+    static let controlBarActionSize: CGFloat = 28
+    static let controlBarActionCornerRadius: CGFloat = 9.5
+    static let controlBarIconSize: CGFloat = 13
+    static let permissionActionSize: CGFloat = 28
+    /// Match the visual leading/trailing inset to the action's bottom inset.
+    static let effectBarInset: CGFloat =
+        (ControlWindowSizing.effectBarHeight - controlBarActionSize) / 2
     static let clickHighlightGlyphOffset = CGSize(width: -0.5, height: -0.5)
     static let keystrokeHighlightGlyphOffset = CGSize(width: 0.25, height: -0.5)
+}
+
+enum ControlPalette {
+    /// BetterMeets' product accent: reserved for the live source and active tools.
+    static let accent = Color(red: 0.212, green: 0.839, blue: 1)
+    static let warning = Color.orange
+    static let panelTopTint = Color.black.opacity(0.08)
+    static let panelBottomTint = Color.black.opacity(0.24)
 }
 
 struct ControlView: View {
@@ -64,12 +69,31 @@ struct ControlView: View {
             // the shadow margin so its drop shadow renders fully.
             panelShape
                 .fill(.regularMaterial)
-                .overlay(panelShape.strokeBorder(Color.white.opacity(0.16), lineWidth: 1))
+                .overlay {
+                    panelShape.fill(
+                        LinearGradient(
+                            colors: [ControlPalette.panelTopTint, ControlPalette.panelBottomTint],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                }
+                .overlay {
+                    panelShape.strokeBorder(
+                        LinearGradient(
+                            colors: [Color.white.opacity(0.24), Color.white.opacity(0.10)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        ),
+                        lineWidth: 1
+                    )
+                }
                 .frame(
                     width: ControlWindowSizing.panelWidth,
                     height: ControlWindowSizing.panelBodyHeight
                 )
-                .shadow(color: .black.opacity(0.30), radius: 13, y: 5)
+                .shadow(color: .black.opacity(0.40), radius: 18, y: 8)
+                .shadow(color: .black.opacity(0.24), radius: 3, y: 1)
                 .offset(y: ControlWindowSizing.panelTop)
 
             panelContent
@@ -150,11 +174,11 @@ struct ControlView: View {
             rightControlGroup
                 .frame(maxWidth: .infinity)
         }
-        .padding(.horizontal, ControlMetrics.effectBarEdgeInset)
+        .padding(.horizontal, ControlMetrics.effectBarInset)
     }
 
-    // Three equal-width slots; each button fills its slot and centers its glyph,
-    // so the icons are evenly distributed with equal gaps between them.
+    // Fixed-size actions with flexible gaps keep the outer visual edges exactly
+    // aligned to the effect bar's 4pt leading, trailing, and bottom inset.
     private var leftControlGroup: some View {
         HStack(spacing: 0) {
             ControlBarButton(
@@ -164,7 +188,9 @@ struct ControlView: View {
                 isOn: manager.autoPresentationEnabled,
                 action: manager.toggleAutoPresentation
             )
-            .frame(maxWidth: .infinity)
+            .frame(width: ControlMetrics.controlBarActionSize)
+
+            Spacer(minLength: 0)
 
             ControlBarButton(
                 systemImage: "magnifyingglass",
@@ -173,7 +199,9 @@ struct ControlView: View {
                 isOn: manager.spotlightEnabled,
                 action: manager.toggleSpotlight
             )
-            .frame(maxWidth: .infinity)
+            .frame(width: ControlMetrics.controlBarActionSize)
+
+            Spacer(minLength: 0)
 
             ControlBarButton(
                 systemImage: "pencil.and.outline",
@@ -182,7 +210,7 @@ struct ControlView: View {
                 isOn: manager.annotationsEnabled,
                 action: manager.toggleAnnotations
             )
-            .frame(maxWidth: .infinity)
+            .frame(width: ControlMetrics.controlBarActionSize)
         }
     }
 
@@ -196,7 +224,9 @@ struct ControlView: View {
                 glyphOffset: ControlMetrics.clickHighlightGlyphOffset,
                 action: manager.toggleMouseClickHighlighting
             )
-            .frame(maxWidth: .infinity)
+            .frame(width: ControlMetrics.controlBarActionSize)
+
+            Spacer(minLength: 0)
 
             ControlBarButton(
                 systemImage: "command.square",
@@ -209,7 +239,9 @@ struct ControlView: View {
                 showsPermissionWarning: manager.needsKeystrokeAccessibilityPermission,
                 action: manager.toggleKeystrokeHighlighting
             )
-            .frame(maxWidth: .infinity)
+            .frame(width: ControlMetrics.controlBarActionSize)
+
+            Spacer(minLength: 0)
 
             ControlBarButton(
                 systemImage: "gearshape",
@@ -218,7 +250,7 @@ struct ControlView: View {
                 isPresented: isSettingsPresented,
                 action: { isSettingsPresented.toggle() }
             )
-            .frame(maxWidth: .infinity)
+            .frame(width: ControlMetrics.controlBarActionSize)
             .popover(
                 isPresented: $isSettingsPresented,
                 attachmentAnchor: .rect(.bounds),
@@ -335,8 +367,8 @@ struct ControlView: View {
                             }
                     }
                 }
-                // Top-align the tiles so the badge straddling each tile's bottom
-                // corner overhangs into the scroller's extra height, not clipped.
+                // Keep the compact thumbnails pinned to a stable optical row as
+                // windows are added and removed from the horizontal scroller.
                 .frame(maxHeight: .infinity, alignment: .top)
             }
             .coordinateSpace(name: ControlMetrics.sourceScrollCoordinateSpace)
@@ -427,7 +459,7 @@ struct ControlView: View {
         HStack(spacing: 5) {
             Image(systemName: "lock.screen")
                 .font(.system(size: 14, weight: .medium))
-                .foregroundStyle(.red)
+                .foregroundStyle(ControlPalette.warning)
 
             Text("Allow screen recording")
                 .font(.caption.weight(.semibold))
@@ -446,6 +478,17 @@ struct ControlView: View {
                 action: manager.restartApplication
             )
         }
+        .padding(.leading, 9)
+        .padding(.trailing, 3)
+        .frame(height: 44)
+        .background(
+            ControlPalette.warning.opacity(0.10),
+            in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .strokeBorder(ControlPalette.warning.opacity(0.22), lineWidth: 1)
+        }
     }
 
 }
@@ -458,7 +501,13 @@ struct TopGrabHandle: View {
             Color.white.opacity(0.001)
 
             Capsule(style: .continuous)
-                .fill(Color.white.opacity(0.28))
+                .fill(
+                    LinearGradient(
+                        colors: [Color.white.opacity(0.38), Color.white.opacity(0.20)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
                 .frame(
                     width: ControlMetrics.dragHandleWidth,
                     height: ControlMetrics.dragHandleHeight

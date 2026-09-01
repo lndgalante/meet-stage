@@ -3,32 +3,27 @@ import SwiftUI
 
 enum ControlWindowSizing {
     // The controller is one cohesive panel: a top drag grip, the source row, a
-    // hairline divider, then the six effect toggles split three-per-side around
-    // a center notch. The Demo Mode voice control is a circular hero button the
-    // panel bottom cradles and that protrudes just below it — the headline
-    // "talk to your demo" action, unmistakable and part of the whole.
+    // compact utility row split three-per-side around a center notch, and a
+    // circular Demo Mode button cradled by the panel's lower edge.
     static let panelWidth: CGFloat = 262
     static let panelCornerRadius: CGFloat = 15
 
     // Vertical bands that stack inside the panel — kept trim so the widget reads
     // slim rather than chunky.
     static let grabRegionHeight: CGFloat = 10
-    static let sourceRegionHeight: CGFloat = 58
-    static let effectBarHeight: CGFloat = 32
+    static let sourceRegionHeight: CGFloat = 54
+    static let effectBarHeight: CGFloat = 36
     static let panelBodyHeight =
         grabRegionHeight + sourceRegionHeight + effectBarHeight
 
-    /// Widths retained by the source picker and effect groups. The source row
-    /// sits just 6pt inside each panel edge so the tiles read as filling the
-    /// widget rather than floating in a margin.
+    /// The source row sits just 6pt inside each panel edge so the tiles read as
+    /// filling the widget rather than floating in a margin.
     static let sourceAreaWidth: CGFloat = 250
     static let contentWidth = sourceAreaWidth
-    static let controlBarWidth: CGFloat = 244
 
-    /// Hero (Demo Mode) geometry. Its center sits on the panel's bottom edge; the
-    /// panel bottom scoops UP in a concave semicircle the disc seats into — top
-    /// half embedded, bottom half protruding — so there is a single clean edge,
-    /// not a disc floating inside an oversized hole.
+    /// Hero (Demo Mode) geometry. Its center sits slightly above the panel's
+    /// bottom edge, leaving only the lower cap exposed. The panel follows that
+    /// cap so the disc reads as seated in the chrome rather than pasted over it.
     static let heroDiameter: CGFloat = 44
     static let heroGap: CGFloat = 60
     /// Slightly smaller than the disc so the disc covers the cut: one visible edge.
@@ -36,7 +31,7 @@ enum ControlWindowSizing {
     /// How far the disc center sits ABOVE the panel's bottom edge, so the disc is
     /// mostly embedded and only its lower ~third protrudes (feels part of the UI).
     static let heroRise: CGFloat = 9
-    /// Center/bottom of the hero, measured from the panel's top edge.
+    /// Center of the hero, measured from the panel's top edge.
     static let heroCenterY = panelBodyHeight - heroRise
     static let heroBottomInPanel = heroCenterY + heroDiameter / 2
 
@@ -53,8 +48,6 @@ enum ControlWindowSizing {
     static let panelTop = shadowMargin
     static let heroCenterYAbsolute = shadowMargin + heroCenterY
 
-    // Legacy accessors kept for the source-picker layout math.
-    static let captureSurfaceSize = NSSize(width: panelWidth, height: sourceRegionHeight)
     static let dragHandleHitWidth: CGFloat = 96
 }
 

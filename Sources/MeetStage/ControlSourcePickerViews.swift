@@ -48,9 +48,9 @@ struct SourceScrollEdgeShadow: View {
 
     private func chevron(systemName: String, strength: CGFloat) -> some View {
         Image(systemName: systemName)
-            .font(.system(size: 16, weight: .semibold))
-            .foregroundStyle(.white.opacity(0.85))
-            .shadow(color: .black.opacity(0.5), radius: 2)
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(.white.opacity(0.76))
+            .shadow(color: .black.opacity(0.56), radius: 2)
             .opacity(Double(min(max(strength, 0), 1)))
             .frame(height: ControlMetrics.sourceTileHeight)
     }
@@ -60,24 +60,37 @@ struct EmptyShortcutSlot: View {
     let slot: Int
     let pinnedWindowDescription: String?
 
+    private var isUnavailablePin: Bool { pinnedWindowDescription != nil }
+
     var body: some View {
         ZStack(alignment: .topLeading) {
             RoundedRectangle(cornerRadius: ControlMetrics.sourceTileRadius, style: .continuous)
-                .fill(Color.black.opacity(0.16))
+                .fill(Color.black.opacity(isUnavailablePin ? 0.20 : 0.14))
 
             RoundedRectangle(cornerRadius: ControlMetrics.sourceTileRadius, style: .continuous)
                 .strokeBorder(
-                    Color.white.opacity(0.13),
+                    isUnavailablePin
+                        ? ControlPalette.warning.opacity(0.42)
+                        : Color.white.opacity(0.11),
                     style: StrokeStyle(lineWidth: 1, dash: [3, 3])
                 )
 
             Text("⌥\(slot)")
                 .font(.system(.caption2, design: .rounded, weight: .bold))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(Color.white.opacity(isUnavailablePin ? 0.72 : 0.46))
                 .padding(.horizontal, 4)
                 .padding(.vertical, 2)
-                .background(Color.white.opacity(0.06), in: Capsule())
+                .background(Color.black.opacity(0.34), in: Capsule())
                 .padding(4)
+
+            if isUnavailablePin {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(ControlPalette.warning)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                    .padding(5)
+                    .accessibilityHidden(true)
+            }
         }
         .frame(width: ControlMetrics.sourceTileWidth, height: ControlMetrics.sourceTileHeight)
         .help(helpText)
@@ -115,6 +128,7 @@ struct CompactWindowButton: View {
 
     @State private var showPreview = false
     @State private var hoverTask: Task<Void, Never>?
+    @State private var isHovering = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -128,6 +142,7 @@ struct CompactWindowButton: View {
                 .overlay(alignment: .bottomTrailing) {
                     if let icon = source.applicationIcon {
                         ApplicationIconBadge(icon: icon)
+                            .padding(3)
                     }
                 }
         }
@@ -149,6 +164,7 @@ struct CompactWindowButton: View {
             }
         }
         .onHover { isHovering in
+            self.isHovering = isHovering
             hoverTask?.cancel()
 
             if isHovering {
@@ -186,7 +202,7 @@ struct CompactWindowButton: View {
     private var sourcePreview: some View {
         ZStack {
             RoundedRectangle(cornerRadius: ControlMetrics.sourceTileRadius, style: .continuous)
-                .fill(Color.black)
+                .fill(Color.black.opacity(0.78))
 
             if let thumbnail = source.thumbnail {
                 Image(nsImage: thumbnail)
@@ -204,28 +220,41 @@ struct CompactWindowButton: View {
                     .padding(10)
             } else {
                 Image(systemName: "macwindow")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Color.white.opacity(0.44))
             }
+
+            LinearGradient(
+                colors: [Color.black.opacity(0.30), .clear, Color.black.opacity(0.22)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            Color.white.opacity(isHovering ? 0.045 : 0)
 
             VStack {
                 HStack {
                     if let shortcut {
                         Text("⌥\(shortcut)")
-                            .font(.system(.caption2, design: .rounded, weight: .bold))
+                            .font(.system(size: 9, weight: .semibold, design: .rounded))
                             .padding(.horizontal, 4)
                             .padding(.vertical, 2)
                             .foregroundStyle(.white)
                             .background(
-                                isShortcutAvailable ? Color.black.opacity(0.78) : Color.red.opacity(0.9),
+                                isShortcutAvailable
+                                    ? Color.black.opacity(0.66)
+                                    : Color.red.opacity(0.90),
                                 in: Capsule()
                             )
+                            .overlay {
+                                Capsule()
+                                    .strokeBorder(Color.white.opacity(0.13), lineWidth: 0.5)
+                            }
                     }
                     Spacer()
                     if isPending {
                         ProgressView()
                             .controlSize(.mini)
-                            .tint(.orange)
-                            .transition(.opacity.combined(with: .scale(scale: 0.75)))
+                            .tint(ControlPalette.warning)
                     }
                 }
                 Spacer()
@@ -233,15 +262,13 @@ struct CompactWindowButton: View {
                     if isPaused {
                         Image(systemName: "pause.circle.fill")
                             .symbolRenderingMode(.palette)
-                            .foregroundStyle(.white, .orange)
+                            .foregroundStyle(.white, ControlPalette.warning)
                             .font(.system(size: ControlMetrics.sourceBadgeIconSize))
-                            .transition(.opacity.combined(with: .scale(scale: 0.75)))
                     } else if isSelected && !isPending {
                         Image(systemName: "checkmark.circle.fill")
                             .symbolRenderingMode(.palette)
-                            .foregroundStyle(.white, .blue)
+                            .foregroundStyle(.white, ControlPalette.accent)
                             .font(.system(size: ControlMetrics.sourceBadgeIconSize))
-                            .transition(.opacity.combined(with: .scale(scale: 0.75)))
                     }
                     Spacer()
                 }
@@ -256,21 +283,26 @@ struct CompactWindowButton: View {
             RoundedRectangle(cornerRadius: ControlMetrics.sourceTileRadius, style: .continuous)
                 .strokeBorder(borderColor, lineWidth: borderWidth)
         }
+        .shadow(color: .black.opacity(0.28), radius: 2, y: 1)
         .animation(
             reduceMotion ? nil : .easeOut(duration: 0.14),
             value: visualState
         )
+        .animation(
+            reduceMotion ? nil : .easeOut(duration: 0.12),
+            value: isHovering
+        )
     }
 
     private var borderColor: Color {
-        if isPending { return .orange }
-        if isPaused { return .orange }
-        if isSelected { return .blue }
-        return .white.opacity(0.14)
+        if isPending { return ControlPalette.warning }
+        if isPaused { return ControlPalette.warning }
+        if isSelected { return ControlPalette.accent }
+        return .white.opacity(isHovering ? 0.26 : 0.12)
     }
 
     private var borderWidth: CGFloat {
-        isPending || isSelected ? 2 : 1
+        isPending || isSelected ? 1.5 : 1
     }
 
     private var visualState: Int {
@@ -321,12 +353,16 @@ private struct ApplicationIconBadge: View {
                 width: ControlMetrics.sourceApplicationBadgeSize,
                 height: ControlMetrics.sourceApplicationBadgeSize
             )
-            .background(.regularMaterial, in: Circle())
+            .background(
+                Color.black.opacity(0.72),
+                in: RoundedRectangle(cornerRadius: 5, style: .continuous)
+            )
+            .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
             .overlay {
-                Circle()
-                    .strokeBorder(Color.white.opacity(0.38), lineWidth: 0.75)
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.24), lineWidth: 0.75)
             }
-            .shadow(color: Color.black.opacity(0.42), radius: 2.5, y: 1)
+            .shadow(color: Color.black.opacity(0.46), radius: 2, y: 1)
             .accessibilityHidden(true)
     }
 }
@@ -335,6 +371,8 @@ private struct WindowHoverPreview: View {
     let source: WindowSource
     let shortcut: Int?
     let isShortcutAvailable: Bool
+
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(alignment: .leading, spacing: 9) {
@@ -354,6 +392,15 @@ private struct WindowHoverPreview: View {
             }
             .frame(width: 288, height: 162)
             .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .strokeBorder(
+                        colorScheme == .dark
+                            ? Color.white.opacity(0.10)
+                            : Color.black.opacity(0.10),
+                        lineWidth: 1
+                    )
+            }
 
             HStack(spacing: 8) {
                 if let icon = source.applicationIcon {
