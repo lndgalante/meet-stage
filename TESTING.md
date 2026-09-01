@@ -10,7 +10,7 @@ packaged app.
 
 | Layer | Examples | Expected coverage |
 | --- | --- | --- |
-| Pure policy and geometry | shortcut reconciliation, capture selection, window eligibility, auto-zoom camera and styled-frame transforms, normalized coordinates, stage sizing, Demo Mode text matching, intent classification, and command debounce | Every branch and boundary value |
+| Pure policy and geometry | shortcut reconciliation, capture selection, window eligibility, auto-zoom camera and styled-frame transforms, normalized coordinates, stage sizing, Demo Mode text matching, intent classification, command debounce, cloud authorization, and reply parsing | Every branch and boundary value |
 | Persistence | presentation settings, shortcut pins and exclusions, corrupt or legacy data | Defaults, round trips, normalization, and invalid input |
 | Main-actor models | annotation fading, spotlight state, armed presentation effects | State changes and cancellation-sensitive behavior |
 | AppKit integration | overlay window levels, event-monitor ownership, drag surfaces, workspace notifications | Configuration and callback translation that can run without privacy consent |
@@ -93,6 +93,12 @@ window configuration, or permissions, build the packaged debug app with
     not click. Verify a Chromium/Electron app's web controls become targetable
     (the accessibility enhancement plus text-recognition fallback), and that
     repeating the same phrase does not double-fire within the debounce window.
+13. With Cloud understanding enabled, start a command and immediately turn cloud
+    consent off, change provider, focus another app, and switch source in separate
+    runs. Confirm the old request never applies an action, and changing provider
+    turns Cloud understanding off until explicitly enabled for the new vendor.
+    Verify the microphone prompt names both supported cloud providers and that
+    on-device commands still work with cloud consent disabled.
 
 Record the macOS version and meeting app when a manual result depends on
 window-server or capture-framework behavior.

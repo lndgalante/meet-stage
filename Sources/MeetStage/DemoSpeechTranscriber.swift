@@ -29,6 +29,10 @@ protocol DemoSpeechListening: AnyObject {
 /// sent to a network service.
 @MainActor
 final class DemoSpeechTranscriber: DemoSpeechListening {
+    /// About 0.7 seconds at the common 48 kHz input rate. Keeping only the
+    /// newest buffers bounds memory if analysis briefly falls behind realtime.
+    private static let inputBufferLimit = 8
+
     private let locale: Locale
     private let audioEngine = AVAudioEngine()
     private var analyzer: SpeechAnalyzer?
@@ -129,7 +133,9 @@ final class DemoSpeechTranscriber: DemoSpeechListening {
             }
         }
 
-        let (inputSequence, continuation) = AsyncStream<AnalyzerInput>.makeStream()
+        let (inputSequence, continuation) = AsyncStream<AnalyzerInput>.makeStream(
+            bufferingPolicy: .bufferingNewest(Self.inputBufferLimit)
+        )
         inputContinuation = continuation
 
         let converter = DemoAudioConverter(outputFormat: analyzerFormat)

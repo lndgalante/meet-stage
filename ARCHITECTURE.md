@@ -98,7 +98,13 @@ to follow while keeping the parts that do not require macOS services testable.
   validator's salvage. The tier is off
   unless the presenter both saves that provider's API key (`AnthropicKeyStore` /
   `OpenAIKeyStore`, each Keychain) and grants cloud consent (`demoCloudConsented`,
-  default off) — otherwise Demo Mode stays fully on-device.
+  default off) — otherwise Demo Mode stays fully on-device. Each cloud request
+  snapshots its provider and source, uses an ephemeral URL session, and
+  re-validates consent, provider, source, and focus before network dispatch and
+  before applying the response. Revoking consent, changing provider, losing
+  focus, or switching source cancels and invalidates in-flight work.
+  Switching provider also resets cloud consent so screenshots are never sent to
+  a newly selected vendor without a fresh opt-in.
   The brain returns a structured action (highlight, click, type, circle,
   spotlight, zoom); every action is debounced (`DemoCommandGate`) and every
   input-synthesizing one re-validates the live focused window at each actuation

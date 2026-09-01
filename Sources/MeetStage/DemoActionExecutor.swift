@@ -39,15 +39,19 @@ enum DemoActionExecutor {
     /// and `isStillValid` is re-checked immediately before the press so a focus
     /// change during the glide aborts before any button-down is posted; once the
     /// button is pressed the matching release always posts (never stuck).
-    static func performClick(at target: CGPoint, isStillValid: ValidityCheck = { true }) async {
+    @discardableResult
+    static func performClick(
+        at target: CGPoint,
+        isStillValid: ValidityCheck = { true }
+    ) async -> Bool {
         guard canSynthesizeInput else {
             AppLog.demoMode.notice("Skipped Demo Mode click: Accessibility not trusted")
-            return
+            return false
         }
 
         let start = CGEvent(source: nil)?.location ?? target
         for step in 1...glideSteps {
-            if Task.isCancelled { return }
+            if Task.isCancelled { return false }
             let progress = Double(step) / Double(glideSteps)
             let eased = 0.5 - 0.5 * cos(progress * .pi)
             let point = CGPoint(
@@ -58,18 +62,19 @@ enum DemoActionExecutor {
             do {
                 try await Task.sleep(for: stepDelay)
             } catch {
-                return
+                return false
             }
         }
-        if Task.isCancelled { return }
+        if Task.isCancelled { return false }
         guard await isStillValid() else {
             AppLog.demoMode.notice("Aborted Demo Mode click: window/focus changed mid-glide")
-            return
+            return false
         }
 
         postMouseEvent(.leftMouseDown, at: target, clickState: 1)
         try? await Task.sleep(for: .milliseconds(24))
         postMouseEvent(.leftMouseUp, at: target, clickState: 1)
+        return true
     }
 
     /// Delay between typed characters, so entry looks natural and reliably lands.
@@ -92,7 +97,7 @@ enum DemoActionExecutor {
             AppLog.demoMode.notice("Skipped Demo Mode type: Accessibility not trusted")
             return
         }
-        await performClick(at: target, isStillValid: isStillValid)
+        guard await performClick(at: target, isStillValid: isStillValid) else { return }
         if Task.isCancelled { return }
         try? await Task.sleep(for: .milliseconds(160))  // let focus settle
 

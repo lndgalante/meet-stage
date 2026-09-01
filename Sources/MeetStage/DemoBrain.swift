@@ -26,6 +26,43 @@ struct DemoConversation {
     }
 }
 
+/// Suppresses a transcriber's re-emitted final segment before it can trigger a
+/// duplicate paid vision request. Provider and window are part of the key so a
+/// deliberate provider comparison or source switch is never mistaken for a
+/// duplicate on the old context.
+struct DemoBrainRequestGate {
+    static let defaultCooldown: TimeInterval = 2
+
+    private struct Key: Equatable {
+        let transcript: String
+        let provider: DemoBrainProvider
+        let windowID: CGWindowID
+    }
+
+    private var lastRequest: (key: Key, time: TimeInterval)?
+
+    mutating func admit(
+        transcript: String,
+        provider: DemoBrainProvider,
+        windowID: CGWindowID,
+        at now: TimeInterval,
+        cooldown: TimeInterval = defaultCooldown
+    ) -> Bool {
+        let key = Key(transcript: transcript, provider: provider, windowID: windowID)
+        if let lastRequest, lastRequest.key == key,
+            now - lastRequest.time < cooldown
+        {
+            return false
+        }
+        lastRequest = (key, now)
+        return true
+    }
+
+    mutating func reset() {
+        lastRequest = nil
+    }
+}
+
 /// One control offered to the brain, with a stable id it can select by.
 struct DemoBrainControl: Sendable, Equatable {
     let id: Int
@@ -36,7 +73,7 @@ struct DemoBrainControl: Sendable, Equatable {
 /// Everything the brain needs to resolve one utterance.
 struct DemoBrainRequest: Sendable {
     /// Read once on the main actor at dispatch, so a background re-read can't
-    /// disagree with the `isConfigured` gate.
+    /// disagree with the coordinator's cached key-presence state.
     let apiKey: String
     let transcript: String
     let history: [DemoConversationTurn]
@@ -148,12 +185,34 @@ enum DemoBrainProvider: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// Immutable authorization snapshot for one cloud request. The coordinator
+/// re-validates it immediately before network dispatch and again before acting
+/// on the reply, so changing provider, source, focus, or consent invalidates
+/// work that started under the previous state.
+struct DemoCloudRequestContext: Sendable, Equatable {
+    let provider: DemoBrainProvider
+    let windowID: CGWindowID
+
+    func remainsAuthorized(
+        isDemoModeEnabled: Bool,
+        isLive: Bool,
+        isSourceFocused: Bool,
+        hasCloudConsent: Bool,
+        selectedProvider: DemoBrainProvider,
+        selectedWindowID: CGWindowID?
+    ) -> Bool {
+        isDemoModeEnabled
+            && isLive
+            && isSourceFocused
+            && hasCloudConsent
+            && selectedProvider == provider
+            && selectedWindowID == windowID
+    }
+}
+
 /// A conversational intent resolver. Implementations are off-main network or
 /// on-device model calls; the coordinator applies all safety gates afterward.
 protocol DemoBrain: Sendable {
-    /// Whether the brain is configured and usable right now (e.g. key present).
-    var isConfigured: Bool { get }
-
     /// Resolves one utterance, or nil when nothing was confidently commanded.
     func decide(_ request: DemoBrainRequest) async throws -> DemoBrainDecision?
 }

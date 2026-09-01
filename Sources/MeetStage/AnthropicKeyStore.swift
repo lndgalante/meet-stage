@@ -21,8 +21,11 @@ struct AnthropicKeyStore: DemoKeyStore {
         if let fileKey = try? String(contentsOf: legacyFileURL, encoding: .utf8) {
             let trimmed = fileKey.trimmingCharacters(in: .whitespacesAndNewlines)
             if !trimmed.isEmpty {
-                secret.save(trimmed)
-                try? FileManager.default.removeItem(at: legacyFileURL)
+                // Delete the legacy plaintext only after Keychain persistence
+                // succeeds; a transient Keychain failure must not lose the key.
+                if secret.save(trimmed) {
+                    try? FileManager.default.removeItem(at: legacyFileURL)
+                }
                 return trimmed
             }
         }

@@ -319,8 +319,8 @@ struct PresentationPreferencesStore {
     }
 
     var demoCloudConsented: Bool {
-        // Off by default: sending a window screenshot + transcript to Anthropic
-        // requires the presenter's explicit consent.
+        // Off by default: sending a window screenshot + transcript to the
+        // selected cloud provider requires the presenter's explicit consent.
         get { defaults.bool(forKey: Self.demoCloudConsentedKey) }
         nonmutating set { defaults.set(newValue, forKey: Self.demoCloudConsentedKey) }
     }

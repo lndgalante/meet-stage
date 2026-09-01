@@ -17,13 +17,7 @@ final class OpenAIDemoBrain: DemoBrain {
     private let session: URLSession
 
     init() {
-        let configuration = URLSessionConfiguration.default
-        configuration.timeoutIntervalForRequest = 15
-        session = URLSession(configuration: configuration)
-    }
-
-    var isConfigured: Bool {
-        OpenAIKeyStore().hasKey
+        session = DemoBrainTransport.makeEphemeralSession()
     }
 
     /// Max attempts on a 429 before giving up (one retry honoring Retry-After).
@@ -66,7 +60,9 @@ final class OpenAIDemoBrain: DemoBrain {
 
     private func makeRequestBody(_ request: DemoBrainRequest) -> OpenAIRequest {
         var messages: [OpenAIMessage] = [
-            OpenAIMessage(role: "system", content: .text(DemoBrainPrompt.system))
+            // Current reasoning models treat developer messages as the
+            // application-instruction layer above untrusted user content.
+            OpenAIMessage(role: "developer", content: .text(DemoBrainPrompt.system))
         ]
         for turn in request.history {
             messages.append(OpenAIMessage(role: "user", content: .text(turn.user)))
@@ -129,8 +125,8 @@ private struct OpenAIMessage: Encodable {
     let content: OpenAIContent
 }
 
-/// A message's content is either a bare string (system/history turns) or an array
-/// of typed parts (the final user turn, which carries the screenshot).
+/// A message's content is either a bare string (developer/history turns) or an
+/// array of typed parts (the final user turn, which carries the screenshot).
 private enum OpenAIContent: Encodable {
     case text(String)
     case parts([OpenAIPart])

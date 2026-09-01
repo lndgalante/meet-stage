@@ -126,11 +126,12 @@ final class CaptureManager: ObservableObject {
     let demoEmbeddingMatcher = DemoEmbeddingMatcher()
     let demoModelResolver = DemoModelIntentResolver()
     // Both cloud brains are held so the presenter can switch providers to compare
-    // them; `demoBrain` selects the active one from `demoBrainProvider`.
+    // them; each request snapshots its provider before starting asynchronous work.
     let claudeDemoBrain = ClaudeDemoBrain()
     let openAIDemoBrain = OpenAIDemoBrain()
-    var demoBrain: DemoBrain {
-        demoBrainProvider == .openai ? openAIDemoBrain : claudeDemoBrain
+
+    func demoBrain(for provider: DemoBrainProvider) -> any DemoBrain {
+        provider == .openai ? openAIDemoBrain : claudeDemoBrain
     }
     var demoConversation = DemoConversation()
     /// In-memory cache of each provider's API key, so a voice command doesn't
@@ -143,6 +144,10 @@ final class CaptureManager: ObservableObject {
     var demoActionTask: Task<Void, Never>?
     var demoModelTask: Task<Void, Never>?
     var demoBrainTask: Task<Void, Never>?
+    /// Invalidates cloud work across consent, provider, focus, and source
+    /// changes. A generation is stronger than cancellation alone because a
+    /// network stack can race cancellation with a completed response.
+    var demoBrainGeneration = 0
     var demoSpotlightTask: Task<Void, Never>?
     var demoCommandGate = DemoCommandGate()
     var demoIndexGeneration = 0
@@ -155,10 +160,7 @@ final class CaptureManager: ObservableObject {
     var lastReferencedControl: String?
     // Real value is set in init once the persisted provider is known.
     @Published var hasDemoBrainKey = false
-    /// Last transcript sent to the brain and when, to drop the transcriber's
-    /// re-emitted duplicate finals without paying for a second vision call.
-    var lastBrainTranscript: String?
-    var lastBrainTranscriptAt: TimeInterval = 0
+    var demoBrainRequestGate = DemoBrainRequestGate()
     var workspaceMonitor: WorkspaceMonitor?
     var windowMonitoringTask: Task<Void, Never>?
     var windowRefreshTask: Task<Void, Never>?

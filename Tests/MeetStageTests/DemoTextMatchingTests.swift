@@ -173,6 +173,30 @@ struct DemoBrainDecodingTests {
         #expect(decision.action == .click)
         #expect(decision.elementID == 1)
     }
+
+    @Test("Handles braces and escaped quotes inside JSON strings")
+    func parsesBracesInsideStrings() throws {
+        let text =
+            #"{"action":"type","element_id":2,"point":null,"text":"Use {account} and \"confirm\"","label":"Search"}"#
+        let decision = try #require(
+            DemoBrainDecoding.parse(from: text, allowsClicking: true)
+        )
+
+        #expect(decision.action == .type)
+        #expect(decision.text == #"Use {account} and "confirm""#)
+    }
+
+    @Test("Skips an unrelated object before the decision")
+    func skipsUnrelatedObject() throws {
+        let text =
+            #"metadata {"latency":120} answer {"action":"click","element_id":4,"point":null,"text":null,"label":"Continue"}"#
+        let decision = try #require(
+            DemoBrainDecoding.parse(from: text, allowsClicking: true)
+        )
+
+        #expect(decision.action == .click)
+        #expect(decision.elementID == 4)
+    }
 }
 
 @Suite("Demo Mode brain errors")
@@ -211,5 +235,162 @@ struct DemoCommandGateActionTests {
         #expect(!dupe)
         #expect(otherAction)
         #expect(afterCooldown)
+    }
+}
+
+@Suite("Demo Mode cloud request policy")
+struct DemoCloudRequestContextTests {
+    private let context = DemoCloudRequestContext(provider: .openai, windowID: 42)
+
+    @Test("Allows only the unchanged, explicitly consented source and provider")
+    func requiresUnchangedAuthorization() {
+        #expect(
+            context.remainsAuthorized(
+                isDemoModeEnabled: true,
+                isLive: true,
+                isSourceFocused: true,
+                hasCloudConsent: true,
+                selectedProvider: .openai,
+                selectedWindowID: 42
+            )
+        )
+
+        #expect(
+            !context.remainsAuthorized(
+                isDemoModeEnabled: true,
+                isLive: true,
+                isSourceFocused: true,
+                hasCloudConsent: false,
+                selectedProvider: .openai,
+                selectedWindowID: 42
+            )
+        )
+        #expect(
+            !context.remainsAuthorized(
+                isDemoModeEnabled: true,
+                isLive: true,
+                isSourceFocused: true,
+                hasCloudConsent: true,
+                selectedProvider: .claude,
+                selectedWindowID: 42
+            )
+        )
+        #expect(
+            !context.remainsAuthorized(
+                isDemoModeEnabled: true,
+                isLive: true,
+                isSourceFocused: true,
+                hasCloudConsent: true,
+                selectedProvider: .openai,
+                selectedWindowID: 99
+            )
+        )
+        #expect(
+            !context.remainsAuthorized(
+                isDemoModeEnabled: true,
+                isLive: true,
+                isSourceFocused: false,
+                hasCloudConsent: true,
+                selectedProvider: .openai,
+                selectedWindowID: 42
+            )
+        )
+    }
+}
+
+@Suite("Demo Mode conversation")
+struct DemoConversationTests {
+    @Test("Keeps a bounded rolling history and resets it")
+    func boundsAndResetsHistory() {
+        var conversation = DemoConversation()
+        for index in 0...DemoConversation.maxTurns {
+            conversation.record(user: "user-\(index)", assistant: "assistant-\(index)")
+        }
+
+        #expect(conversation.turns.count == DemoConversation.maxTurns)
+        #expect(conversation.turns.first?.user == "user-1")
+        #expect(
+            conversation.turns.last?.assistant
+                == "assistant-\(DemoConversation.maxTurns)"
+        )
+
+        conversation.reset()
+        #expect(conversation.turns.isEmpty)
+    }
+}
+
+@Suite("Demo Mode brain request gate")
+struct DemoBrainRequestGateTests {
+    @Test("Debounces only the same transcript, provider, and source")
+    func scopesDuplicatesToProviderAndSource() {
+        var gate = DemoBrainRequestGate()
+
+        let first = gate.admit(transcript: "open it", provider: .claude, windowID: 1, at: 0)
+        let duplicate = gate.admit(
+            transcript: "open it",
+            provider: .claude,
+            windowID: 1,
+            at: 1
+        )
+        let differentProvider = gate.admit(
+            transcript: "open it",
+            provider: .openai,
+            windowID: 1,
+            at: 1
+        )
+        let differentSource = gate.admit(
+            transcript: "open it",
+            provider: .openai,
+            windowID: 2,
+            at: 1
+        )
+        let afterCooldown = gate.admit(
+            transcript: "open it",
+            provider: .openai,
+            windowID: 2,
+            at: 4
+        )
+
+        #expect(first)
+        #expect(!duplicate)
+        #expect(differentProvider)
+        #expect(differentSource)
+        #expect(afterCooldown)
+    }
+
+    @Test("Reset clears the duplicate history")
+    func resetsHistory() {
+        var gate = DemoBrainRequestGate()
+        let first = gate.admit(
+            transcript: "open it",
+            provider: .claude,
+            windowID: 1,
+            at: 0
+        )
+
+        gate.reset()
+        let afterReset = gate.admit(
+            transcript: "open it",
+            provider: .claude,
+            windowID: 1,
+            at: 0.1
+        )
+
+        #expect(first)
+        #expect(afterReset)
+    }
+}
+
+@Suite("Demo Mode cloud transport")
+struct DemoBrainTransportTests {
+    @Test("Uses an ephemeral session for screenshot requests")
+    func usesEphemeralSession() {
+        let session = DemoBrainTransport.makeEphemeralSession()
+
+        #expect(session.configuration.urlCache == nil)
+        #expect(session.configuration.httpCookieStorage == nil)
+        #expect(session.configuration.urlCredentialStorage == nil)
+        #expect(session.configuration.timeoutIntervalForRequest == 15)
+        #expect(session.configuration.timeoutIntervalForResource == 15)
     }
 }

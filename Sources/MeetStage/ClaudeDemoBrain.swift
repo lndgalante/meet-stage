@@ -16,13 +16,7 @@ final class ClaudeDemoBrain: DemoBrain {
     private let session: URLSession
 
     init() {
-        let configuration = URLSessionConfiguration.default
-        configuration.timeoutIntervalForRequest = 15
-        session = URLSession(configuration: configuration)
-    }
-
-    var isConfigured: Bool {
-        AnthropicKeyStore().hasKey
+        session = DemoBrainTransport.makeEphemeralSession()
     }
 
     /// Max attempts on a 429 before giving up (one retry honoring Retry-After).

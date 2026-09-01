@@ -68,18 +68,32 @@ enum DemoBrainDecoding {
 
     struct RawBrainDecision: Decodable {
         let action: String
-        let element_id: Int?
+        let elementID: Int?
         let point: [Double]?
         let label: String?
         let text: String?
+
+        enum CodingKeys: String, CodingKey {
+            case action
+            case elementID = "element_id"
+            case point, label, text
+        }
     }
 
     static func parse(from text: String, allowsClicking: Bool) -> DemoBrainDecision? {
-        guard let json = extractJSONObject(from: text),
-            let data = json.data(using: .utf8),
-            let raw = try? JSONDecoder().decode(RawBrainDecision.self, from: data)
-        else { return nil }
+        for json in extractJSONObjects(from: text) {
+            guard let data = json.data(using: .utf8),
+                let raw = try? JSONDecoder().decode(RawBrainDecision.self, from: data)
+            else { continue }
+            return decision(from: raw, allowsClicking: allowsClicking)
+        }
+        return nil
+    }
 
+    private static func decision(
+        from raw: RawBrainDecision,
+        allowsClicking: Bool
+    ) -> DemoBrainDecision? {
         let action = DemoBrainAction(rawValue: raw.action.lowercased()) ?? .none
         guard action != .none else { return nil }
 
@@ -101,32 +115,63 @@ enum DemoBrainDecoding {
 
         // Typing needs text; every action needs a grounding (a listed element or a point).
         if effectiveAction == .type, text?.isEmpty ?? true { return nil }
-        guard raw.element_id != nil || point != nil else { return nil }
+        guard raw.elementID != nil || point != nil else { return nil }
         return DemoBrainDecision(
             action: effectiveAction,
-            elementID: raw.element_id,
+            elementID: raw.elementID,
             point: point,
             label: label,
             text: (text?.isEmpty ?? true) ? nil : text
         )
     }
 
-    /// Extracts the first balanced `{...}` object from arbitrary model text.
+    /// Extracts the first balanced `{...}` object from arbitrary model text,
+    /// ignoring braces inside quoted JSON strings.
     static func extractJSONObject(from text: String) -> String? {
-        guard let start = text.firstIndex(of: "{") else { return nil }
+        extractJSONObjects(from: text).first
+    }
+
+    /// Returns balanced JSON-object candidates in source order. Claude may put
+    /// prose or an unrelated object before its answer, so `parse` tries each
+    /// candidate until one decodes to the expected schema.
+    private static func extractJSONObjects(from text: String) -> [String] {
+        var objects: [String] = []
+        var start: String.Index?
         var depth = 0
-        var index = start
-        while index < text.endIndex {
+        var isInsideString = false
+        var isEscaping = false
+
+        for index in text.indices {
             let character = text[index]
-            if character == "{" { depth += 1 }
-            if character == "}" {
+
+            if depth > 0, isInsideString {
+                if isEscaping {
+                    isEscaping = false
+                } else if character == "\\" {
+                    isEscaping = true
+                } else if character == "\"" {
+                    isInsideString = false
+                }
+                continue
+            }
+
+            if depth > 0, character == "\"" {
+                isInsideString = true
+                continue
+            }
+            if character == "{" {
+                if depth == 0 { start = index }
+                depth += 1
+            } else if character == "}", depth > 0 {
                 depth -= 1
-                if depth == 0 {
-                    return String(text[start...index])
+                if depth == 0, let objectStart = start {
+                    objects.append(String(text[objectStart...index]))
+                    start = nil
+                    isInsideString = false
+                    isEscaping = false
                 }
             }
-            index = text.index(after: index)
         }
-        return nil
+        return objects
     }
 }

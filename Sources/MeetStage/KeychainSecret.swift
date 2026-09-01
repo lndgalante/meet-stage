@@ -74,20 +74,38 @@ struct KeychainSecret: DemoKeyStore {
     @discardableResult
     private func write(_ value: String) -> Bool {
         guard let data = value.data(using: .utf8) else { return false }
-        _ = delete()
+
+        let updatedAttributes: [String: Any] = [
+            kSecValueData as String: data,
+            kSecAttrAccessible as String: kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        ]
+        let updateStatus = SecItemUpdate(
+            baseQuery() as CFDictionary,
+            updatedAttributes as CFDictionary
+        )
+        if updateStatus == errSecSuccess { return true }
+
+        guard updateStatus == errSecItemNotFound else {
+            logWriteFailure(updateStatus)
+            return false
+        }
 
         var attributes = baseQuery()
-        attributes[kSecValueData as String] = data
-        attributes[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-
-        let status = SecItemAdd(attributes as CFDictionary, nil)
-        if status != errSecSuccess {
-            AppLog.demoMode.error(
-                "Could not save \(service, privacy: .public) key (status \(status, privacy: .public))"
-            )
+        for (key, value) in updatedAttributes {
+            attributes[key] = value
+        }
+        let addStatus = SecItemAdd(attributes as CFDictionary, nil)
+        guard addStatus == errSecSuccess else {
+            logWriteFailure(addStatus)
             return false
         }
         return true
+    }
+
+    private func logWriteFailure(_ status: OSStatus) {
+        AppLog.demoMode.error(
+            "Could not save \(service, privacy: .public) key (status \(status, privacy: .public))"
+        )
     }
 
     @discardableResult

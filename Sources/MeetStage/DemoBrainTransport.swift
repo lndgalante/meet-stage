@@ -5,6 +5,19 @@ import Foundation
 /// 200 body; this owns timing, the response-status log, the 429/quota/retry rule,
 /// and the mapping to `DemoBrainError`. One loop instead of one per provider.
 enum DemoBrainTransport {
+    /// Cloud requests can contain a source-window screenshot and an API key.
+    /// An ephemeral session keeps both out of persistent URL caches, cookies,
+    /// and credential storage while retaining URLSession cancellation support.
+    static func makeEphemeralSession(requestTimeout: TimeInterval = 15) -> URLSession {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = requestTimeout
+        configuration.timeoutIntervalForResource = requestTimeout
+        configuration.urlCache = nil
+        configuration.httpCookieStorage = nil
+        configuration.urlCredentialStorage = nil
+        return URLSession(configuration: configuration)
+    }
+
     static func fetchReply(
         tag: String,
         maxRetries: Int,
@@ -21,12 +34,16 @@ enum DemoBrainTransport {
 
         var attempt = 0
         while true {
+            try Task.checkCancellation()
             let started = ContinuousClock.now
             let data: Data
             let response: URLResponse
             do {
                 (data, response) = try await session.data(for: urlRequest)
             } catch {
+                if Task.isCancelled || (error as? URLError)?.code == .cancelled {
+                    throw CancellationError()
+                }
                 throw DemoBrainError.transport(error.localizedDescription)
             }
             let elapsedMs = Int((ContinuousClock.now - started) / .milliseconds(1))
@@ -46,7 +63,7 @@ enum DemoBrainTransport {
                     attempt += 1
                     let retryAfter = http.value(forHTTPHeaderField: "retry-after").flatMap(Double.init)
                     let delay = min(max(retryAfter ?? 2, 0.5), 8)
-                    try? await Task.sleep(for: .seconds(delay))
+                    try await Task.sleep(for: .seconds(delay))
                     continue
                 }
                 throw DemoBrainError.http(status: 429, detail: String(body.prefix(300)))

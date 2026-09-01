@@ -3,7 +3,7 @@ import Foundation
 
 /// The cloud conversational-brain pipeline for Demo Mode: it takes a spoken
 /// command, sends the screenshot + control inventory + dialogue to the selected
-/// brain (`demoBrain`), and routes the returned action to a highlight/click, a
+/// brain, and routes the returned action to a highlight/click, a
 /// typed field, or an on-demand BetterMeets effect (circle/spotlight/zoom). The
 /// offline deterministic/embedding/on-device tiers live in `CaptureManager+DemoMode`;
 /// this file owns only the cloud path so that coordinator stays under a healthy size.
@@ -12,35 +12,52 @@ extension CaptureManager {
     /// exact element snap (or a vision-coordinate fallback).
     func resolveWithBrain(transcript: String) {
         guard let source = activeCaptureSource else { return }
+        let provider = demoBrainProvider
+        let brain = demoBrain(for: provider)
         guard let apiKey = currentBrainKey else {
             AppLog.demoMode.error("Demo brain: no API key found")
             return
         }
         // Drop the transcriber's re-emitted duplicate final so we don't pay for a
-        // second identical vision call within a short window.
+        // second identical vision call within a short window. Provider and source
+        // are part of the key so intentional comparisons still run.
         let now = ProcessInfo.processInfo.systemUptime
-        if transcript == lastBrainTranscript, now - lastBrainTranscriptAt < 2 {
-            return
-        }
-        lastBrainTranscript = transcript
-        lastBrainTranscriptAt = now
+        guard
+            demoBrainRequestGate.admit(
+                transcript: transcript,
+                provider: provider,
+                windowID: source.id,
+                at: now
+            )
+        else { return }
 
         // Snapshot the index we send so the brain's element id resolves against
         // the exact list it saw — ids are not stable across the 1.5s rebuilds.
         let windowID = source.id
+        let context = DemoCloudRequestContext(provider: provider, windowID: windowID)
         let elementsSnapshot = demoMode.elementIndex.elements
         let controls = uniqueBrainControls(from: elementsSnapshot)
         let history = demoConversation.turns
         let allowsClicking = demoVoiceActions.allowsClicking
 
         AppLog.demoMode.notice(
-            "Demo brain path for \"\(transcript, privacy: .private)\" (\(controls.count, privacy: .public) controls)"
+            "Demo brain path via \(provider.label, privacy: .public) for \"\(transcript, privacy: .private)\" (\(controls.count, privacy: .public) controls)"
         )
         // Show the presenter that async work is happening (the ~1.5s call).
+        cancelDemoBrainRequest()
+        let generation = demoBrainGeneration
         demoMode.setCaption(.thinking)
-        demoBrainTask?.cancel()
         demoBrainTask = Task { [weak self] in
             guard let self else { return }
+            defer {
+                if demoBrainGeneration == generation {
+                    demoBrainTask = nil
+                }
+            }
+            guard isDemoCloudRequestAuthorized(context, generation: generation) else {
+                endDemoThinking(for: generation)
+                return
+            }
             let capture = await DemoWindowScreenshot.capture(source: source)
             AppLog.demoMode.notice(
                 "Demo brain screenshot: \(capture != nil ? "captured" : "none", privacy: .public)"
@@ -50,10 +67,8 @@ extension CaptureManager {
             if Task.isCancelled { return }
             // Gate on the window, not the index generation: routine rebuilds bump
             // the generation during the ~1.5s call and would drop every result.
-            guard demoModeEnabled, isLive, isSelectedSourceFocused,
-                demoSourceContext()?.windowID == windowID
-            else {
-                endDemoThinking()
+            guard isDemoCloudRequestAuthorized(context, generation: generation) else {
+                endDemoThinking(for: generation)
                 return
             }
 
@@ -68,17 +83,22 @@ extension CaptureManager {
             )
             let decision: DemoBrainDecision?
             do {
-                decision = try await demoBrain.decide(request)
+                // Re-check consent and provider immediately before the only call
+                // that can transmit the screenshot outside this Mac.
+                guard isDemoCloudRequestAuthorized(context, generation: generation) else {
+                    endDemoThinking(for: generation)
+                    return
+                }
+                decision = try await brain.decide(request)
             } catch {
                 if !Task.isCancelled { surfaceDemoBrainError(error) }
                 return
             }
             if Task.isCancelled { return }
             guard let decision,
-                demoModeEnabled, isLive, isSelectedSourceFocused,
-                demoSourceContext()?.windowID == windowID
+                isDemoCloudRequestAuthorized(context, generation: generation)
             else {
-                endDemoThinking()
+                endDemoThinking(for: generation)
                 return
             }
             executeBrainDecision(
@@ -88,6 +108,28 @@ extension CaptureManager {
                 transcript: transcript
             )
         }
+    }
+
+    /// Ends only the request that still owns the thinking caption. A cancelled
+    /// task can start late, but it must never clear a newer request's status.
+    private func endDemoThinking(for generation: Int) {
+        guard demoBrainGeneration == generation else { return }
+        endDemoThinking()
+    }
+
+    private func isDemoCloudRequestAuthorized(
+        _ context: DemoCloudRequestContext,
+        generation: Int
+    ) -> Bool {
+        demoBrainGeneration == generation
+            && context.remainsAuthorized(
+                isDemoModeEnabled: demoModeEnabled,
+                isLive: isLive,
+                isSourceFocused: isSelectedSourceFocused,
+                hasCloudConsent: demoCloudConsented,
+                selectedProvider: demoBrainProvider,
+                selectedWindowID: demoSourceContext()?.windowID
+            )
     }
 
     /// Routes a resolved brain decision to the matching action: highlight/click

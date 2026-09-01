@@ -69,8 +69,10 @@ extension CaptureManager {
                 "On-device conversational model: unavailable (\(DemoModelIntentResolver.unavailableReason ?? "unknown", privacy: .public))"
             )
         }
-        let brainStatus = demoBrain.isConfigured ? "configured" : "no API key"
-        AppLog.demoMode.notice("Conversational brain (Claude): \(brainStatus, privacy: .public)")
+        let brainStatus = hasDemoBrainKey ? "configured" : "no API key"
+        AppLog.demoMode.notice(
+            "Conversational brain (\(self.demoBrainProvider.label, privacy: .public)): \(brainStatus, privacy: .public)"
+        )
 
         // Accessibility is a soft requirement: it enables richer control
         // discovery and clicking. Without it Demo Mode still highlights controls
@@ -104,6 +106,9 @@ extension CaptureManager {
     }
 
     func setDemoCloudConsented(_ value: Bool) {
+        if !value {
+            cancelDemoBrainRequest()
+        }
         demoCloudConsented = value
         presentationStore.demoCloudConsented = value
     }
@@ -111,8 +116,14 @@ extension CaptureManager {
     /// Switches which cloud model the brain uses, and refreshes the key state so
     /// the UI reflects whether the newly selected provider has a key.
     func setDemoBrainProvider(_ value: DemoBrainProvider) {
+        guard demoBrainProvider != value else { return }
+        cancelDemoBrainRequest()
         demoBrainProvider = value
         presentationStore.demoBrainProvider = value
+        // Consent names a concrete third-party recipient in Settings. Switching
+        // vendors requires a fresh opt-in instead of carrying consent across.
+        demoCloudConsented = false
+        presentationStore.demoCloudConsented = false
         hasDemoBrainKey = value.keyStore.hasKey
     }
 
@@ -120,11 +131,18 @@ extension CaptureManager {
     /// provider's Keychain item — never the app bundle.
     func setDemoBrainKey(_ value: String) {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
-        demoBrainProvider.keyStore.save(value)
+        let provider = demoBrainProvider
+        cancelDemoBrainRequest()
+        guard provider.keyStore.save(trimmed) else {
+            hasDemoBrainKey = provider.keyStore.hasKey
+            demoModeUnavailableReason =
+                "BetterMeets couldn’t update the \(provider.vendor) key in Keychain."
+            return
+        }
         // Prime (or clear) the in-memory cache from the value we just have in hand,
         // so this session never reads the Keychain back and never prompts for it.
-        cachedBrainKeys[demoBrainProvider] = trimmed.isEmpty ? nil : trimmed
-        hasDemoBrainKey = demoBrainProvider.keyStore.hasKey
+        cachedBrainKeys[provider] = trimmed.isEmpty ? nil : trimmed
+        hasDemoBrainKey = provider.keyStore.hasKey
     }
 
     /// The selected provider's key. Cached in memory after the first read (or the
@@ -135,6 +153,18 @@ extension CaptureManager {
         let key = demoBrainProvider.keyStore.key
         if let key { cachedBrainKeys[demoBrainProvider] = key }
         return key
+    }
+
+    /// Cancels and invalidates the current cloud request. Cancellation stops the
+    /// URLSession work in the common case; the generation also prevents a response
+    /// that raced cancellation from affecting UI or synthesizing input.
+    func cancelDemoBrainRequest() {
+        demoBrainGeneration += 1
+        demoBrainTask?.cancel()
+        demoBrainTask = nil
+        if demoMode.isListening, demoMode.caption?.status == .thinking {
+            demoMode.setCaption(.listening)
+        }
     }
 
     /// Whether any smarter-understanding tier is available. On-device embeddings
@@ -192,8 +222,7 @@ extension CaptureManager {
         demoActionTask = nil
         demoModelTask?.cancel()
         demoModelTask = nil
-        demoBrainTask?.cancel()
-        demoBrainTask = nil
+        cancelDemoBrainRequest()
         // Clear a still-active voice spotlight (we own it only while its task
         // is live; a manual toggle nils the task and takes ownership).
         if let task = demoSpotlightTask {
@@ -212,6 +241,7 @@ extension CaptureManager {
         demoMode.clearVisuals()
         demoMode.elementIndex = .empty
         demoCommandGate.reset()
+        demoBrainRequestGate.reset()
     }
 
     /// Fully stops Demo Mode (stop, source teardown, or toggle off).
@@ -416,10 +446,10 @@ extension CaptureManager {
         guard demoSmartUnderstanding, looksLikeDemoCommand(segment.text) else { return }
 
         // Brain-first: with a key configured AND the presenter's consent to send
-        // a screenshot to Anthropic, the conversational vision model is the SINGLE
-        // authority — no deterministic matcher runs ahead of it. Without consent
-        // (or a key) it falls through to the fully on-device tiers below.
-        if demoBrain.isConfigured, demoCloudConsented {
+        // a screenshot to the selected provider, the conversational vision model
+        // is the SINGLE authority — no deterministic matcher runs ahead of it.
+        // Without consent (or a key) it falls through to the on-device tiers.
+        if hasDemoBrainKey, demoCloudConsented {
             resolveWithBrain(transcript: segment.text)
             return
         }
