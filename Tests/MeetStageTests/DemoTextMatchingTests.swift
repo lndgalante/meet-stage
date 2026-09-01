@@ -107,6 +107,20 @@ struct DemoBrainDecodingTests {
         #expect(DemoBrainDecoding.parse(from: "no json here", allowsClicking: true) == nil)
     }
 
+    @Test("Rejects ambiguous, negative, or malformed grounding")
+    func rejectsMalformedGrounding() {
+        let invalidDecisions = [
+            #"{"action":"click","element_id":1,"point":[10,20],"label":"Send"}"#,
+            #"{"action":"click","element_id":-1,"point":null,"label":"Send"}"#,
+            #"{"action":"click","element_id":null,"point":[10],"label":"Send"}"#,
+            #"{"action":"click","element_id":null,"point":[-1,20],"label":"Send"}"#
+        ]
+
+        for text in invalidDecisions {
+            #expect(DemoBrainDecoding.parse(from: text, allowsClicking: true) == nil)
+        }
+    }
+
     @Test("Parses a type decision with text")
     func parsesType() throws {
         let text =
@@ -147,6 +161,46 @@ struct DemoBrainDecodingTests {
             DemoBrainDecoding.parse(from: text, allowsClicking: true)
         )
         #expect(decision.text?.count == DemoBrainDecoding.maxTypeLength)
+    }
+
+    @Test("Typed text cannot contain synthesized control keys")
+    func sanitizesTypedControlCharacters() throws {
+        let text =
+            #"{"action":"type","element_id":2,"point":null,"text":"hello\nworld\t\u001B!","label":"Search"}"#
+        let decision = try #require(
+            DemoBrainDecoding.parse(from: text, allowsClicking: true)
+        )
+
+        #expect(decision.text == "hello world !")
+        #expect(
+            DemoBrainDecoding.parse(
+                from:
+                    #"{"action":"type","element_id":2,"point":null,"text":"\n\t\u001B","label":"Search"}"#,
+                allowsClicking: true
+            ) == nil
+        )
+    }
+
+    @Test("Coordinate fallbacks must remain inside the captured image")
+    func validatesCoordinateBounds() {
+        let valid = DemoBrainDecision(
+            action: .highlight,
+            elementID: nil,
+            point: CGPoint(x: 50, y: 25),
+            label: "Send",
+            text: nil
+        )
+        let outOfBounds = DemoBrainDecision(
+            action: .highlight,
+            elementID: nil,
+            point: CGPoint(x: 101, y: 25),
+            label: "Send",
+            text: nil
+        )
+
+        #expect(valid.normalizedPoint(in: CGSize(width: 100, height: 50)) == CGPoint(x: 0.5, y: 0.5))
+        #expect(valid.normalizedPoint(in: .zero) == nil)
+        #expect(outOfBounds.normalizedPoint(in: CGSize(width: 100, height: 50)) == nil)
     }
 
     @Test("Parses the effect actions (circle, spotlight, zoom)")

@@ -562,9 +562,13 @@ extension CaptureManager {
 
             // The model may propose a click; apply the same click-eligibility
             // rules the deterministic policy enforces.
-            let kind: DemoIntentKind =
+            let proposedKind: DemoIntentKind =
                 (result.kind == .click && voiceActions.allowsClicking && element.pressable)
                 ? .click : .highlight
+            let kind = DemoModelActuationPolicy.authorize(
+                proposedKind,
+                transcript: transcript
+            )
             dispatchDemoCommand(
                 DemoResolvedCommand(
                     kind: kind,

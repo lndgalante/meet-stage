@@ -113,6 +113,23 @@ struct DemoBrainDecision: Sendable, Equatable {
     let label: String
     /// The text to enter, for the `type` action.
     let text: String?
+
+    /// Resolves an image-pixel fallback into window fractions, rejecting an
+    /// out-of-bounds model coordinate instead of clamping it onto a window edge.
+    func normalizedPoint(in imagePixelSize: CGSize) -> CGPoint? {
+        guard elementID == nil, let point,
+            imagePixelSize.width.isFinite, imagePixelSize.height.isFinite,
+            imagePixelSize.width > 0, imagePixelSize.height > 0,
+            point.x.isFinite, point.y.isFinite,
+            point.x >= 0, point.x <= imagePixelSize.width,
+            point.y >= 0, point.y <= imagePixelSize.height
+        else { return nil }
+
+        return CGPoint(
+            x: point.x / imagePixelSize.width,
+            y: point.y / imagePixelSize.height
+        )
+    }
 }
 
 enum DemoBrainError: Error {

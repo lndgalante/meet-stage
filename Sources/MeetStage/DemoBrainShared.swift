@@ -65,6 +65,10 @@ enum DemoBrainPrompt {
 enum DemoBrainDecoding {
     /// Cap on synthesized-keystroke text length per command.
     static let maxTypeLength = 120
+    private static let unsafeTypedTextCharacters =
+        CharacterSet.controlCharacters
+        .union(.illegalCharacters)
+        .union(.newlines)
 
     struct RawBrainDecision: Decodable {
         let action: String
@@ -101,21 +105,26 @@ enum DemoBrainDecoding {
         // the presenter has disabled clicking.
         let effectiveAction: DemoBrainAction =
             (action.actuatesSource && !allowsClicking) ? .highlight : action
+        // A model must choose one unambiguous grounding. Accepting both lets an
+        // invalid element id silently fall through to an unrelated coordinate.
+        guard (raw.elementID == nil) != (raw.point == nil) else { return nil }
+        if let elementID = raw.elementID, elementID < 0 { return nil }
+
         let point: CGPoint?
         if let coordinates = raw.point, coordinates.count == 2 {
+            guard coordinates.allSatisfy(\.isFinite), coordinates.allSatisfy({ $0 >= 0 })
+            else { return nil }
             point = CGPoint(x: coordinates[0], y: coordinates[1])
         } else {
+            if raw.point != nil { return nil }
             point = nil
         }
         let label = raw.label?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        // Cap typed text so a truncated/runaway reply can't dump a huge string
-        // of synthesized keystrokes into the source app.
-        var text = raw.text?.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let value = text { text = String(value.prefix(maxTypeLength)) }
+        let text = sanitizedTypedText(raw.text)
 
-        // Typing needs text; every action needs a grounding (a listed element or a point).
+        // Typing needs safe text; the exclusive-grounding check above ensures
+        // every accepted action names one listed element or one image point.
         if effectiveAction == .type, text?.isEmpty ?? true { return nil }
-        guard raw.elementID != nil || point != nil else { return nil }
         return DemoBrainDecision(
             action: effectiveAction,
             elementID: raw.elementID,
@@ -123,6 +132,26 @@ enum DemoBrainDecoding {
             label: label,
             text: (text?.isEmpty ?? true) ? nil : text
         )
+    }
+
+    /// Replaces control and illegal scalars with a single ordinary space before
+    /// capping model-generated text. In particular, a model can never synthesize
+    /// Return, Tab, Escape, or an embedded newline into the source application.
+    static func sanitizedTypedText(_ value: String?) -> String? {
+        guard let value else { return nil }
+        var sanitized = ""
+        for scalar in value.unicodeScalars {
+            if unsafeTypedTextCharacters.contains(scalar) {
+                if !sanitized.isEmpty, sanitized.last != " " {
+                    sanitized.append(" ")
+                }
+            } else {
+                sanitized.unicodeScalars.append(scalar)
+            }
+        }
+        let trimmed = sanitized.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return String(trimmed.prefix(maxTypeLength))
     }
 
     /// Extracts the first balanced `{...}` object from arbitrary model text,
@@ -173,5 +202,26 @@ enum DemoBrainDecoding {
             }
         }
         return objects
+    }
+}
+
+/// The final, deterministic authorization boundary for model-proposed actions.
+/// Models may resolve a target, but they cannot turn a non-mutating utterance
+/// into a click merely because clicking is enabled in Settings.
+enum DemoModelActuationPolicy {
+    static func authorize(_ action: DemoBrainAction, transcript: String) -> DemoBrainAction {
+        guard action == .click else { return action }
+        return transcriptRequestsClick(transcript) ? .click : .highlight
+    }
+
+    static func authorize(_ kind: DemoIntentKind, transcript: String) -> DemoIntentKind {
+        guard kind == .click else { return kind }
+        return transcriptRequestsClick(transcript) ? .click : .highlight
+    }
+
+    private static func transcriptRequestsClick(_ transcript: String) -> Bool {
+        DemoIntentPolicy.utteranceRequestsClick(
+            DemoText.tokenizeTranscript(transcript).tokens
+        )
     }
 }

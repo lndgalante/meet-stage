@@ -331,6 +331,40 @@ struct DemoIntentPolicyTests {
         #expect(!DemoIntentPolicy.utteranceRequestsClick(tokens("don't open that yet")))
     }
 
+    @Test("Model-proposed clicks require explicit un-negated click language")
+    func modelActuationAuthorization() {
+        #expect(
+            DemoModelActuationPolicy.authorize(
+                DemoBrainAction.click,
+                transcript: "Show the Send button"
+            ) == .highlight
+        )
+        #expect(
+            DemoModelActuationPolicy.authorize(
+                DemoBrainAction.click,
+                transcript: "Click the Send button"
+            ) == .click
+        )
+        #expect(
+            DemoModelActuationPolicy.authorize(
+                DemoIntentKind.click,
+                transcript: "Don't click Send"
+            ) == .highlight
+        )
+        #expect(
+            DemoModelActuationPolicy.authorize(
+                DemoIntentKind.click,
+                transcript: "Take us to Home"
+            ) == .click
+        )
+        #expect(
+            DemoModelActuationPolicy.authorize(
+                DemoBrainAction.type,
+                transcript: "Show the Search field"
+            ) == .type
+        )
+    }
+
     @Test("Recognized-text controls are never clicked even with a verb")
     func recognizedTextNeverClicked() throws {
         let ocrOnly = [

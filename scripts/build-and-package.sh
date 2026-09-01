@@ -73,8 +73,7 @@ ENTITLEMENTS="$PROJECT_DIR/Resources/BetterMeets.entitlements"
 if [[ -n "$SIGNING_IDENTITY" ]]; then
     # Developer ID builds need the hardened runtime and a trusted timestamp
     # before Apple will accept them for notarization. The entitlements grant
-    # microphone access (Demo Mode) that the hardened runtime blocks by default;
-    # ad-hoc dev builds skip the hardened runtime, so this only affects releases.
+    # microphone access (Demo Mode) that the hardened runtime blocks by default.
     codesign \
         --force \
         --options runtime \
@@ -84,9 +83,13 @@ if [[ -n "$SIGNING_IDENTITY" ]]; then
         "$APP_DIR"
 else
     # A stable designated requirement keeps Screen Recording approval valid
-    # across local builds even though the ad-hoc binary hash changes.
+    # across local builds even though the ad-hoc binary hash changes. Development
+    # builds still use the hardened runtime and the same narrow microphone
+    # entitlement so dynamic-loader injection is not left open during testing.
     codesign \
         --force \
+        --options runtime \
+        --entitlements "$ENTITLEMENTS" \
         --sign - \
         --requirements "=designated => identifier \"$BUNDLE_IDENTIFIER\"" \
         "$APP_DIR"

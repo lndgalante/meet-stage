@@ -119,7 +119,7 @@ final class DemoModelIntentResolver {
             let labels = controls.map(\.label)
             let result = map(response.content, controlLabels: labels)
             AppLog.demoMode.notice(
-                "Model chose action=\(response.content.action.debugName, privacy: .public) control=\(response.content.control, privacy: .public) resolved=\(result?.label ?? "none", privacy: .public)"
+                "Model chose action=\(response.content.action.debugName, privacy: .public) control=\(response.content.control, privacy: .private) resolved=\(result?.label ?? "none", privacy: .private)"
             )
             return result
         } catch {

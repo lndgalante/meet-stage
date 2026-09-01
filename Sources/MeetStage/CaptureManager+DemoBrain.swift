@@ -156,7 +156,10 @@ extension CaptureManager {
 
         // A type without Accessibility trust cannot enter text, so present it as
         // an honest highlight instead of a "Typing…" pill that silently no-ops.
-        var action = decision.action
+        var action = DemoModelActuationPolicy.authorize(
+            decision.action,
+            transcript: transcript
+        )
         if action == .type, !DemoActionExecutor.canSynthesizeInput {
             action = .highlight
         }
@@ -217,10 +220,10 @@ extension CaptureManager {
             "Demo brain failed: \(brainError?.userMessage ?? error.localizedDescription, privacy: .public)"
         )
         if case let .http(status, detail) = brainError {
-            // The provider's error envelope is server-generated (no user data or
-            // key), so log it publicly — it's what pinpoints quota vs auth vs param.
+            // Provider error envelopes are not a trusted privacy boundary; keep
+            // any echoed request detail out of public unified-log fields.
             AppLog.demoMode.error(
-                "Demo brain HTTP \(status, privacy: .public) body: \(detail, privacy: .public)"
+                "Demo brain HTTP \(status, privacy: .public) body: \(detail, privacy: .private)"
             )
         }
         let message = brainError?.userMessage ?? "Assistant unreachable"
@@ -242,13 +245,12 @@ extension CaptureManager {
         {
             return element
         }
-        guard let point = decision.point,
-            imagePixelSize.width > 0, imagePixelSize.height > 0,
+        guard let normalizedPoint = decision.normalizedPoint(in: imagePixelSize),
             let source = activeCaptureSource
         else { return nil }
 
-        let normalizedX = min(max(point.x / imagePixelSize.width, 0), 1)
-        let normalizedY = min(max(point.y / imagePixelSize.height, 0), 1)
+        let normalizedX = normalizedPoint.x
+        let normalizedY = normalizedPoint.y
         let frame = WindowFrameResolver.currentFrame(
             for: source.id,
             fallback: source.window.frame
