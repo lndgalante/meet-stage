@@ -38,6 +38,22 @@ struct WindowGeometryTests {
         )
     }
 
+    @Test("Rejects non-finite coordinate input")
+    func rejectsNonFiniteCoordinates() {
+        #expect(
+            WindowCoordinateGeometry.normalizedPoint(
+                inside: CGPoint(x: CGFloat.nan, y: 10),
+                sourceFrame: CGRect(x: 0, y: 0, width: 100, height: 100)
+            ) == nil
+        )
+        #expect(
+            WindowCoordinateGeometry.normalizedPoint(
+                clamping: CGPoint(x: 10, y: CGFloat.infinity),
+                in: CGSize(width: 100, height: 100)
+            ) == nil
+        )
+    }
+
     @Test("Converts overlays relative to the primary screen's top edge")
     func convertsRelativeToPrimaryScreen() {
         let frame = SourceOverlayGeometry.appKitFrame(

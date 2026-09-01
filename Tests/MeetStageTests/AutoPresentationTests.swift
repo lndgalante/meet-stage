@@ -79,6 +79,18 @@ struct AutoPresentationTests {
         #expect(transform.scale == 1.12)
     }
 
+    @Test("Invalid camera input falls back to the identity transform")
+    func rejectsNonFiniteZoomInput() {
+        let transform = AutoZoomTransform.resolve(
+            focus: NormalizedWindowPoint(x: 0.5, y: 0.5),
+            requestedScale: .nan,
+            viewportSize: CGSize(width: 1_000, height: 600),
+            reducesMotion: false
+        )
+
+        #expect(transform == .identity)
+    }
+
     @Test("The mirrored system cursor is exactly twice as large and keeps its hotspot")
     func enlargesSystemCursorAroundHotSpot() {
         let frame = EnlargedCursorGeometry.frame(
@@ -119,6 +131,20 @@ struct AutoPresentationTests {
         )
 
         #expect(layout.contentFrame == CGRect(origin: .zero, size: viewport))
+        #expect(layout.cornerRadius == 0)
+    }
+
+    @Test("Styled-frame layout contains non-finite appearance input")
+    func normalizesInvalidFrameAppearance() {
+        let layout = StageFrameLayout.resolve(
+            viewportSize: CGSize(width: 1_600, height: 900),
+            sourceAspectRatio: 16 / 9,
+            paddingFraction: .nan,
+            cornerRadius: .infinity,
+            isEnabled: true
+        )
+
+        #expect(layout.contentFrame == CGRect(x: 0, y: 0, width: 1_600, height: 900))
         #expect(layout.cornerRadius == 0)
     }
 

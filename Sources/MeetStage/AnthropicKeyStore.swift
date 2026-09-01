@@ -16,7 +16,12 @@ struct AnthropicKeyStore: DemoKeyStore {
     }
 
     var key: String? {
-        if let stored = secret.key { return stored }
+        if let stored = secret.key {
+            // A user may have saved a Keychain value before the lazy migration
+            // ran. Still remove the obsolete plaintext copy when we encounter it.
+            removeLegacyFileIfPresent()
+            return stored
+        }
         // One-time migration from the deprecated plaintext file store.
         if let fileKey = try? String(contentsOf: legacyFileURL, encoding: .utf8) {
             let trimmed = fileKey.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -24,7 +29,7 @@ struct AnthropicKeyStore: DemoKeyStore {
                 // Delete the legacy plaintext only after Keychain persistence
                 // succeeds; a transient Keychain failure must not lose the key.
                 if secret.save(trimmed) {
-                    try? FileManager.default.removeItem(at: legacyFileURL)
+                    removeLegacyFileIfPresent()
                 }
                 return trimmed
             }
@@ -33,11 +38,36 @@ struct AnthropicKeyStore: DemoKeyStore {
     }
 
     var hasKey: Bool {
-        secret.hasKey || FileManager.default.fileExists(atPath: legacyFileURL.path)
+        if secret.hasKey { return true }
+        guard let legacyValue = try? String(contentsOf: legacyFileURL, encoding: .utf8) else {
+            return false
+        }
+        return !legacyValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     @discardableResult
     func save(_ value: String) -> Bool {
-        secret.save(value)
+        guard secret.save(value) else { return false }
+        // Saving a replacement or clearing the setting must also remove any
+        // pre-Keychain file; otherwise clearing could silently resurrect it.
+        return removeLegacyFileIfPresent()
+    }
+
+    @discardableResult
+    private func removeLegacyFileIfPresent() -> Bool {
+        guard FileManager.default.fileExists(atPath: legacyFileURL.path) else {
+            return true
+        }
+        do {
+            try FileManager.default.removeItem(at: legacyFileURL)
+            return true
+        } catch let error as CocoaError where error.code == .fileNoSuchFile {
+            return true
+        } catch {
+            AppLog.demoMode.error(
+                "Could not remove the legacy Anthropic key file: \(error.localizedDescription, privacy: .public)"
+            )
+            return false
+        }
     }
 }

@@ -69,7 +69,7 @@ temporary zoom around that activity. While zoomed, the camera stays still until
 the pointer leaves a generous safe zone, then moves only enough to keep the
 pointer visible. BetterMeets hides ScreenCaptureKit's embedded cursor and
 mirrors the actual macOS system cursor—arrow, I-beam, pointing hand, resize
-cursor, or another active shape—at exactly 3× in the Demo Stage. It preserves
+cursor, or another active shape—at exactly 2× in the Demo Stage. It preserves
 the native hotspot, moves smoothly, and never controls the real pointer.
 
 Auto Polish can also place the source in a styled frame. Open Settings → Stage
@@ -98,7 +98,9 @@ them, Accessibility access; BetterMeets requests both the first time you enable
 it. If Accessibility is declined, Demo Mode still highlights controls it can read
 but will not click. Set Settings → Demo → Voice actions to **Highlight only** to
 keep BetterMeets from ever clicking. All transcription is on device; no audio or
-transcript leaves your Mac.
+audio leaves your Mac. Demo Mode stays entirely on device unless you explicitly
+enable Cloud understanding in Settings; when enabled, each command sends the
+transcript and a screenshot of the shared window to the provider you selected.
 
 The live pipeline is intentionally bounded for presentation workloads. Smaller
 sources keep their native pixel size, while 4K and 5K windows are scaled to a
@@ -204,7 +206,7 @@ inside it.
 | `Sources/MeetStage/ShortcutPreferencesStore.swift` | Backward-compatible shortcut persistence |
 | `Sources/MeetStage/SampleBufferRenderer.swift` | High-resolution frame rendering |
 | `Sources/MeetStage/StageWindowSizing.swift` | Demo Stage geometry and aspect-ratio handling |
-| `Sources/MeetStage/AutoPresentation.swift` and `CaptureManager+AutoPresentation.swift` | Click-driven zoom camera, read-only pointer tracking, and 3× native system-cursor mirroring |
+| `Sources/MeetStage/AutoPresentation.swift` and `CaptureManager+AutoPresentation.swift` | Click-driven zoom camera, read-only pointer tracking, and 2× native system-cursor mirroring |
 | `Sources/MeetStage/StageFramePresentation.swift` | Styled-frame layout, built-in backdrops, blur, corners, and shadows |
 | `Sources/MeetStage/WindowConfiguration.swift` | AppKit window behavior used by SwiftUI scenes |
 | `Sources/MeetStage/GlobalHotKeyManager.swift` | Option+1 through Option+9 registration |

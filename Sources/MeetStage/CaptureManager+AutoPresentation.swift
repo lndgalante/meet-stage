@@ -145,25 +145,25 @@ extension CaptureManager {
     }
 
     func setStageFramePadding(_ value: Double) {
-        let value = clamped(value, to: StageFrameAppearance.paddingRange)
+        let value = StageFrameAppearance.normalizedPadding(value)
         stageFramePadding = value
         presentationStore.stageFramePadding = value
     }
 
     func setStageFrameCornerRadius(_ value: Double) {
-        let value = clamped(value, to: StageFrameAppearance.cornerRadiusRange)
+        let value = StageFrameAppearance.normalizedCornerRadius(value)
         stageFrameCornerRadius = value
         presentationStore.stageFrameCornerRadius = value
     }
 
     func setStageFrameBlur(_ value: Double) {
-        let value = clamped(value, to: StageFrameAppearance.blurRange)
+        let value = StageFrameAppearance.normalizedBlur(value)
         stageFrameBlur = value
         presentationStore.stageFrameBlur = value
     }
 
     func setStageFrameShadow(_ value: Double) {
-        let value = clamped(value, to: StageFrameAppearance.shadowRange)
+        let value = StageFrameAppearance.normalizedShadow(value)
         stageFrameShadow = value
         presentationStore.stageFrameShadow = value
     }
@@ -189,12 +189,5 @@ extension CaptureManager {
     func removeStageLogo() {
         stageLogo = nil
         presentationStore.stageLogoData = nil
-    }
-
-    private func clamped(
-        _ value: Double,
-        to range: ClosedRange<Double>
-    ) -> Double {
-        min(max(value, range.lowerBound), range.upperBound)
     }
 }

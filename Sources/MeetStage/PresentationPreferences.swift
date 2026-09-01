@@ -106,6 +106,31 @@ enum StageFrameAppearance {
     static let defaultBlur = 0.25
     static let shadowRange = 0.0...1.0
     static let defaultShadow = 0.68
+
+    static func normalizedPadding(_ value: Double) -> Double {
+        normalized(value, range: paddingRange, default: defaultPadding)
+    }
+
+    static func normalizedCornerRadius(_ value: Double) -> Double {
+        normalized(value, range: cornerRadiusRange, default: defaultCornerRadius)
+    }
+
+    static func normalizedBlur(_ value: Double) -> Double {
+        normalized(value, range: blurRange, default: defaultBlur)
+    }
+
+    static func normalizedShadow(_ value: Double) -> Double {
+        normalized(value, range: shadowRange, default: defaultShadow)
+    }
+
+    private static func normalized(
+        _ value: Double,
+        range: ClosedRange<Double>,
+        default defaultValue: Double
+    ) -> Double {
+        guard value.isFinite else { return defaultValue }
+        return min(max(value, range.lowerBound), range.upperBound)
+    }
 }
 
 enum StageLogoAppearance {
@@ -236,7 +261,7 @@ struct PresentationPreferencesStore {
         }
         nonmutating set {
             defaults.set(
-                clamped(newValue, to: StageFrameAppearance.paddingRange),
+                StageFrameAppearance.normalizedPadding(newValue),
                 forKey: Self.stageFramePaddingKey
             )
         }
@@ -252,7 +277,7 @@ struct PresentationPreferencesStore {
         }
         nonmutating set {
             defaults.set(
-                clamped(newValue, to: StageFrameAppearance.cornerRadiusRange),
+                StageFrameAppearance.normalizedCornerRadius(newValue),
                 forKey: Self.stageFrameCornerRadiusKey
             )
         }
@@ -268,7 +293,7 @@ struct PresentationPreferencesStore {
         }
         nonmutating set {
             defaults.set(
-                clamped(newValue, to: StageFrameAppearance.blurRange),
+                StageFrameAppearance.normalizedBlur(newValue),
                 forKey: Self.stageFrameBlurKey
             )
         }
@@ -284,7 +309,7 @@ struct PresentationPreferencesStore {
         }
         nonmutating set {
             defaults.set(
-                clamped(newValue, to: StageFrameAppearance.shadowRange),
+                StageFrameAppearance.normalizedShadow(newValue),
                 forKey: Self.stageFrameShadowKey
             )
         }
@@ -368,13 +393,11 @@ struct PresentationPreferencesStore {
         default defaultValue: Double,
         range: ClosedRange<Double>
     ) -> Double {
-        guard let savedValue = defaults.object(forKey: key) as? NSNumber else {
+        guard let savedValue = defaults.object(forKey: key) as? NSNumber,
+            savedValue.doubleValue.isFinite
+        else {
             return defaultValue
         }
         return min(max(savedValue.doubleValue, range.lowerBound), range.upperBound)
-    }
-
-    private func clamped(_ value: Double, to range: ClosedRange<Double>) -> Double {
-        min(max(value, range.lowerBound), range.upperBound)
     }
 }

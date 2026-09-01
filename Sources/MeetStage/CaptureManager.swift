@@ -141,6 +141,8 @@ final class CaptureManager: ObservableObject {
     var demoListeningStartTask: Task<Void, Never>?
     var demoIndexRefreshTask: Task<Void, Never>?
     var demoIndexWalkTask: Task<DemoElementIndex, Never>?
+    var demoRecognitionTask: Task<Void, Never>?
+    var demoRecognitionGeneration: UInt64 = 0
     var demoActionTask: Task<Void, Never>?
     var demoModelTask: Task<Void, Never>?
     var demoBrainTask: Task<Void, Never>?
@@ -254,6 +256,7 @@ final class CaptureManager: ObservableObject {
         demoListeningStartTask?.cancel()
         demoIndexRefreshTask?.cancel()
         demoIndexWalkTask?.cancel()
+        demoRecognitionTask?.cancel()
         demoActionTask?.cancel()
         demoModelTask?.cancel()
         demoBrainTask?.cancel()

@@ -21,7 +21,8 @@ enum SpotlightAppearance {
     static let outsideOpacityRange = 0.0...0.65
 
     static func normalizedOutsideOpacity(_ value: Double) -> Double {
-        min(max(value, outsideOpacityRange.lowerBound), outsideOpacityRange.upperBound)
+        guard value.isFinite else { return defaultOutsideOpacity }
+        return min(max(value, outsideOpacityRange.lowerBound), outsideOpacityRange.upperBound)
     }
 }
 
@@ -104,8 +105,8 @@ final class SpotlightSession: ObservableObject {
 
     func move(to location: NormalizedWindowPoint) {
         self.location = NormalizedWindowPoint(
-            x: min(max(location.x, 0), 1),
-            y: min(max(location.y, 0), 1)
+            x: location.x.isFinite ? min(max(location.x, 0), 1) : 0.5,
+            y: location.y.isFinite ? min(max(location.y, 0), 1) : 0.5
         )
     }
 

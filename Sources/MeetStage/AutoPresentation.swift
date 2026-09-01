@@ -16,6 +16,11 @@ struct AutoZoomTransform: Equatable, Sendable {
     ) -> AutoZoomTransform {
         guard
             let focus,
+            focus.x.isFinite,
+            focus.y.isFinite,
+            requestedScale.isFinite,
+            viewportSize.width.isFinite,
+            viewportSize.height.isFinite,
             viewportSize.width > 0,
             viewportSize.height > 0
         else { return .identity }
@@ -54,6 +59,9 @@ enum AutoZoomCameraPolicy {
         _ focus: NormalizedWindowPoint,
         scale: CGFloat
     ) -> NormalizedWindowPoint {
+        guard scale.isFinite, focus.x.isFinite, focus.y.isFinite else {
+            return NormalizedWindowPoint(x: 0.5, y: 0.5)
+        }
         let safeScale = max(scale, 1)
         let halfVisibleSpan = 1 / (safeScale * 2)
         return NormalizedWindowPoint(
@@ -68,6 +76,9 @@ enum AutoZoomCameraPolicy {
         scale: CGFloat,
         safeZoneInsetRatio: CGFloat = safeZoneInsetRatio
     ) -> NormalizedWindowPoint {
+        guard pointer.x.isFinite, pointer.y.isFinite else {
+            return clampedFocus(current, scale: scale)
+        }
         let safeScale = max(scale, 1)
         let visibleSpan = 1 / safeScale
         let halfVisibleSpan = visibleSpan / 2

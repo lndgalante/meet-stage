@@ -40,7 +40,18 @@ enum AnnotationTiming {
     static let reducedMotionFadeDuration: TimeInterval = 0.18
 
     static func normalizedLifetimeSeconds(_ value: Int) -> Int {
-        supportedLifetimeSeconds.min { abs($0 - value) < abs($1 - value) }
+        // UserDefaults is an untrusted persistence boundary. Clamp before
+        // subtracting so Int.min/Int.max cannot overflow the distance check.
+        guard let minimum = supportedLifetimeSeconds.first,
+            let maximum = supportedLifetimeSeconds.last
+        else { return defaultLifetimeSeconds }
+        if value <= minimum { return minimum }
+        if value >= maximum { return maximum }
+
+        return
+            supportedLifetimeSeconds.min {
+                abs($0 - value) < abs($1 - value)
+            }
             ?? defaultLifetimeSeconds
     }
 }

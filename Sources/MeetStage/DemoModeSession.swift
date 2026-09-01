@@ -19,6 +19,15 @@ final class DemoModeSession: ObservableObject {
 
     private var highlightDismissTasks: [UUID: Task<Void, Never>] = [:]
     private var captionRevertTask: Task<Void, Never>?
+    private let sleep: @Sendable (Duration) async throws -> Void
+
+    init(
+        sleep: @escaping @Sendable (Duration) async throws -> Void = { duration in
+            try await Task.sleep(for: duration)
+        }
+    ) {
+        self.sleep = sleep
+    }
 
     deinit {
         highlightDismissTasks.values.forEach { $0.cancel() }
@@ -45,9 +54,10 @@ final class DemoModeSession: ObservableObject {
         caption = DemoCaption(status: status)
 
         guard status.isTransient, isListening else { return }
+        let sleep = sleep
         captionRevertTask = Task { [weak self] in
             do {
-                try await Task.sleep(for: .seconds(2.6))
+                try await sleep(.seconds(2.6))
             } catch {
                 return
             }
@@ -60,9 +70,10 @@ final class DemoModeSession: ObservableObject {
     func showHighlight(_ presentation: DemoHighlightPresentation) {
         highlights.append(presentation)
         highlightDismissTasks[presentation.id]?.cancel()
+        let sleep = sleep
         highlightDismissTasks[presentation.id] = Task { [weak self] in
             do {
-                try await Task.sleep(for: presentation.duration)
+                try await sleep(presentation.duration)
             } catch {
                 return
             }

@@ -71,7 +71,7 @@ window configuration, or permissions, build the packaged debug app with
    immediately around the click. Small pointer movements leave the camera still;
    moving outside the safe zone recenters it smoothly. After roughly two seconds
    without another click, the stage returns to 1×. The Demo Stage mirrors the
-   currently visible macOS cursor at exactly 3× with the same hotspot, while the
+   currently visible macOS cursor at exactly 2× with the same hotspot, while the
    real source pointer is never moved or blocked.
 9. In Settings → Stage, verify each backdrop and the padding, corner, blur,
    shadow and zoom-strength controls update the Demo Stage. The

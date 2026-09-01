@@ -275,8 +275,8 @@ struct ControlView: View {
 
     private var autoPresentationControlHelp: String {
         manager.autoPresentationEnabled
-            ? "Auto-zoom clicks, mirror the system pointer at 3×, and apply the selected frame"
-            : "Polish the Demo Stage with activity zooms, a 3× system pointer, and a styled frame"
+            ? "Auto-zoom clicks, mirror the system pointer at 2×, and apply the selected frame"
+            : "Polish the Demo Stage with activity zooms, a 2× system pointer, and a styled frame"
     }
 
     private var demoModeControlHelp: String {

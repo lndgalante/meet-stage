@@ -125,6 +125,61 @@ struct PresentationPreferencesTests {
         )
     }
 
+    @Test("Replaces non-finite persisted appearance values with safe defaults")
+    @MainActor
+    func rejectsNonFiniteAppearanceValues() throws {
+        let fixture = try PreferencesFixture()
+        defer { fixture.dispose() }
+        fixture.defaults.set(
+            Double.nan,
+            forKey: PresentationPreferencesStore.spotlightOutsideOpacityKey
+        )
+        fixture.defaults.set(
+            Double.infinity,
+            forKey: PresentationPreferencesStore.stageFramePaddingKey
+        )
+        fixture.defaults.set(
+            -Double.infinity,
+            forKey: PresentationPreferencesStore.stageFrameCornerRadiusKey
+        )
+        fixture.defaults.set(
+            Double.nan,
+            forKey: PresentationPreferencesStore.stageFrameBlurKey
+        )
+        fixture.defaults.set(
+            Double.infinity,
+            forKey: PresentationPreferencesStore.stageFrameShadowKey
+        )
+
+        let manager = CaptureManager(defaults: fixture.defaults)
+
+        #expect(manager.spotlightOutsideOpacity == SpotlightAppearance.defaultOutsideOpacity)
+        #expect(manager.stageFramePadding == StageFrameAppearance.defaultPadding)
+        #expect(manager.stageFrameCornerRadius == StageFrameAppearance.defaultCornerRadius)
+        #expect(manager.stageFrameBlur == StageFrameAppearance.defaultBlur)
+        #expect(manager.stageFrameShadow == StageFrameAppearance.defaultShadow)
+    }
+
+    @Test("Normalizes non-finite values before publishing them to the UI")
+    @MainActor
+    func normalizesNonFiniteSetterValues() throws {
+        let fixture = try PreferencesFixture()
+        defer { fixture.dispose() }
+        let manager = CaptureManager(defaults: fixture.defaults)
+
+        manager.setSpotlightOutsideOpacity(.nan)
+        manager.setStageFramePadding(.infinity)
+        manager.setStageFrameCornerRadius(-.infinity)
+        manager.setStageFrameBlur(.nan)
+        manager.setStageFrameShadow(.infinity)
+
+        #expect(manager.spotlightOutsideOpacity == SpotlightAppearance.defaultOutsideOpacity)
+        #expect(manager.stageFramePadding == StageFrameAppearance.defaultPadding)
+        #expect(manager.stageFrameCornerRadius == StageFrameAppearance.defaultCornerRadius)
+        #expect(manager.stageFrameBlur == StageFrameAppearance.defaultBlur)
+        #expect(manager.stageFrameShadow == StageFrameAppearance.defaultShadow)
+    }
+
     @Test("Normalizes drawing lifetime at the persistence boundary")
     func normalizesLifetime() throws {
         let fixture = try PreferencesFixture()

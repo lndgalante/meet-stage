@@ -79,11 +79,14 @@ to follow while keeping the parts that do not require macOS services testable.
   `DemoText`/`DemoLabelMatcher` (tokenizing and fuzzy matching),
   `DemoIntentPolicy` (verb-versus-reference classification and the contextual
   cue gate that prevents incidental mentions from firing), and `DemoCommandGate`
-  (per-target debounce). The platform edges are isolated: `DemoSpeechListening`
+  (per-target debounce). The semantic tier caches vectors for the current
+  control inventory instead of recomputing them for every utterance. The
+  platform edges are isolated: `DemoSpeechListening`
   (live transcription), `AccessibilityElementIndexer` (bounded off-main AX-tree
   walk, with the Chromium/Electron enhancement attributes), `DemoTextRecognizer`
   (Vision text recognition over an on-demand captured frame as a fallback for
-  sparse AX trees), and `DemoActionExecutor` (the *only* place BetterMeets posts
+  sparse AX trees, limited to one cancellable recognition task at a time), and
+  `DemoActionExecutor` (the *only* place BetterMeets posts
   synthesized events — a visible cursor glide plus click, and typed Unicode
   keystrokes into a verified text field, both gated on Accessibility trust). An
   optional conversational tier resolves natural, multi-turn commands against a
@@ -117,7 +120,7 @@ to follow while keeping the parts that do not require macOS services testable.
 - `StageFrameLayout` preserves the source aspect ratio inside configurable
   padding. `StageFrameBackdrop` and `StageView` own the visual composition:
   backdrop, blur, rounded source surface, layered shadow, auto-zoom transform,
-  and a hotspot-correct 3× mirror of the active macOS system cursor. These
+  and a hotspot-correct 2× mirror of the active macOS system cursor. These
   effects exist only in the Demo Stage and never modify the selected source
   window.
 - `AppLog` owns unified-log categories. Recoverable background failures are

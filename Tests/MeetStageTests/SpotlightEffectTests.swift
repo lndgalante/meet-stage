@@ -149,6 +149,18 @@ struct SpotlightEffectTests {
         #expect(session.outsideOpacity == SpotlightAppearance.outsideOpacityRange.upperBound)
     }
 
+    @Test("Non-finite spotlight state returns to safe defaults")
+    @MainActor
+    func rejectsNonFiniteSpotlightState() {
+        let session = SpotlightSession()
+
+        session.move(to: NormalizedWindowPoint(x: .nan, y: .infinity))
+        session.setOutsideOpacity(.nan)
+
+        #expect(session.location == NormalizedWindowPoint(x: 0.5, y: 0.5))
+        #expect(session.outsideOpacity == SpotlightAppearance.defaultOutsideOpacity)
+    }
+
     @Test("Observes pointer movement delivered inside BetterMeets")
     @MainActor
     func observesLocalPointerMovement() {

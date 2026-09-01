@@ -17,6 +17,10 @@ final class DemoEmbeddingMatcher {
 
     private let sentenceEmbedding: NLEmbedding?
     private let wordEmbedding: NLEmbedding?
+    /// Accessibility indexing refreshes every 1.5 seconds, but most labels stay
+    /// unchanged. Cache their vectors so a voice command does not recompute up
+    /// to hundreds of embeddings synchronously on the main actor.
+    private var labelVectorCache: [String: [Double]] = [:]
 
     init(language: NLLanguage = .english) {
         sentenceEmbedding = NLEmbedding.sentenceEmbedding(for: language)
@@ -38,9 +42,14 @@ final class DemoEmbeddingMatcher {
     func bestMatch(transcript: String, labels: [String]) -> Match? {
         guard let utterance = vector(for: transcript) else { return nil }
 
+        // Keep memory bounded to the current control inventory. A source change
+        // also calls reset(), but this handles navigation within one window.
+        let activeLabels = Set(labels)
+        labelVectorCache = labelVectorCache.filter { activeLabels.contains($0.key) }
+
         var best: Match?
         for label in labels {
-            guard let labelVector = vector(for: label) else { continue }
+            guard let labelVector = cachedVector(for: label) else { continue }
             let similarity = cosineSimilarity(utterance, labelVector)
             guard similarity >= Self.minimumSimilarity else { continue }
             if best.map({ similarity > $0.similarity }) ?? true {
@@ -48,6 +57,19 @@ final class DemoEmbeddingMatcher {
             }
         }
         return best
+    }
+
+    func reset() {
+        labelVectorCache.removeAll()
+    }
+
+    private func cachedVector(for label: String) -> [Double]? {
+        if let cached = labelVectorCache[label] {
+            return cached
+        }
+        guard let vector = vector(for: label) else { return nil }
+        labelVectorCache[label] = vector
+        return vector
     }
 
     /// Embeds text with the sentence model when available, otherwise averages the

@@ -18,7 +18,13 @@ enum WindowCoordinateGeometry {
         inside globalPoint: CGPoint,
         sourceFrame: CGRect
     ) -> NormalizedWindowPoint? {
-        guard sourceFrame.width > 0,
+        guard globalPoint.x.isFinite,
+            globalPoint.y.isFinite,
+            sourceFrame.minX.isFinite,
+            sourceFrame.minY.isFinite,
+            sourceFrame.width.isFinite,
+            sourceFrame.height.isFinite,
+            sourceFrame.width > 0,
             sourceFrame.height > 0,
             globalPoint.x >= sourceFrame.minX,
             globalPoint.x <= sourceFrame.maxX,
@@ -39,7 +45,13 @@ enum WindowCoordinateGeometry {
         clamping localPoint: CGPoint,
         in canvasSize: CGSize
     ) -> NormalizedWindowPoint? {
-        guard canvasSize.width > 0, canvasSize.height > 0 else { return nil }
+        guard localPoint.x.isFinite,
+            localPoint.y.isFinite,
+            canvasSize.width.isFinite,
+            canvasSize.height.isFinite,
+            canvasSize.width > 0,
+            canvasSize.height > 0
+        else { return nil }
 
         return NormalizedWindowPoint(
             x: min(max(localPoint.x / canvasSize.width, 0), 1),

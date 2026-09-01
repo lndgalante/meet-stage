@@ -9,7 +9,8 @@ import Security
 protocol DemoKeyStore: Sendable {
     /// The stored secret, reading the Keychain data (which may prompt for access).
     var key: String? { get }
-    /// Whether a key exists — attribute-only, so it never triggers an access prompt.
+    /// Whether a key exists without reading Keychain secret data, so it never
+    /// triggers an access prompt. A migration wrapper may inspect its legacy file.
     var hasKey: Bool { get }
     /// Persists the key, or clears it when the value is empty.
     @discardableResult func save(_ value: String) -> Bool

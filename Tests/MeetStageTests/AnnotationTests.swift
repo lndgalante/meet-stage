@@ -5,6 +5,12 @@ import Testing
 
 @Suite("Annotations")
 struct AnnotationTests {
+    @Test("Normalizes extreme persisted lifetimes without integer overflow")
+    func normalizesExtremeLifetimeValues() {
+        #expect(AnnotationTiming.normalizedLifetimeSeconds(.min) == 2)
+        #expect(AnnotationTiming.normalizedLifetimeSeconds(.max) == 10)
+    }
+
     @Test("Normalizes canvas points and clamps pointer overshoot")
     func normalizesCanvasPoints() {
         #expect(

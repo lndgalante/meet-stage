@@ -215,8 +215,6 @@ extension CaptureManager {
         // discarded and can never resurrect a previous window's index.
         demoIndexGeneration += 1
         stopDemoIndexing()
-        demoIndexWalkTask?.cancel()
-        demoIndexWalkTask = nil
         sourceDemoOverlayPresenter.dismiss()
         demoActionTask?.cancel()
         demoActionTask = nil
@@ -236,6 +234,7 @@ extension CaptureManager {
             }
         }
         demoModelResolver.reset()
+        demoEmbeddingMatcher.reset()
         demoConversation.reset()
         lastReferencedControl = nil
         demoMode.clearVisuals()
@@ -332,6 +331,11 @@ extension CaptureManager {
     private func stopDemoIndexing() {
         demoIndexRefreshTask?.cancel()
         demoIndexRefreshTask = nil
+        demoIndexWalkTask?.cancel()
+        demoIndexWalkTask = nil
+        demoRecognitionGeneration &+= 1
+        demoRecognitionTask?.cancel()
+        demoRecognitionTask = nil
         streamOutput.disarmAnalyzableFrame()
     }
 
@@ -381,14 +385,23 @@ extension CaptureManager {
         geometry: CaptureFrameGeometry
     ) {
         guard demoModeEnabled, isLive, isSelectedSourceFocused,
-            let context = demoSourceContext()
+            let context = demoSourceContext(),
+            demoRecognitionTask == nil
         else { return }
 
         let generation = demoIndexGeneration
+        demoRecognitionGeneration &+= 1
+        let recognitionGeneration = demoRecognitionGeneration
         let windowID = context.windowID
         let fallback = context.fallbackFrame
 
-        Task { [weak self] in
+        demoRecognitionTask = Task { [weak self] in
+            guard let self else { return }
+            defer {
+                if demoRecognitionGeneration == recognitionGeneration {
+                    demoRecognitionTask = nil
+                }
+            }
             let frame = WindowFrameResolver.currentFrame(for: windowID, fallback: fallback)
             let recognized = await DemoTextRecognizer.recognize(
                 buffer: buffer,
@@ -396,8 +409,10 @@ extension CaptureManager {
                 sourceFrame: frame,
                 generation: generation
             )
-            guard let self else { return }
-            guard demoModeEnabled, demoIndexGeneration == generation else { return }
+            guard !Task.isCancelled,
+                demoModeEnabled,
+                demoIndexGeneration == generation
+            else { return }
             demoMode.elementIndex = CaptureManager.mergedIndex(
                 current: demoMode.elementIndex,
                 recognized: recognized

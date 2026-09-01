@@ -12,7 +12,11 @@ struct StageFrameLayout: Equatable, Sendable {
         cornerRadius: CGFloat,
         isEnabled: Bool
     ) -> StageFrameLayout {
-        guard viewportSize.width > 0, viewportSize.height > 0 else {
+        guard viewportSize.width.isFinite,
+            viewportSize.height.isFinite,
+            viewportSize.width > 0,
+            viewportSize.height > 0
+        else {
             return StageFrameLayout(contentFrame: .zero, cornerRadius: 0)
         }
         guard isEnabled else {
@@ -23,9 +27,14 @@ struct StageFrameLayout: Equatable, Sendable {
         }
 
         let safeAspectRatio = StageWindowSizing.normalizedAspectRatio(sourceAspectRatio)
+        let safePaddingFraction =
+            paddingFraction.isFinite
+            ? min(max(paddingFraction, 0), 0.18)
+            : 0
+        let safeCornerRadius = cornerRadius.isFinite ? max(cornerRadius, 0) : 0
         let inset =
             min(viewportSize.width, viewportSize.height)
-            * min(max(paddingFraction, 0), 0.18)
+            * safePaddingFraction
         let availableWidth = max(viewportSize.width - inset * 2, 1)
         let availableHeight = max(viewportSize.height - inset * 2, 1)
         let availableAspectRatio = availableWidth / availableHeight
@@ -50,7 +59,7 @@ struct StageFrameLayout: Equatable, Sendable {
         )
         return StageFrameLayout(
             contentFrame: frame,
-            cornerRadius: min(max(cornerRadius, 0), min(contentSize.width, contentSize.height) / 4)
+            cornerRadius: min(safeCornerRadius, min(contentSize.width, contentSize.height) / 4)
         )
     }
 }
