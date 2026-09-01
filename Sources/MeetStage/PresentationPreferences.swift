@@ -142,6 +142,7 @@ struct PresentationPreferencesStore {
     static let demoZoomSizeKey = "presentation.demoZoomSize"
     static let demoSmartUnderstandingKey = "presentation.demoSmartUnderstanding"
     static let demoCloudConsentedKey = "presentation.demoCloudConsented"
+    static let demoBrainProviderKey = "presentation.demoBrainProvider"
 
     private let defaults: UserDefaults
 
@@ -322,6 +323,11 @@ struct PresentationPreferencesStore {
         // requires the presenter's explicit consent.
         get { defaults.bool(forKey: Self.demoCloudConsentedKey) }
         nonmutating set { defaults.set(newValue, forKey: Self.demoCloudConsentedKey) }
+    }
+
+    var demoBrainProvider: DemoBrainProvider {
+        get { value(forKey: Self.demoBrainProviderKey, default: .claude) }
+        nonmutating set { defaults.set(newValue.rawValue, forKey: Self.demoBrainProviderKey) }
     }
 
     var demoHighlightColor: PresentationColor {

@@ -86,10 +86,16 @@ to follow while keeping the parts that do not require macOS services testable.
   sparse AX trees), and `DemoActionExecutor` (the *only* place BetterMeets posts
   synthesized events — a visible cursor glide plus click, and typed Unicode
   keystrokes into a verified text field, both gated on Accessibility trust). An
-  optional conversational tier (`ClaudeDemoBrain`) resolves natural, multi-turn
-  commands against a downscaled window screenshot; it is off unless the presenter
-  both saves an API key (`AnthropicKeyStore`, Keychain) and grants cloud consent
-  (`demoCloudConsented`, default off) — otherwise Demo Mode stays fully on-device.
+  optional conversational tier resolves natural, multi-turn commands against a
+  downscaled window screenshot. It is a pluggable `DemoBrain`: `ClaudeDemoBrain`
+  (Claude Haiku 4.5) and `OpenAIDemoBrain` (GPT-5.6 Luna) are both held, and
+  `demoBrainProvider` selects the active one so the presenter can compare them on
+  their own demo. Both share one system prompt and user-message assembly
+  (`DemoBrainPrompt`) and one reply validator (`DemoBrainDecoding`) — only the
+  wire format and model differ, keeping the comparison fair. The tier is off
+  unless the presenter both saves that provider's API key (`AnthropicKeyStore` /
+  `OpenAIKeyStore`, each Keychain) and grants cloud consent (`demoCloudConsented`,
+  default off) — otherwise Demo Mode stays fully on-device.
   The brain returns a structured action (highlight, click, type, circle,
   spotlight, zoom); every action is debounced (`DemoCommandGate`) and every
   input-synthesizing one re-validates the live focused window at each actuation

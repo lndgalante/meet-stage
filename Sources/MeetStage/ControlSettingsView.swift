@@ -165,11 +165,31 @@ struct SettingsPopover: View {
                 )
             }
 
+            SettingsFormRow(title: "Model") {
+                Picker(
+                    "Model",
+                    selection: Binding(
+                        get: { manager.demoBrainProvider },
+                        set: { manager.setDemoBrainProvider($0) }
+                    )
+                ) {
+                    ForEach(DemoBrainProvider.allCases) { provider in
+                        Text(provider.label)
+                            .tag(provider)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+            }
+
             SettingsFormRow(title: "Conversation AI") {
                 VStack(alignment: .leading, spacing: 5) {
                     HStack(spacing: 6) {
-                        SecureField("Anthropic API key", text: $brainKeyDraft)
-                            .textFieldStyle(.roundedBorder)
+                        SecureField(
+                            "\(manager.demoBrainProvider.vendor) API key",
+                            text: $brainKeyDraft
+                        )
+                        .textFieldStyle(.roundedBorder)
                         Button("Save") {
                             manager.setDemoBrainKey(brainKeyDraft)
                             brainKeyDraft = ""
@@ -178,8 +198,8 @@ struct SettingsPopover: View {
                     }
                     Text(
                         manager.hasDemoBrainKey
-                            ? "Key saved to your Keychain. Enables natural commands like “now open it”."
-                            : "Add a key for natural commands like “now open it” (Claude Haiku 4.5)."
+                            ? "\(manager.demoBrainProvider.vendor) key saved to your Keychain. Enables natural commands like “now open it”."
+                            : "Add a \(manager.demoBrainProvider.vendor) key for natural commands like “now open it” (\(manager.demoBrainProvider.label))."
                     )
                     .font(.caption2)
                     .foregroundStyle(.secondary)
@@ -190,7 +210,7 @@ struct SettingsPopover: View {
             SettingsFormRow(title: "Cloud understanding") {
                 VStack(alignment: .leading, spacing: 5) {
                     Toggle(
-                        "Send screenshots to Anthropic",
+                        "Send screenshots to \(manager.demoBrainProvider.vendor)",
                         isOn: Binding(
                             get: { manager.demoCloudConsented },
                             set: { manager.setDemoCloudConsented($0) }
@@ -202,8 +222,8 @@ struct SettingsPopover: View {
 
                     Text(
                         "When on, each command sends a screenshot of the shared window and "
-                            + "your spoken words to Anthropic to resolve the target. Turn off to "
-                            + "keep everything on device (understanding is more limited)."
+                            + "your spoken words to \(manager.demoBrainProvider.vendor) to resolve the "
+                            + "target. Turn off to keep everything on device (understanding is more limited)."
                     )
                     .font(.caption2)
                     .foregroundStyle(.secondary)

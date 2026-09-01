@@ -108,11 +108,48 @@ extension CaptureManager {
         presentationStore.demoCloudConsented = value
     }
 
-    /// Saves (or clears) the Anthropic API key that powers the conversational
-    /// brain, kept in a local file rather than the app bundle.
+    /// Switches which cloud model the brain uses, and refreshes the key state so
+    /// the UI reflects whether the newly selected provider has a key.
+    func setDemoBrainProvider(_ value: DemoBrainProvider) {
+        demoBrainProvider = value
+        presentationStore.demoBrainProvider = value
+        hasDemoBrainKey = currentBrainHasKey
+    }
+
+    /// Saves (or clears) the API key for the currently selected provider, in that
+    /// provider's Keychain item — never the app bundle.
     func setDemoBrainKey(_ value: String) {
-        AnthropicKeyStore.save(value)
-        hasDemoBrainKey = AnthropicKeyStore.hasKey
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        switch demoBrainProvider {
+        case .claude: AnthropicKeyStore.save(value)
+        case .openai: OpenAIKeyStore.save(value)
+        }
+        // Prime (or clear) the in-memory cache from the value we just have in hand,
+        // so this session never reads the Keychain back and never prompts for it.
+        cachedBrainKeys[demoBrainProvider] = trimmed.isEmpty ? nil : trimmed
+        hasDemoBrainKey = currentBrainHasKey
+    }
+
+    /// The selected provider's key. Cached in memory after the first read (or the
+    /// save that primed it), so a voice command never re-reads the Keychain secret
+    /// and never re-triggers the "wants to access key" prompt within a session.
+    var currentBrainKey: String? {
+        if let cached = cachedBrainKeys[demoBrainProvider] { return cached }
+        let key: String? =
+            switch demoBrainProvider {
+            case .claude: AnthropicKeyStore.key
+            case .openai: OpenAIKeyStore.key
+            }
+        if let key { cachedBrainKeys[demoBrainProvider] = key }
+        return key
+    }
+
+    /// Whether the selected provider has a key (attribute-only, no Keychain prompt).
+    var currentBrainHasKey: Bool {
+        switch demoBrainProvider {
+        case .claude: AnthropicKeyStore.hasKey
+        case .openai: OpenAIKeyStore.hasKey
+        }
     }
 
     /// Whether any smarter-understanding tier is available. On-device embeddings
@@ -423,7 +460,7 @@ extension CaptureManager {
     /// exact element snap (or a vision-coordinate fallback).
     private func resolveWithBrain(transcript: String) {
         guard let source = activeCaptureSource else { return }
-        guard let apiKey = AnthropicKeyStore.key else {
+        guard let apiKey = currentBrainKey else {
             AppLog.demoMode.error("Demo brain: no API key found")
             return
         }
@@ -585,6 +622,13 @@ extension CaptureManager {
         AppLog.demoMode.error(
             "Demo brain failed: \(brainError?.userMessage ?? error.localizedDescription, privacy: .public)"
         )
+        if case let .http(status, detail) = brainError {
+            // The provider's error envelope is server-generated (no user data or
+            // key), so log it publicly — it's what pinpoints quota vs auth vs param.
+            AppLog.demoMode.error(
+                "Demo brain HTTP \(status, privacy: .public) body: \(detail, privacy: .public)"
+            )
+        }
         let message = brainError?.userMessage ?? "Assistant unreachable"
         demoMode.setCaption(.acting(symbol: "exclamationmark.triangle.fill", text: message))
         if brainError?.isPersistent == true {

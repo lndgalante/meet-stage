@@ -59,6 +59,7 @@ final class CaptureManager: ObservableObject {
     @Published var demoZoomSize: PresentationSize
     @Published var demoSmartUnderstanding: Bool
     @Published var demoCloudConsented: Bool
+    @Published var demoBrainProvider: DemoBrainProvider
     @Published var shortcutPins: [Int: PinnedWindow] = [:]
     @Published var shortcutExclusions: Set<PinnedWindow> = []
 
@@ -124,8 +125,18 @@ final class CaptureManager: ObservableObject {
     var demoSpeechTranscriber: DemoSpeechListening?
     let demoEmbeddingMatcher = DemoEmbeddingMatcher()
     let demoModelResolver = DemoModelIntentResolver()
-    let demoBrain: DemoBrain = ClaudeDemoBrain()
+    // Both cloud brains are held so the presenter can switch providers to compare
+    // them; `demoBrain` selects the active one from `demoBrainProvider`.
+    let claudeDemoBrain = ClaudeDemoBrain()
+    let openAIDemoBrain = OpenAIDemoBrain()
+    var demoBrain: DemoBrain {
+        demoBrainProvider == .openai ? openAIDemoBrain : claudeDemoBrain
+    }
     var demoConversation = DemoConversation()
+    /// In-memory cache of each provider's API key, so a voice command doesn't
+    /// re-read the Keychain secret — and re-trigger the access prompt — every time.
+    /// Primed on save; read from the Keychain at most once per provider per launch.
+    var cachedBrainKeys: [DemoBrainProvider: String] = [:]
     var demoListeningStartTask: Task<Void, Never>?
     var demoIndexRefreshTask: Task<Void, Never>?
     var demoIndexWalkTask: Task<DemoElementIndex, Never>?
@@ -186,6 +197,10 @@ final class CaptureManager: ObservableObject {
         demoZoomSize = presentationStore.demoZoomSize
         demoSmartUnderstanding = presentationStore.demoSmartUnderstanding
         demoCloudConsented = presentationStore.demoCloudConsented
+        let demoBrainProvider = presentationStore.demoBrainProvider
+        self.demoBrainProvider = demoBrainProvider
+        hasDemoBrainKey =
+            demoBrainProvider == .openai ? OpenAIKeyStore.hasKey : AnthropicKeyStore.hasKey
         stageFrameStyle = presentationStore.stageFrameStyle
         stageFramePadding = presentationStore.stageFramePadding
         stageFrameCornerRadius = presentationStore.stageFrameCornerRadius

@@ -90,9 +90,12 @@ enum DemoBrainError: Error {
     var userMessage: String {
         switch self {
         case .missingKey: "Add an API key to use conversational commands"
-        case let .http(status, _):
+        case let .http(status, detail):
             switch status {
             case 401, 403: "Check your API key"
+            // A 429 whose body cites quota is out-of-credit/billing, not throttling.
+            case 429 where detail.localizedCaseInsensitiveContains("quota"):
+                "Out of API credits — check billing"
             case 429: "Rate limited — slow down"
             default: "Assistant error (\(status))"
             }
@@ -100,10 +103,39 @@ enum DemoBrainError: Error {
         }
     }
 
-    /// Whether the failure is persistent (should disable, not just blip).
+    /// Whether the failure is persistent (should disable, not just blip). Auth
+    /// failures and out-of-credit quota errors won't fix themselves on retry.
     var isPersistent: Bool {
-        if case let .http(status, _) = self { return status == 401 || status == 403 }
+        if case let .http(status, detail) = self {
+            if status == 401 || status == 403 { return true }
+            if status == 429, detail.localizedCaseInsensitiveContains("quota") { return true }
+        }
         return false
+    }
+}
+
+/// Which cloud model powers the conversational brain. The presenter can switch
+/// between them to compare grounding quality, latency, and cost on their own demo.
+enum DemoBrainProvider: String, CaseIterable, Identifiable, Sendable {
+    case claude
+    case openai
+
+    var id: Self { self }
+
+    /// Full model name, shown in the settings picker.
+    var label: String {
+        switch self {
+        case .claude: "Claude Haiku 4.5"
+        case .openai: "GPT-5.6 Luna"
+        }
+    }
+
+    /// Vendor name, for the API-key field placeholder and notes.
+    var vendor: String {
+        switch self {
+        case .claude: "Anthropic"
+        case .openai: "OpenAI"
+        }
     }
 }
 
