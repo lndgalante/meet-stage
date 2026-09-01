@@ -38,41 +38,24 @@ struct StageInteractionTests {
         #expect(window.frame.origin.y == initialOrigin.y - 13)
     }
 
-    @Test("The top grab handle owns its complete visible hit region")
-    @MainActor
-    func topGrabHandleWinsHitTesting() {
-        let hostingView = NSHostingView(
-            rootView: TopGrabHandle()
-                .frame(
-                    width: ControlWindowSizing.dragHandleHitWidth,
-                    height: ControlWindowSizing.grabRegionHeight
-                )
-        )
-        let window = NSWindow(
-            contentRect: NSRect(
-                x: 0,
-                y: 0,
-                width: ControlWindowSizing.dragHandleHitWidth,
-                height: ControlWindowSizing.grabRegionHeight
-            ),
-            styleMask: [.borderless],
-            backing: .buffered,
-            defer: false
-        )
-        window.contentView = hostingView
-        window.contentView?.layoutSubtreeIfNeeded()
+    @Test("The source rail uses one balanced inset and gap")
+    func sourceRailSpacingIsBalanced() {
+        let inset = ControlWindowSizing.sourceRailInset
 
-        #expect(hostingView.hitTest(NSPoint(x: 1, y: 1)) != nil)
+        #expect((ControlWindowSizing.panelWidth - ControlWindowSizing.sourceAreaWidth) / 2 == inset)
+        #expect(ControlMetrics.sourceTileSpacing == inset)
+        #expect(ControlMetrics.sourceTileVerticalInset == inset)
         #expect(
-            hostingView.hitTest(
-                NSPoint(x: hostingView.bounds.midX, y: hostingView.bounds.midY)
-            ) != nil
+            ControlMetrics.sourceTileWidth * ControlMetrics.visibleSourceTileCount
+                + ControlMetrics.sourceTileSpacing
+                    * (ControlMetrics.visibleSourceTileCount - 1)
+                == ControlWindowSizing.sourceAreaWidth
         )
         #expect(
-            hostingView.hitTest(
-                NSPoint(x: hostingView.bounds.maxX - 1, y: hostingView.bounds.maxY - 1)
-            ) != nil
+            ControlMetrics.sourceTileHeight + ControlMetrics.sourceTileVerticalInset * 2
+                == ControlWindowSizing.sourceRegionHeight
         )
+        #expect(ControlMetrics.sourceTileRadius + inset == ControlWindowSizing.panelCornerRadius)
     }
 
     @Test("The stage keeps standard macOS window semantics")

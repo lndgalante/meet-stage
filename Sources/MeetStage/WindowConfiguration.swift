@@ -2,23 +2,22 @@ import AppKit
 import SwiftUI
 
 enum ControlWindowSizing {
-    // The controller is one cohesive panel: a top drag grip, the source row, a
-    // compact utility row split three-per-side around a center notch, and a
-    // circular Demo Mode button cradled by the panel's lower edge.
+    // The controller is one cohesive panel: the source row, a compact utility
+    // row split three-per-side around a center notch, and a circular Demo Mode
+    // button cradled by the panel's lower edge.
     static let panelWidth: CGFloat = 262
     static let panelCornerRadius: CGFloat = 15
 
-    // Vertical bands that stack inside the panel — kept trim so the widget reads
-    // slim rather than chunky.
-    static let grabRegionHeight: CGFloat = 10
-    static let sourceRegionHeight: CGFloat = 54
+    // The source rail consumes the former grip region, keeping the panel's full
+    // height useful without increasing the widget's footprint.
+    static let sourceRegionHeight: CGFloat = 64
     static let effectBarHeight: CGFloat = 36
-    static let panelBodyHeight =
-        grabRegionHeight + sourceRegionHeight + effectBarHeight
+    static let panelBodyHeight = sourceRegionHeight + effectBarHeight
 
-    /// The source row sits just 6pt inside each panel edge so the tiles read as
-    /// filling the widget rather than floating in a margin.
-    static let sourceAreaWidth: CGFloat = 250
+    /// One shared inset governs the rail's outer padding and the gaps between
+    /// source cards, giving the picker a single, legible spacing rhythm.
+    static let sourceRailInset: CGFloat = 6
+    static let sourceAreaWidth = panelWidth - sourceRailInset * 2
     static let contentWidth = sourceAreaWidth
 
     /// Hero (Demo Mode) geometry. Its center sits slightly above the panel's
@@ -47,8 +46,6 @@ enum ControlWindowSizing {
     // Absolute positions inside the window (panel is inset by the shadow margin).
     static let panelTop = shadowMargin
     static let heroCenterYAbsolute = shadowMargin + heroCenterY
-
-    static let dragHandleHitWidth: CGFloat = 96
 }
 
 /// Applies AppKit-only window behavior that SwiftUI scenes cannot express.

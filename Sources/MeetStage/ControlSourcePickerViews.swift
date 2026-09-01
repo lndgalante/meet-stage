@@ -40,9 +40,9 @@ struct SourceScrollEdgeShadow: View {
             Spacer(minLength: 0)
             chevron(systemName: "chevron.compact.right", strength: trailingStrength)
         }
-        .padding(.horizontal, 5)
-        // Center on the tile row (top-aligned within the taller viewport), not
-        // on the extra height reserved for the overhanging app-icon badges.
+        .padding(.horizontal, ControlMetrics.outerPadding)
+        .padding(.vertical, ControlMetrics.sourceTileVerticalInset)
+        // Align the edge affordances to the rail's shared six-point inset.
         .frame(maxHeight: .infinity, alignment: .top)
     }
 

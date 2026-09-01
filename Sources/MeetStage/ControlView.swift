@@ -1,19 +1,18 @@
 import SwiftUI
 
 enum ControlMetrics {
-    static let outerPadding: CGFloat = 5
-    static let sourceTileSpacing: CGFloat = 4
-    static let sourceTileHorizontalInset: CGFloat = 1
+    static let outerPadding = ControlWindowSizing.sourceRailInset
+    static let sourceTileSpacing = ControlWindowSizing.sourceRailInset
     static let visibleSourceTileCount: CGFloat = 4
     static let sourceTileWidth: CGFloat =
         (ControlWindowSizing.sourceAreaWidth
-            - sourceTileHorizontalInset * 2
             - sourceTileSpacing * (visibleSourceTileCount - 1))
         / visibleSourceTileCount
-    static let sourceTileHeight: CGFloat = 44
-    static let sourceTileVerticalInset: CGFloat = 1
-    static let sourceViewportHeight: CGFloat = 46
-    static let sourceTileRadius: CGFloat = 8
+    static let sourceTileVerticalInset = ControlWindowSizing.sourceRailInset
+    static let sourceViewportHeight = ControlWindowSizing.sourceRegionHeight
+    static let sourceTileHeight =
+        sourceViewportHeight - sourceTileVerticalInset * 2
+    static let sourceTileRadius: CGFloat = 9
     static let sourcePreviewWidth = sourceTileWidth
     static let sourcePreviewHeight = sourceTileHeight
     static let sourceBadgeIconSize: CGFloat = 12
@@ -24,8 +23,6 @@ enum ControlMetrics {
     // thumbnail.
     static let sourceScrollFadeWidth: CGFloat = 22
     static let sourceScrollCoordinateSpace = "source-scroll"
-    static let dragHandleWidth: CGFloat = 38
-    static let dragHandleHeight: CGFloat = 3
     static let controlBarButtonHeight: CGFloat = 30
     static let controlBarActionSize: CGFloat = 28
     static let controlBarActionCornerRadius: CGFloat = 9.5
@@ -129,9 +126,6 @@ struct ControlView: View {
 
     private var panelContent: some View {
         VStack(spacing: 0) {
-            topGrabHandle
-                .frame(height: ControlWindowSizing.grabRegionHeight)
-
             sourceRow
                 .frame(height: ControlWindowSizing.sourceRegionHeight)
 
@@ -276,10 +270,6 @@ struct ControlView: View {
             }
     }
 
-    private var topGrabHandle: some View {
-        TopGrabHandle()
-    }
-
     private var annotationControlHelp: String {
         if manager.isAnnotating {
             return "Draw temporary ink over the selected app window"
@@ -351,7 +341,6 @@ struct ControlView: View {
                             .id(source.id)
                     }
                 }
-                .padding(.horizontal, ControlMetrics.sourceTileHorizontalInset)
                 .padding(.vertical, ControlMetrics.sourceTileVerticalInset)
                 .background {
                     GeometryReader { geometry in
@@ -480,7 +469,7 @@ struct ControlView: View {
         }
         .padding(.leading, 9)
         .padding(.trailing, 3)
-        .frame(height: 44)
+        .frame(height: ControlMetrics.sourceTileHeight)
         .background(
             ControlPalette.warning.opacity(0.10),
             in: RoundedRectangle(cornerRadius: 10, style: .continuous)
@@ -491,35 +480,6 @@ struct ControlView: View {
         }
     }
 
-}
-
-/// A grab affordance at the top of the panel: a short pill in a full-width hit
-/// strip, so the panel reads like a draggable sheet with a clear handle.
-struct TopGrabHandle: View {
-    var body: some View {
-        ZStack {
-            Color.white.opacity(0.001)
-
-            Capsule(style: .continuous)
-                .fill(
-                    LinearGradient(
-                        colors: [Color.white.opacity(0.38), Color.white.opacity(0.20)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                .frame(
-                    width: ControlMetrics.dragHandleWidth,
-                    height: ControlMetrics.dragHandleHeight
-                )
-        }
-        .frame(maxWidth: .infinity)
-        .frame(height: ControlWindowSizing.grabRegionHeight)
-        .contentShape(Rectangle())
-        .gesture(WindowDragGesture())
-        .help("Drag to move BetterMeets")
-        .accessibilityHidden(true)
-    }
 }
 
 /// The controller's single rounded surface: a rounded rectangle whose bottom
