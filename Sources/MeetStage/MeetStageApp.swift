@@ -5,6 +5,7 @@ import SwiftUI
 struct MeetStageApp: App {
     @NSApplicationDelegateAdaptor(BetterMeetsAppDelegate.self) private var appDelegate
     @StateObject private var captureManager = CaptureManager.shared
+    @StateObject private var windowState = BetterMeetsWindowState.shared
 
     init() {
         guard let iconURL = Bundle.main.url(forResource: "BetterMeets", withExtension: "icns"),
@@ -98,7 +99,7 @@ struct MeetStageApp: App {
                 Button(captureManager.annotationsEnabled ? "Turn Off Annotations" : "Turn On Annotations") {
                     captureManager.toggleAnnotations()
                 }
-                .keyboardShortcut("a", modifiers: [.command, .shift])
+                .keyboardShortcut("a", modifiers: [.command, .option])
 
                 Button(
                     captureManager.highlightsMouseClicks
@@ -132,14 +133,16 @@ struct MeetStageApp: App {
             }
 
             CommandGroup(before: .windowList) {
-                Button(BetterMeetsWindowActions.controllerMenuTitle) {
+                Button(windowState.controllerMenuTitle) {
                     BetterMeetsWindowActions.toggleController()
                 }
-                .keyboardShortcut("c", modifiers: [.command, .shift])
+                .keyboardShortcut("c", modifiers: [.command, .control])
 
                 Button("Minimize Controller") {
                     BetterMeetsWindowActions.minimizeController()
                 }
+                .keyboardShortcut("m", modifiers: [.command, .control])
+                .disabled(!windowState.controllerIsVisible)
 
                 Button("Show Demo Stage") {
                     BetterMeetsWindowActions.showStage()
@@ -150,8 +153,9 @@ struct MeetStageApp: App {
                     BetterMeetsWindowActions.minimizeStage()
                 }
                 .keyboardShortcut("m", modifiers: [.command, .option])
+                .disabled(!windowState.stageCanMinimize)
 
-                Button("Toggle Demo Stage Full Screen") {
+                Button(windowState.stageFullScreenMenuTitle) {
                     BetterMeetsWindowActions.toggleStageFullScreen()
                 }
                 .keyboardShortcut("f", modifiers: [.command, .control, .option])

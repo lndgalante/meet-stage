@@ -10,7 +10,8 @@
 "Close Demo Stage" = "Close Demo Stage";
 "Enter Full Screen" = "Enter Full Screen";
 "Exit Full Screen" = "Exit Full Screen";
-"Toggle Demo Stage Full Screen" = "Toggle Demo Stage Full Screen";
+"Enter Demo Stage Full Screen" = "Enter Demo Stage Full Screen";
+"Exit Demo Stage Full Screen" = "Exit Demo Stage Full Screen";
 "BetterMeets Help" = "BetterMeets Help";
 
 /* Controller */

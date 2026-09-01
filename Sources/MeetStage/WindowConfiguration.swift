@@ -140,6 +140,7 @@ struct WindowConfigurator: NSViewRepresentable {
             if !NSScreen.screens.contains(where: { $0.visibleFrame.intersects(window.frame) }) {
                 window.center()
             }
+            BetterMeetsWindowState.shared.refresh()
 
         case let .stage(aspectRatio):
             configureStage(window, aspectRatio: aspectRatio, coordinator: coordinator)
@@ -178,6 +179,7 @@ struct WindowConfigurator: NSViewRepresentable {
         window.collectionBehavior.formUnion([.canJoinAllSpaces, .fullScreenPrimary])
         coordinator.stageActionTarget.window = window
         installStageDragSurface(in: window, coordinator: coordinator)
+        BetterMeetsWindowState.shared.refresh()
 
         guard let previousAspectRatio = coordinator.lastStageAspectRatio else {
             coordinator.lastStageAspectRatio = safeAspectRatio

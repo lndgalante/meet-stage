@@ -339,9 +339,17 @@ struct KeystrokeBadge: View {
     let size: PresentationSize
     let appearance: KeystrokeAppearance
 
+    @Environment(\.legibilityWeight) private var legibilityWeight
+
     var body: some View {
         Text(label)
-            .font(.system(size: metrics.fontSize, weight: .semibold, design: .rounded))
+            .font(
+                .system(
+                    size: metrics.fontSize,
+                    weight: legibilityWeight == .bold ? .bold : .semibold,
+                    design: .rounded
+                )
+            )
             .foregroundStyle(foregroundColor)
             .padding(.horizontal, metrics.horizontalPadding)
             .padding(.vertical, metrics.verticalPadding)

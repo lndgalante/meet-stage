@@ -68,7 +68,7 @@ struct ControlBarButton: View {
                     cornerRadius: ControlMetrics.controlBarActionCornerRadius,
                     style: .continuous
                 )
-                    .fill(buttonBackground)
+                .fill(buttonBackground)
 
                 ZStack {
                     Image(systemName: systemImage)
@@ -152,7 +152,7 @@ struct ControlBarButton: View {
         if let isPresented {
             return isPresented ? "Open" : "Closed"
         }
-        guard let isOn else { return "Coming soon" }
+        guard let isOn else { return "Available" }
         if showsPermissionWarning { return "Permission required" }
         return isOn ? "On" : "Off"
     }

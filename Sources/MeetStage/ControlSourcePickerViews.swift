@@ -61,6 +61,8 @@ struct EmptyShortcutSlot: View {
     let pinnedWindowDescription: String?
     let shortcutModifier: GlobalShortcutModifier
 
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+
     private var isUnavailablePin: Bool { pinnedWindowDescription != nil }
 
     var body: some View {
@@ -71,9 +73,16 @@ struct EmptyShortcutSlot: View {
             RoundedRectangle(cornerRadius: ControlMetrics.sourceTileRadius, style: .continuous)
                 .strokeBorder(
                     isUnavailablePin
-                        ? ControlPalette.warning.opacity(0.42)
-                        : Color.white.opacity(0.11),
-                    style: StrokeStyle(lineWidth: 1, dash: [3, 3])
+                        ? ControlPalette.warning.opacity(
+                            colorSchemeContrast == .increased ? 0.78 : 0.42
+                        )
+                        : Color.white.opacity(
+                            colorSchemeContrast == .increased ? 0.38 : 0.11
+                        ),
+                    style: StrokeStyle(
+                        lineWidth: colorSchemeContrast == .increased ? 1.5 : 1,
+                        dash: [3, 3]
+                    )
                 )
 
             Text(shortcutModifier.displayName(for: slot))
@@ -133,6 +142,7 @@ struct CompactWindowButton: View {
     @State private var hoverTask: Task<Void, Never>?
     @State private var isHovering = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
     var body: some View {
         Button(action: action) {
@@ -312,11 +322,14 @@ struct CompactWindowButton: View {
         if isPending { return ControlPalette.warning }
         if isPaused { return ControlPalette.warning }
         if isSelected { return ControlPalette.accent }
+        if colorSchemeContrast == .increased {
+            return .white.opacity(isHovering ? 0.58 : 0.40)
+        }
         return .white.opacity(isHovering ? 0.26 : 0.12)
     }
 
     private var borderWidth: CGFloat {
-        isPending || isSelected ? 1.5 : 1
+        isPending || isSelected || colorSchemeContrast == .increased ? 1.5 : 1
     }
 
     private var visualState: Int {
@@ -443,11 +456,11 @@ private struct WindowHoverPreview: View {
                             ? shortcutModifier.displayName(for: shortcut)
                             : "\(shortcutModifier.displayName(for: shortcut)) unavailable"
                     )
-                        .font(.caption.bold().monospaced())
-                        .foregroundStyle(isShortcutAvailable ? Color.primary : Color.red)
-                        .padding(.horizontal, 7)
-                        .padding(.vertical, 4)
-                        .background(.quaternary, in: Capsule())
+                    .font(.caption.bold().monospaced())
+                    .foregroundStyle(isShortcutAvailable ? Color.primary : Color.red)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .background(.quaternary, in: Capsule())
                 } else {
                     Text("Right-click to pin")
                         .font(.caption)

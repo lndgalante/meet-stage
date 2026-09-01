@@ -37,10 +37,10 @@ struct BetterMeetsSettingsView: View {
     @State private var logoImportError: String?
     @State private var brainKeyDraft = ""
     @State private var isConfirmingKeyRemoval = false
-    /// Popover content is capped to this height and scrolls beyond it, so a tall
+    /// Settings content is capped to this height and scrolls beyond it, so a tall
     /// tab (Demo) never overflows the screen above the button and overlaps rows.
     private static let maxTabContentHeight: CGFloat = 560
-    // Start at the cap so the popover opens correctly sized for a tall tab, then
+    // Start at the cap so the window opens correctly sized for a tall tab, then
     // settles to the exact measured height (avoids a first-frame zero-height pop).
     @State private var tabContentHeight: CGFloat = maxTabContentHeight
 
@@ -59,7 +59,7 @@ struct BetterMeetsSettingsView: View {
             .pickerStyle(.segmented)
             .frame(width: 500)
 
-            // Some tabs (Demo especially) are taller than the popover can be on
+            // Some tabs (Demo especially) are taller than the window can be on
             // shorter screens; scroll past the cap rather than clip or overlap
             // the last rows. Below the cap the popover fits the content exactly.
             ScrollView(.vertical, showsIndicators: false) {
@@ -82,7 +82,7 @@ struct BetterMeetsSettingsView: View {
                     }
                 }
                 // Keep the content clear of the scroll edges, and measure its
-                // natural height so the popover fits it exactly until the cap.
+                // natural height so the window fits it exactly until the cap.
                 .padding(.horizontal, 2)
                 .padding(.bottom, 2)
                 .onGeometryChange(for: CGFloat.self) {
@@ -720,6 +720,10 @@ private struct PresentationColorPicker: View {
     let selection: PresentationColor
     let onSelect: (PresentationColor) -> Void
 
+    @State private var hoveredColor: PresentationColor?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+
     var body: some View {
         HStack(spacing: 7) {
             ForEach(PresentationColor.allCases) { color in
@@ -748,15 +752,31 @@ private struct PresentationColorPicker: View {
                         }
                     }
                     .frame(width: 30, height: 30)
+                    .background(
+                        Color.primary.opacity(hoverOpacity(for: color)),
+                        in: Circle()
+                    )
                     .contentShape(Circle())
                 }
                 .buttonStyle(ColorSwatchButtonStyle())
+                .onHover { isHovering in
+                    hoveredColor = isHovering ? color : nil
+                }
                 .help(color.label)
                 .accessibilityLabel(color.label)
                 .accessibilityValue(selection == color ? "Selected" : "Not selected")
                 .accessibilityAddTraits(selection == color ? .isSelected : [])
             }
         }
+        .animation(
+            reduceMotion ? nil : .easeOut(duration: 0.12),
+            value: hoveredColor
+        )
+    }
+
+    private func hoverOpacity(for color: PresentationColor) -> Double {
+        guard hoveredColor == color else { return 0 }
+        return colorSchemeContrast == .increased ? 0.16 : 0.08
     }
 }
 

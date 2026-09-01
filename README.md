@@ -54,7 +54,7 @@ a live source returns focus to that source app so drawing can begin immediately.
 When a stroke closes into a rough circle or four-sided box, releasing the pointer
 snaps it to a true circle or axis-aligned rectangle; other strokes remain
 freehand. Each stroke fades automatically after the delay selected in Settings.
-The tabbed Settings popover also lets you choose the annotation color,
+The tabbed Settings window also lets you choose the annotation color,
 click-ripple color and size, and the size and light or dark appearance of
 keystroke badges. Press
 Escape, choose Done, or click the pencil again to leave annotation mode. Click

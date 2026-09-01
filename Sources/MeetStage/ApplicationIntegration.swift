@@ -5,12 +5,79 @@ enum BetterMeetsWindowID {
     static let stage = NSUserInterfaceItemIdentifier("BetterMeets.stage")
 }
 
+/// Observable window state for command titles and validation. SwiftUI does not
+/// otherwise know when AppKit-only actions hide, minimize, or full-screen one
+/// of the app's windows.
 @MainActor
-enum BetterMeetsWindowActions {
-    static var controllerMenuTitle: String {
-        controllerWindow?.isVisible == true ? "Hide Controller" : "Show Controller"
+final class BetterMeetsWindowState: ObservableObject {
+    static let shared = BetterMeetsWindowState()
+
+    @Published private(set) var controllerIsVisible = false
+    @Published private(set) var stageCanMinimize = false
+    @Published private(set) var stageIsFullScreen = false
+
+    private var notificationTokens: [NSObjectProtocol] = []
+
+    private init(center: NotificationCenter = .default) {
+        let notifications: [Notification.Name] = [
+            NSWindow.didBecomeKeyNotification,
+            NSWindow.didResignKeyNotification,
+            NSWindow.didMiniaturizeNotification,
+            NSWindow.didDeminiaturizeNotification,
+            NSWindow.didEnterFullScreenNotification,
+            NSWindow.didExitFullScreenNotification,
+            NSWindow.willCloseNotification
+        ]
+
+        notificationTokens = notifications.map { name in
+            center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    self?.refresh()
+                }
+            }
+        }
     }
 
+    var controllerMenuTitle: String {
+        controllerIsVisible
+            ? String(localized: "Hide Controller")
+            : String(localized: "Show Controller")
+    }
+
+    var stageFullScreenMenuTitle: String {
+        stageIsFullScreen
+            ? String(localized: "Exit Demo Stage Full Screen")
+            : String(localized: "Enter Demo Stage Full Screen")
+    }
+
+    func refresh() {
+        let controller = BetterMeetsWindowActions.controllerWindow
+        let stage = BetterMeetsWindowActions.stageWindow
+        let stageIsFullScreen = stage?.styleMask.contains(.fullScreen) == true
+        update(
+            \.controllerIsVisible,
+            to: controller?.isVisible == true && controller?.isMiniaturized == false
+        )
+        update(
+            \.stageCanMinimize,
+            to: stage?.isVisible == true
+                && stage?.isMiniaturized == false
+                && !stageIsFullScreen
+        )
+        update(\.stageIsFullScreen, to: stageIsFullScreen)
+    }
+
+    private func update(
+        _ property: ReferenceWritableKeyPath<BetterMeetsWindowState, Bool>,
+        to newValue: Bool
+    ) {
+        guard self[keyPath: property] != newValue else { return }
+        self[keyPath: property] = newValue
+    }
+}
+
+@MainActor
+enum BetterMeetsWindowActions {
     static func showController() {
         showWindow(identifier: BetterMeetsWindowID.control)
     }
@@ -25,14 +92,17 @@ enum BetterMeetsWindowActions {
         } else {
             showController()
         }
+        BetterMeetsWindowState.shared.refresh()
     }
 
     static func hideController() {
         controllerWindow?.orderOut(nil)
+        BetterMeetsWindowState.shared.refresh()
     }
 
     static func minimizeController() {
         controllerWindow?.miniaturize(nil)
+        BetterMeetsWindowState.shared.refresh()
     }
 
     static func showStage() {
@@ -41,16 +111,19 @@ enum BetterMeetsWindowActions {
 
     static func minimizeStage() {
         stageWindow?.miniaturize(nil)
+        BetterMeetsWindowState.shared.refresh()
     }
 
     static func closeStage() {
         stageWindow?.performClose(nil)
+        BetterMeetsWindowState.shared.refresh()
     }
 
     static func toggleStageFullScreen() {
         guard let stageWindow else { return }
         stageWindow.makeKeyAndOrderFront(nil)
         stageWindow.toggleFullScreen(nil)
+        BetterMeetsWindowState.shared.refresh()
     }
 
     static func openHelp() {
@@ -78,6 +151,7 @@ enum BetterMeetsWindowActions {
         }
         window.makeKeyAndOrderFront(nil)
         NSApp.activate()
+        BetterMeetsWindowState.shared.refresh()
     }
 
     private static func window(identifier: NSUserInterfaceItemIdentifier) -> NSWindow? {
@@ -144,7 +218,8 @@ final class StageWindowActionTarget: NSObject {
         )
         minimizeItem.target = self
 
-        let fullScreenTitle = window?.styleMask.contains(.fullScreen) == true
+        let fullScreenTitle =
+            window?.styleMask.contains(.fullScreen) == true
             ? String(localized: "Exit Full Screen")
             : String(localized: "Enter Full Screen")
         let fullScreenItem = menu.addItem(

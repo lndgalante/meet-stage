@@ -424,6 +424,10 @@ struct ControlView: View {
             .onChange(of: manager.shortcutWindowIDs) { _, _ in
                 scrollToFocusedSource(using: proxy)
             }
+            .onChange(of: focusedSourceID) { _, focusedID in
+                guard let focusedID else { return }
+                scrollToSource(focusedID, using: proxy)
+            }
         }
     }
 
@@ -477,11 +481,15 @@ struct ControlView: View {
 
     private func scrollToFocusedSource(using proxy: ScrollViewProxy) {
         guard let focusedID = manager.pendingWindowID ?? manager.selectedWindowID else { return }
+        scrollToSource(focusedID, using: proxy)
+    }
+
+    private func scrollToSource(_ sourceID: CGWindowID, using proxy: ScrollViewProxy) {
         if reduceMotion {
-            proxy.scrollTo(focusedID, anchor: .center)
+            proxy.scrollTo(sourceID, anchor: .center)
         } else {
             withAnimation(.spring(response: 0.28, dampingFraction: 1)) {
-                proxy.scrollTo(focusedID, anchor: .center)
+                proxy.scrollTo(sourceID, anchor: .center)
             }
         }
     }
@@ -492,7 +500,8 @@ struct ControlView: View {
         guard !sourceIDs.isEmpty else { return }
 
         let currentID = focusedSourceID ?? manager.selectedWindowID
-        let currentIndex = currentID.flatMap { sourceIDs.firstIndex(of: $0) }
+        let currentIndex =
+            currentID.flatMap { sourceIDs.firstIndex(of: $0) }
             ?? (direction == .right ? -1 : sourceIDs.count)
         let offset = direction == .right ? 1 : -1
         let nextIndex = min(max(currentIndex + offset, 0), sourceIDs.count - 1)
