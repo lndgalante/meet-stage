@@ -340,11 +340,11 @@ extension CaptureManager {
         demoRecognitionGeneration &+= 1
         demoRecognitionTask?.cancel()
         demoRecognitionTask = nil
-        streamOutput.disarmAnalyzableFrame()
     }
 
     func rebuildDemoIndex() async {
         guard demoModeEnabled, isLive, isSelectedSourceFocused,
+            let source = activeCaptureSource,
             let context = demoSourceContext(),
             demoIndexWalkTask == nil
         else { return }
@@ -380,24 +380,24 @@ extension CaptureManager {
         demoIndexWalkTask = nil
         demoMode.elementIndex = index
         if index.elements.count < CaptureManager.demoOCRThreshold {
-            streamOutput.armAnalyzableFrame()
+            startDemoRecognition(
+                source: source,
+                windowID: windowID,
+                fallbackFrame: fallback,
+                generation: generation
+            )
         }
     }
 
-    func handleDemoAnalyzableFrame(
-        _ buffer: DemoImageBuffer,
-        geometry: CaptureFrameGeometry
+    private func startDemoRecognition(
+        source: WindowSource,
+        windowID: CGWindowID,
+        fallbackFrame: CGRect,
+        generation: Int
     ) {
-        guard demoModeEnabled, isLive, isSelectedSourceFocused,
-            let context = demoSourceContext(),
-            demoRecognitionTask == nil
-        else { return }
-
-        let generation = demoIndexGeneration
+        guard demoRecognitionTask == nil else { return }
         demoRecognitionGeneration &+= 1
         let recognitionGeneration = demoRecognitionGeneration
-        let windowID = context.windowID
-        let fallback = context.fallbackFrame
 
         demoRecognitionTask = Task { [weak self] in
             guard let self else { return }
@@ -406,10 +406,18 @@ extension CaptureManager {
                     demoRecognitionTask = nil
                 }
             }
-            let frame = WindowFrameResolver.currentFrame(for: windowID, fallback: fallback)
+            guard
+                let image = await DemoWindowScreenshot.captureImage(
+                    source: source,
+                    maximumEdge: DemoTextRecognizer.maximumImageEdge
+                )
+            else { return }
+            let frame = WindowFrameResolver.currentFrame(
+                for: windowID,
+                fallback: fallbackFrame
+            )
             let recognized = await DemoTextRecognizer.recognize(
-                buffer: buffer,
-                geometry: geometry,
+                image: image,
                 sourceFrame: frame,
                 generation: generation
             )
@@ -651,7 +659,6 @@ extension CaptureManager {
         // lead-in, so a moved window or a cancelled task never clicks stale
         // coordinates or the wrong window.
         let windowID = context.windowID
-        let fallbackFrame = context.fallbackFrame
         let normalizedCenter = command.element.normalizedCenter
         demoActionTask?.cancel()
         demoActionTask = Task { [weak self] in
@@ -664,7 +671,6 @@ extension CaptureManager {
             guard
                 let target = resolveClickTarget(
                     windowID: windowID,
-                    fallbackFrame: fallbackFrame,
                     normalizedCenter: normalizedCenter
                 )
             else { return }
@@ -694,8 +700,12 @@ extension CaptureManager {
     }
 
     func isDemoActuationValid(windowID: CGWindowID) -> Bool {
-        demoModeEnabled && isLive && isSelectedSourceFocused
-            && demoSourceContext()?.windowID == windowID
+        guard demoModeEnabled, isLive,
+            let source = activeCaptureSource,
+            source.id == windowID,
+            demoSourceContext()?.windowID == windowID
+        else { return false }
+        return SourceWindowFocusValidator.isExactlyFocused(source)
     }
 
     /// Re-resolves the click point from the live window frame at actuation time,
@@ -703,14 +713,13 @@ extension CaptureManager {
     /// window, the window is gone, or the target lies off every display.
     func resolveClickTarget(
         windowID: CGWindowID,
-        fallbackFrame: CGRect,
         normalizedCenter: NormalizedWindowPoint
     ) -> CGPoint? {
-        guard demoModeEnabled, isLive, isSelectedSourceFocused,
-            demoSourceContext()?.windowID == windowID
-        else { return nil }
+        guard isDemoActuationValid(windowID: windowID) else { return nil }
 
-        let frame = WindowFrameResolver.currentFrame(for: windowID, fallback: fallbackFrame)
+        guard let frame = WindowFrameResolver.currentSnapshot(for: windowID)?.frame else {
+            return nil
+        }
         guard frame.width > 0, frame.height > 0 else { return nil }
         let target = CGPoint(
             x: frame.minX + normalizedCenter.x * frame.width,

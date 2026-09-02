@@ -45,10 +45,11 @@ to follow while keeping the parts that do not require macOS services testable.
 - `GlobalHotKeyManager` owns Carbon resources and reports registration failures
   instead of changing capture state itself.
 - `SampleBufferRenderer` is the only cross-thread rendering bridge. Its lock
-  protects renderer state; `StageVideoView` performs layer work on the main
-  queue. Capture dimensions retain smaller sources and cap the longest edge at
-  2560 pixels so 4K/5K windows do not consume bandwidth the shared stage cannot
-  usefully expose.
+  protects renderer state; the display renderer consumes sample buffers directly
+  on ScreenCaptureKit's serial callback queue, while `StageVideoView` receives
+  only lightweight geometry and animation work on the main queue. Capture
+  dimensions retain smaller sources and cap the longest edge at 2560 pixels so
+  4K/5K windows do not consume bandwidth the shared stage cannot usefully expose.
 - `WorkspaceMonitor` translates AppKit lifecycle notifications into focus and
   source-list events while `WorkspaceObservationBag` owns the notification
   tokens.
@@ -125,10 +126,11 @@ to follow while keeping the parts that do not require macOS services testable.
   plus the exact editable AX element are revalidated before every character.
   Highlights dual-render like every other effect (source overlay plus
   Demo Stage); the caption HUD renders only on the presenter's non-captured
-  overlay. Clicking/typing is opt-in via the voice-actions setting (default
-  `Highlight only`). Actuation requires Accessibility trust; the microphone is a
-  hard requirement re-gated against live authorization at launch, exactly like
-  keystroke highlighting.
+  overlay. Clicking/typing is controlled by the voice-actions setting (default
+  `Highlight and click`) and still requires an explicit spoken action command.
+  Actuation requires Accessibility trust; the microphone is a hard requirement
+  re-gated against live authorization at launch, exactly like keystroke
+  highlighting.
 - `StageFrameLayout` preserves the source aspect ratio inside configurable
   padding. `StageFrameBackdrop` and `StageView` own the visual composition:
   backdrop, blur, rounded source surface, layered shadow, auto-zoom transform,
@@ -154,16 +156,18 @@ idle -> switching -> capturing
 ```
 
 Selecting a source does not mark it live. `CaptureManager` waits for a complete
-ScreenCaptureKit frame before publishing the new selected window. Selection and
-render generations reject stale asynchronous work after a stop or rapid source
-change. Repeating the current selection while capturing pauses it without
-discarding the selected window; repeating it while paused re-enters `switching`
-and waits for a fresh first frame. Keep this first-frame invariant when changing
-capture orchestration.
+ScreenCaptureKit frame before publishing the new selected window. Source changes
+retire the old stream, drain its serial callback queue, and create a new stream;
+the callback stream identity plus selection and render generations reject stale
+asynchronous work after a stop or rapid source change. Repeating the current
+selection while capturing pauses it without discarding the selected window;
+repeating it while paused re-enters `switching` and waits for a fresh first
+frame. Keep this first-frame invariant when changing capture orchestration.
 
 ## Shortcut invariants
 
-- Only Option+1 through Option+9 are supported.
+- Source slots use 1 through 9 with the presenter-selected global modifier:
+  Command–Option, Control–Command, Command–Shift, or Disabled.
 - A saved pin reserves its slot even when its window is unavailable.
 - An ambiguous saved identity never guesses between matching windows.
 - Automatic assignments remain stable while their windows stay eligible.
@@ -178,22 +182,28 @@ same commit. Do not spread shortcut branches through `CaptureManager` or views.
 
 `swift test` exercises source eligibility, shortcut reconciliation, preference
 compatibility, presentation and annotation policies, auto-zoom and frame
-geometry, and AppKit window interaction. ScreenCaptureKit streams, mouse event
-monitoring, Carbon hotkeys, permission prompts, and end-to-end window-server
-behavior require the packaged app and are
-verified manually with the checklist in `README.md`.
+geometry, exact-window actuation policy, capture-frame generation acceptance,
+and AppKit window interaction. ScreenCaptureKit streams, mouse event monitoring,
+Carbon hotkeys, permission prompts, and end-to-end window-server behavior
+require the packaged app and are verified manually with the checklist in
+`README.md`.
 
 See [TESTING.md](TESTING.md) for the test-layer map, contributor conventions,
 and the manual verification matrix for platform-only behavior.
 
 `.github/workflows/ci.yml` enforces strict Swift formatting, validates metadata
 and shell syntax, runs the complete test suite with warnings as errors and
-coverage reporting, compiles an optimized build, then packages and verifies the
-signed app bundle and its resources on every push and pull request.
+coverage reporting with dedicated floors for capture-safety policy and the app
+target, compiles an optimized build, then packages and verifies the signed app
+bundle, embedded Sparkle framework, and resources on every push and pull request.
 
 The `build-app.sh` and `dev-app.sh` entry points share
 `scripts/build-and-package.sh`. The helper derives the signing identifier from
 `Resources/Info.plist`; keep that metadata stable so macOS preserves Screen
-Recording consent. Local builds use a stable ad-hoc designated requirement.
-Developer ID builds enable the hardened runtime and trusted timestamp, then
-`scripts/notarize-app.sh` performs submission, stapling, and Gatekeeper checks.
+Recording consent. Local builds use a stable ad-hoc designated requirement and
+a development-only library-validation exception so the teamless ad-hoc process
+can load the embedded Sparkle framework. Developer ID builds retain library
+validation, enable the hardened runtime and trusted timestamp, then
+`scripts/notarize-app.sh` performs submission, records the notarization log,
+staples, and runs Gatekeeper checks. Public builds inject the HTTPS Sparkle feed
+and EdDSA public key at packaging time; local builds leave updating inert.

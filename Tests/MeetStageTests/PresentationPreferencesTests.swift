@@ -28,6 +28,20 @@ struct PresentationPreferencesTests {
         #expect(manager.stageFrameShadow == StageFrameAppearance.defaultShadow)
         #expect(manager.autoZoomSize == .medium)
         #expect(manager.stageLogo == nil)
+        #expect(manager.demoVoiceActions == .highlightAndClick)
+    }
+
+    @Test("Preserves an explicit highlight-only voice action preference")
+    @MainActor
+    func persistsHighlightOnlyVoiceActions() throws {
+        let fixture = try PreferencesFixture()
+        defer { fixture.dispose() }
+
+        let manager = fixture.makeManager()
+        manager.setDemoVoiceActions(.highlightOnly)
+
+        let restoredManager = fixture.makeManager()
+        #expect(restoredManager.demoVoiceActions == .highlightOnly)
     }
 
     @Test("Persists every presentation appearance setting")

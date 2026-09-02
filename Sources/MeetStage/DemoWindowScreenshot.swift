@@ -18,6 +18,20 @@ enum DemoWindowScreenshot {
 
     @MainActor
     static func capture(source: WindowSource) async -> Capture? {
+        guard let image = await captureImage(source: source, maximumEdge: maximumEdge),
+            let jpeg = jpegData(from: image)
+        else { return nil }
+        return Capture(
+            base64JPEG: jpeg.base64EncodedString(),
+            pixelSize: CGSize(width: image.width, height: image.height)
+        )
+    }
+
+    @MainActor
+    static func captureImage(
+        source: WindowSource,
+        maximumEdge: CGFloat
+    ) async -> CGImage? {
         let frame = WindowFrameResolver.currentFrame(
             for: source.id,
             fallback: source.window.frame
@@ -44,11 +58,7 @@ enum DemoWindowScreenshot {
                 contentFilter: filter,
                 configuration: configuration
             )
-            guard let jpeg = jpegData(from: image) else { return nil }
-            return Capture(
-                base64JPEG: jpeg.base64EncodedString(),
-                pixelSize: CGSize(width: image.width, height: image.height)
-            )
+            return image
         } catch {
             AppLog.demoMode.error(
                 "Demo screenshot failed: \(error.localizedDescription, privacy: .public)"

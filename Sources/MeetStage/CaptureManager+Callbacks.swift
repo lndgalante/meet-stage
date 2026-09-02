@@ -1,13 +1,25 @@
 import AppKit
+import MeetStageCore
 import ScreenCaptureKit
 
 extension CaptureManager {
     // MARK: - Stream callbacks
 
-    func handleFrame(from sourceStreamID: ObjectIdentifier, geometry: CaptureFrameGeometry) {
+    func handleFrame(from sourceStreamID: ObjectIdentifier, frame: RenderedCaptureFrame) {
         guard let stream, ObjectIdentifier(stream) == sourceStreamID else { return }
 
-        let contentAspectRatio = geometry.contentAspectRatio
+        if awaitingLiveSelection != nil {
+            guard
+                CaptureFrameAcceptancePolicy.confirmsSelection(
+                    expectedGeneration: awaitingLiveSelectionRenderGeneration,
+                    frameGeneration: frame.renderGeneration
+                )
+            else { return }
+        } else {
+            guard liveRenderGeneration == frame.renderGeneration else { return }
+        }
+
+        let contentAspectRatio = frame.geometry.contentAspectRatio
         if abs(stageAspectRatio - contentAspectRatio) > 0.001 {
             stageAspectRatio = contentAspectRatio
         }
@@ -16,6 +28,8 @@ extension CaptureManager {
             cancelFirstFrameTimeout()
             selectedWindowID = liveSelection.id
             awaitingLiveSelection = nil
+            awaitingLiveSelectionRenderGeneration = nil
+            liveRenderGeneration = frame.renderGeneration
             if pendingWindowID == liveSelection.id {
                 pendingWindowID = nil
             }
@@ -41,6 +55,8 @@ extension CaptureManager {
         cancelFirstFrameTimeout()
         resetCursorTracking()
         awaitingLiveSelection = nil
+        awaitingLiveSelectionRenderGeneration = nil
+        liveRenderGeneration = nil
         pendingSelection = nil
         pendingWindowID = nil
         selectedWindowID = nil

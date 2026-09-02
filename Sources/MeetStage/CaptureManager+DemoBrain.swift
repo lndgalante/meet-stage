@@ -303,7 +303,6 @@ extension CaptureManager {
 
         let windowID = context.windowID
         let pid = context.pid
-        let fallbackFrame = context.fallbackFrame
         let normalizedCenter = element.normalizedCenter
         demoActionTask?.cancel()
         demoActionTask = Task { [weak self] in
@@ -315,7 +314,6 @@ extension CaptureManager {
             guard !Task.isCancelled, let self,
                 let target = resolveClickTarget(
                     windowID: windowID,
-                    fallbackFrame: fallbackFrame,
                     normalizedCenter: normalizedCenter
                 )
             else { return }

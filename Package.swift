@@ -10,6 +10,9 @@ let package = Package(
     products: [
         .executable(name: "MeetStage", targets: ["MeetStage"])
     ],
+    dependencies: [
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.9.4")
+    ],
     targets: [
         .target(
             name: "MeetStageCore",
@@ -17,7 +20,10 @@ let package = Package(
         ),
         .executableTarget(
             name: "MeetStage",
-            dependencies: ["MeetStageCore"],
+            dependencies: [
+                "MeetStageCore",
+                .product(name: "Sparkle", package: "Sparkle")
+            ],
             path: "Sources/MeetStage",
             exclude: ["IdleStageChrome.metal"],
             linkerSettings: [

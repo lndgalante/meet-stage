@@ -22,17 +22,19 @@ extension CaptureManager {
             state = .switching
 
             do {
-                try await switchCapture(to: nextSelection)
+                let renderGeneration = try await switchCapture(to: nextSelection)
                 guard !Task.isCancelled, generation == selectionGeneration else { break }
-                // A successful ScreenCaptureKit call confirms the filter, but
-                // only the next complete buffer confirms visible output.
+                // Starting the source-specific stream confirms capture setup,
+                // but only its next complete buffer confirms visible output.
                 awaitingLiveSelection = nextSelection
+                awaitingLiveSelectionRenderGeneration = renderGeneration
                 scheduleFirstFrameTimeout(for: nextSelection.id)
             } catch {
                 guard !Task.isCancelled, generation == selectionGeneration else { break }
 
                 if awaitingLiveSelection?.id == nextSelection.id {
                     awaitingLiveSelection = nil
+                    awaitingLiveSelectionRenderGeneration = nil
                 }
                 let message = Self.friendlyMessage(for: error)
                 AppLog.capture.error(
@@ -96,6 +98,7 @@ extension CaptureManager {
 
         cancelFirstFrameTimeout()
         awaitingLiveSelection = nil
+        awaitingLiveSelectionRenderGeneration = nil
         pendingWindowID = nil
 
         let recoveryAction = UnavailableSelectionRecoveryPolicy.action(
@@ -127,7 +130,7 @@ extension CaptureManager {
         state = .failed(Self.unavailableSourceMessage)
     }
 
-    func switchCapture(to source: WindowSource) async throws {
+    func switchCapture(to source: WindowSource) async throws -> UInt64 {
         isSwitchingStream = true
         handleAutoPresentationSourceChange()
         deactivateSpotlight()
@@ -153,25 +156,36 @@ extension CaptureManager {
             showsCursor: showsCursor
         )
 
-        if let stream {
-            let renderGeneration = renderer.prepareForSourceSwitch()
+        let previousStream = stream
+        let renderGeneration =
+            previousStream == nil
+            ? renderer.beginCapture()
+            : renderer.prepareForSourceSwitch()
+
+        // A running SCStream doesn't attach the selected window ID to its
+        // sample buffers, and updateContentFilter doesn't document a buffer
+        // boundary. Recreate the stream so the callback's stream identity is
+        // itself proof of the selected source. Suppression plus the serial-queue
+        // barrier ensures no callback from the retired stream can be displayed
+        // under the new render generation.
+        if let previousStream {
+            stream = nil
             do {
-                try await stream.updateConfiguration(configuration)
-                try await stream.updateContentFilter(filter)
-                try Task.checkCancellation()
-                guard self.stream === stream else {
-                    throw CaptureLifecycleError.stoppedBeforeFirstFrame
+                try await previousStream.stopCapture()
+                do {
+                    try previousStream.removeStreamOutput(streamOutput, type: .screen)
+                } catch {
+                    AppLog.capture.debug(
+                        "Could not detach output from retired stream: \(error.localizedDescription, privacy: .public)"
+                    )
                 }
-                renderer.commitSourceSwitch(generation: renderGeneration)
+                await drainSampleQueue()
+                try Task.checkCancellation()
             } catch {
-                renderer.cancelSourceSwitch(generation: renderGeneration)
+                renderer.clear()
+                liveRenderGeneration = nil
                 throw error
             }
-            activeCaptureSource = source
-            activeCaptureFormat = format
-            capturesCursor = showsCursor
-            stageAspectRatio = format.aspectRatio
-            return
         }
 
         let newStream = SCStream(
@@ -179,20 +193,32 @@ extension CaptureManager {
             configuration: configuration,
             delegate: streamOutput
         )
-        try newStream.addStreamOutput(
-            streamOutput,
-            type: .screen,
-            sampleHandlerQueue: sampleQueue
-        )
-        renderer.beginCapture()
-        stream = newStream
-
         do {
+            try newStream.addStreamOutput(
+                streamOutput,
+                type: .screen,
+                sampleHandlerQueue: sampleQueue
+            )
+            stream = newStream
             try await newStream.startCapture()
+            try Task.checkCancellation()
+            guard stream === newStream else {
+                throw CaptureLifecycleError.stoppedBeforeFirstFrame
+            }
+            if previousStream != nil {
+                renderer.commitSourceSwitch(generation: renderGeneration)
+            }
         } catch {
             if stream === newStream {
                 stream = nil
-                renderer.clear()
+            }
+            renderer.clear()
+            do {
+                try await newStream.stopCapture()
+            } catch {
+                AppLog.capture.debug(
+                    "Could not stop failed replacement stream: \(error.localizedDescription, privacy: .public)"
+                )
             }
             do {
                 try newStream.removeStreamOutput(streamOutput, type: .screen)
@@ -204,13 +230,22 @@ extension CaptureManager {
             throw error
         }
 
-        guard stream === newStream else {
-            throw CaptureLifecycleError.stoppedBeforeFirstFrame
-        }
         activeCaptureSource = source
         activeCaptureFormat = format
         capturesCursor = showsCursor
         stageAspectRatio = format.aspectRatio
+        return renderGeneration
+    }
+
+    /// Drains callbacks already queued for a retired stream while rendering is
+    /// suppressed. The replacement stream isn't created until this serial-queue
+    /// barrier completes, so its callbacks have an unambiguous source identity.
+    private func drainSampleQueue() async {
+        await withCheckedContinuation { continuation in
+            sampleQueue.async {
+                continuation.resume()
+            }
+        }
     }
 
     func makeStreamConfiguration(

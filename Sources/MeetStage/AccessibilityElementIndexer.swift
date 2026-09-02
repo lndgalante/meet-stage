@@ -66,7 +66,12 @@ enum AccessibilityElementIndexer {
         AXUIElementSetAttributeValue(app, "AXManualAccessibility" as CFString, kCFBooleanTrue)
         AXUIElementSetAttributeValue(app, "AXEnhancedUserInterface" as CFString, kCFBooleanTrue)
 
-        guard let window = matchingWindow(in: app, sourceFrame: sourceFrame) else {
+        guard
+            let window = AccessibilityWindowResolver.uniqueMatchingWindow(
+                in: app,
+                sourceFrame: sourceFrame
+            )
+        else {
             return DemoElementIndex(generation: generation, elements: [])
         }
 
@@ -85,55 +90,6 @@ enum AccessibilityElementIndexer {
             into: &elements
         )
         return DemoElementIndex(generation: generation, elements: elements)
-    }
-
-    // MARK: - Window selection
-
-    /// Maximum combined origin + size disagreement (points) still treated as the
-    /// captured window. AX and CGWindowList report the same bounds, so this is
-    /// generous slack, not a real gap.
-    private static let frameMatchTolerance: CGFloat = 8
-
-    private static func matchingWindow(
-        in app: AXUIElement,
-        sourceFrame: CGRect
-    ) -> AXUIElement? {
-        guard let windows = copyElements(app, attribute: kAXWindowsAttribute as CFString),
-            !windows.isEmpty
-        else { return nil }
-
-        if windows.count == 1 { return windows[0] }
-
-        // Score each window by how closely its frame matches the captured one
-        // (both global Quartz points); origin plus size disambiguates two windows
-        // that share a corner.
-        var best: AXUIElement?
-        var bestScore = CGFloat.greatestFiniteMagnitude
-        var hasExactTie = false
-        for window in windows {
-            guard let frame = frame(of: window) else { continue }
-            let originDelta = abs(frame.minX - sourceFrame.minX) + abs(frame.minY - sourceFrame.minY)
-            let sizeDelta = abs(frame.width - sourceFrame.width) + abs(frame.height - sourceFrame.height)
-            let score = originDelta + sizeDelta
-            if score < bestScore - 0.5 {
-                bestScore = score
-                best = window
-                hasExactTie = false
-            } else if abs(score - bestScore) <= 0.5 {
-                hasExactTie = true
-            }
-        }
-
-        guard let best, bestScore <= frameMatchTolerance else {
-            // No window agrees; fall back to the main window, else empty index
-            // (Demo Mode degrades to the text-recognition fallback).
-            return copyElement(app, attribute: kAXMainWindowAttribute as CFString)
-        }
-        // Identical frames (e.g. two maximized windows): prefer the main window.
-        if hasExactTie {
-            return copyElement(app, attribute: kAXMainWindowAttribute as CFString) ?? best
-        }
-        return best
     }
 
     // MARK: - Tree walk
@@ -295,32 +251,6 @@ enum AccessibilityElementIndexer {
             let list = names as? [String]
         else { return [] }
         return list
-    }
-
-    private static func copyElements(_ element: AXUIElement, attribute: CFString) -> [AXUIElement]? {
-        var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, attribute, &value) == .success else { return nil }
-        return value as? [AXUIElement]
-    }
-
-    private static func copyElement(_ element: AXUIElement, attribute: CFString) -> AXUIElement? {
-        var value: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, attribute, &value) == .success,
-            let value, CFGetTypeID(value) == AXUIElementGetTypeID()
-        else { return nil }
-        return unsafeDowncast(value, to: AXUIElement.self)
-    }
-
-    private static func frame(of element: AXUIElement) -> CGRect? {
-        var positionValue: CFTypeRef?
-        var sizeValue: CFTypeRef?
-        guard
-            AXUIElementCopyAttributeValue(element, kAXPositionAttribute as CFString, &positionValue) == .success,
-            AXUIElementCopyAttributeValue(element, kAXSizeAttribute as CFString, &sizeValue) == .success,
-            let origin = point(positionValue),
-            let size = size(sizeValue)
-        else { return nil }
-        return CGRect(origin: origin, size: size)
     }
 
     private static func string(_ value: AnyObject?) -> String? {

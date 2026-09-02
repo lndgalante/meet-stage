@@ -43,6 +43,8 @@ extension CaptureManager {
         cancelFirstFrameTimeout()
         pendingSelection = nil
         awaitingLiveSelection = nil
+        awaitingLiveSelectionRenderGeneration = nil
+        liveRenderGeneration = nil
         pendingWindowID = nil
         selectionGeneration += 1
         selectionTask?.cancel()

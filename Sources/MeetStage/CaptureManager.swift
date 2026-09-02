@@ -93,19 +93,14 @@ final class CaptureManager: ObservableObject {
     )
     lazy var streamOutput = CaptureStreamOutput(
         renderer: renderer,
-        onFrame: { [weak self] sourceStreamID, geometry in
+        onFrame: { [weak self] sourceStreamID, frame in
             Task { @MainActor in
-                self?.handleFrame(from: sourceStreamID, geometry: geometry)
+                self?.handleFrame(from: sourceStreamID, frame: frame)
             }
         },
         onFailure: { [weak self] sourceStreamID, error in
             Task { @MainActor in
                 self?.handleStreamStopped(sourceStreamID, error: error)
-            }
-        },
-        onAnalyzableFrame: { [weak self] buffer, geometry in
-            Task { @MainActor in
-                self?.handleDemoAnalyzableFrame(buffer, geometry: geometry)
             }
         }
     )
@@ -170,6 +165,8 @@ final class CaptureManager: ObservableObject {
     var windowRefreshTask: Task<Void, Never>?
     var queuedManualRefresh = false
     var awaitingLiveSelection: WindowSource?
+    var awaitingLiveSelectionRenderGeneration: UInt64?
+    var liveRenderGeneration: UInt64?
     var firstFrameTimeoutTask: Task<Void, Never>?
     var pendingSelection: WindowSource?
     var selectionTask: Task<Void, Never>?

@@ -1,5 +1,11 @@
 import AppKit
 
+struct WindowFrameSnapshot: Equatable, Sendable {
+    let frame: CGRect
+    let ownerPID: pid_t
+    let isOnScreen: Bool
+}
+
 /// A point expressed as a fraction of a window's width and height.
 ///
 /// Values normally fall in `0...1`. Callers that accept arbitrary input must
@@ -63,19 +69,29 @@ enum WindowCoordinateGeometry {
 /// Resolves the current Quartz frame for a window that may have moved or
 /// resized since ScreenCaptureKit discovery completed.
 enum WindowFrameResolver {
-    static func currentFrame(for windowID: CGWindowID, fallback: CGRect) -> CGRect {
+    static func currentSnapshot(for windowID: CGWindowID) -> WindowFrameSnapshot? {
         guard
             let windowInfo = CGWindowListCopyWindowInfo(
                 [.optionIncludingWindow, .excludeDesktopElements],
                 windowID
             ) as? [[CFString: Any]],
-            let bounds = windowInfo.first?[kCGWindowBounds] as? NSDictionary,
+            let info = windowInfo.first,
+            let bounds = info[kCGWindowBounds] as? NSDictionary,
             let frame = CGRect(dictionaryRepresentation: bounds),
             frame.width > 0,
-            frame.height > 0
-        else { return fallback }
+            frame.height > 0,
+            let ownerPID = info[kCGWindowOwnerPID] as? NSNumber
+        else { return nil }
 
-        return frame
+        return WindowFrameSnapshot(
+            frame: frame,
+            ownerPID: pid_t(ownerPID.int32Value),
+            isOnScreen: (info[kCGWindowIsOnscreen] as? NSNumber)?.boolValue == true
+        )
+    }
+
+    static func currentFrame(for windowID: CGWindowID, fallback: CGRect) -> CGRect {
+        currentSnapshot(for: windowID)?.frame ?? fallback
     }
 }
 

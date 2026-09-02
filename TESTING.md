@@ -10,7 +10,7 @@ packaged app.
 
 | Layer | Examples | Expected coverage |
 | --- | --- | --- |
-| Pure policy and geometry | shortcut reconciliation, capture selection, window eligibility, auto-zoom camera and styled-frame transforms, normalized coordinates, stage sizing, Demo Mode text matching, intent classification, command debounce, cloud authorization, and reply parsing | Every branch and boundary value |
+| Pure policy and geometry | shortcut reconciliation, capture selection and frame generations, exact-window focus, window eligibility, auto-zoom camera and styled-frame transforms, normalized coordinates, stage sizing, Demo Mode text matching, intent classification, command debounce, cloud authorization, and reply parsing | Every branch and boundary value |
 | Persistence | presentation settings, shortcut pins and exclusions, corrupt or legacy data | Defaults, round trips, normalization, and invalid input |
 | Main-actor models | annotation fading, spotlight state, armed presentation effects | State changes and cancellation-sensitive behavior |
 | AppKit integration | overlay window levels, event-monitor ownership, drag surfaces, workspace notifications | Configuration and callback translation that can run without privacy consent |
@@ -25,7 +25,7 @@ swift format lint --strict --recursive Sources Tests Package.swift scripts/gener
 swift test --enable-code-coverage -Xswiftc -warnings-as-errors
 swift build -c release -Xswiftc -warnings-as-errors
 plutil -lint Resources/Info.plist
-zsh -n build-app.sh dev-app.sh scripts/build-and-package.sh scripts/notarize-app.sh
+zsh -n build-app.sh dev-app.sh scripts/build-and-package.sh scripts/generate-appcast.sh scripts/notarize-app.sh
 ./build-app.sh
 git diff --check
 ```
@@ -60,8 +60,8 @@ window configuration, or permissions, build the packaged debug app with
    as live before its first complete frame.
 3. Closing, minimizing, hiding, restoring, and renaming a source preserves the
    documented shortcut behavior.
-4. Option+1 through Option+9 switch sources globally and report conflicts
-   without changing capture state.
+4. Slots 1 through 9 use the modifier selected in Settings and report conflicts
+   without changing capture state. Disabled must unregister every global slot.
 5. The Demo Stage remains draggable and resizable, preserves the selected
    source aspect ratio, and is capturable by the target meeting app.
 6. Pointer capture, click ripples, spotlight, annotations, and keystrokes appear
@@ -105,6 +105,10 @@ window configuration, or permissions, build the packaged debug app with
     “hello,” and negated or screen-authored instructions never type. Move focus
     to another field during a longer command and confirm entry stops before the
     next character.
+15. Select one of two windows from the same app, bring the sibling window to the
+    front, and issue click and type commands. Confirm neither command actuates
+    until the selected window itself is focused. Repeat with two maximized
+    same-frame windows and confirm the ambiguous match fails closed.
 
 Record the macOS version and meeting app when a manual result depends on
 window-server or capture-framework behavior.

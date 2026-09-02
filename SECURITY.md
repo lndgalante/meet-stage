@@ -8,23 +8,30 @@ feasibility must be reassessed before pursuing Mac App Store distribution; do
 not add temporary-exception entitlements as a substitute for that review.
 
 The hardened runtime is enabled for local packaged builds and Developer ID
-releases. The only explicit entitlement is microphone input for Demo Mode.
-Screen Recording, Microphone, and Accessibility remain user-controlled macOS
-privacy grants and are requested only when their features need them.
+releases. Shipping builds grant only microphone input for Demo Mode and retain
+library validation. Local ad-hoc packages additionally disable library
+validation because ad-hoc code has no Developer Team ID with which macOS can
+validate the embedded Sparkle framework; this development-only exception is not
+used for public releases. Screen Recording, Microphone, and Accessibility remain
+user-controlled macOS privacy grants and are requested only when their features
+need them.
 
 ## Input-synthesis boundary
 
-Input synthesis is disabled by default. It requires the presenter to select
-“Highlight and click” and grant Accessibility access. `DemoActionExecutor` is
-the only component allowed to post mouse or keyboard events.
+Input synthesis remains dormant until the presenter enables Demo Mode. Within
+Demo Mode, the default “Highlight and click” setting permits actuation only when
+the presenter uses an explicit action command and grants Accessibility access.
+`DemoActionExecutor` is the only component allowed to post mouse or keyboard
+events.
 
 - Model-proposed clicks require an explicit, un-negated spoken click/navigation
   command.
 - Model-proposed typing requires an explicit, un-negated type/write/enter
   command, and the complete typed payload must appear in the transcript at the
   command's payload position.
-- The selected window, PID, and exact focused editable Accessibility element
-  are revalidated before every typed character.
+- The selected CG window must uniquely match the focused Accessibility window;
+  its PID and exact focused editable element are revalidated before every typed
+  character. Ambiguous same-process windows fail closed.
 - Consent, provider, source, and focus generations invalidate stale cloud work.
 
 Treat screenshots, OCR, Accessibility labels, window titles, and model output as
@@ -41,6 +48,9 @@ authorization boundary.
 - Imported stage logos are dimension-checked, downsampled, normalized as PNG,
   and atomically stored under Application Support. UserDefaults contains only a
   storage-version marker; legacy image blobs migrate once.
+- Public updates use an HTTPS Sparkle appcast plus EdDSA signatures. Feed and
+  public-key metadata are injected together at release packaging time; partial,
+  insecure, and unconfigured local builds cannot start the updater.
 
 ## Cloud model lifecycle
 

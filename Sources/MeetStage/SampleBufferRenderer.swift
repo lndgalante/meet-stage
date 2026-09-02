@@ -13,6 +13,11 @@ struct CaptureFrameGeometry: Sendable {
     }
 }
 
+struct RenderedCaptureFrame: Sendable {
+    let geometry: CaptureFrameGeometry
+    let renderGeneration: UInt64
+}
+
 enum CaptureFrameGeometryResolver {
     static func contentRectInPixels(
         contentRectInPoints: CGRect,
@@ -79,29 +84,38 @@ final class SampleBufferRenderer: @unchecked Sendable {
     }
 
     @MainActor
-    func beginCapture() {
-        lock.withLock {
+    func beginCapture() -> UInt64 {
+        let (generation, currentView) = lock.withLock {
+            renderGeneration &+= 1
             isSuppressingFrames = false
             transitionsNextFrame = false
+            return (renderGeneration, view)
         }
+        currentView?.synchronizeRenderGeneration(generation)
+        return generation
     }
 
     @MainActor
     func prepareForSourceSwitch() -> UInt64 {
-        lock.withLock {
+        let (generation, currentView) = lock.withLock {
+            renderGeneration &+= 1
             isSuppressingFrames = true
             transitionsNextFrame = false
-            return renderGeneration
+            return (renderGeneration, view)
         }
+        currentView?.synchronizeRenderGeneration(generation)
+        return generation
     }
 
     @MainActor
     func commitSourceSwitch(generation: UInt64) {
-        lock.withLock {
-            guard generation == renderGeneration else { return }
+        let currentView: StageVideoView? = lock.withLock {
+            guard generation == renderGeneration else { return nil }
             isSuppressingFrames = false
             transitionsNextFrame = true
+            return view
         }
+        currentView?.prepareForSourceTransition(renderGeneration: generation)
     }
 
     @MainActor
@@ -113,7 +127,7 @@ final class SampleBufferRenderer: @unchecked Sendable {
         }
     }
 
-    func enqueue(_ sampleBuffer: CMSampleBuffer) -> CaptureFrameGeometry? {
+    func enqueue(_ sampleBuffer: CMSampleBuffer) -> RenderedCaptureFrame? {
         guard sampleBuffer.isValid, sampleBuffer.dataReadiness == .ready else { return nil }
 
         guard
@@ -160,7 +174,10 @@ final class SampleBufferRenderer: @unchecked Sendable {
             startsTransition: renderRequest.startsTransition,
             renderGeneration: renderRequest.generation
         )
-        return geometry
+        return RenderedCaptureFrame(
+            geometry: geometry,
+            renderGeneration: renderRequest.generation
+        )
     }
 
     private static func contentRect(from frameInfo: [SCStreamFrameInfo: Any]) -> CGRect? {
@@ -190,14 +207,50 @@ final class SampleBufferRenderer: @unchecked Sendable {
     }
 }
 
+/// Enqueues video directly from ScreenCaptureKit's serial callback queue. The
+/// display renderer consumes the sample synchronously, so no IOSurface-backed
+/// sample buffer is retained by a main-queue closure.
+private final class StageVideoFrameSink: @unchecked Sendable {
+    private struct Target {
+        let renderer: AVSampleBufferVideoRenderer
+        let generation: UInt64
+    }
+
+    private let lock = NSLock()
+    private var target: Target?
+
+    func update(renderer: AVSampleBufferVideoRenderer, generation: UInt64) {
+        lock.withLock {
+            target = Target(renderer: renderer, generation: generation)
+        }
+    }
+
+    func clear() {
+        lock.withLock { target = nil }
+    }
+
+    func enqueue(_ sampleBuffer: CMSampleBuffer, generation: UInt64) -> Bool {
+        lock.withLock {
+            guard let target, target.generation == generation else { return false }
+            if target.renderer.status == .failed {
+                target.renderer.flush()
+            }
+            target.renderer.enqueue(sampleBuffer)
+            return true
+        }
+    }
+}
+
 /// An AppKit rendering surface whose state remains main-actor isolated. Only
-/// `enqueue` crosses queues, immediately scheduling its work on the main queue.
+/// lightweight geometry updates cross to the main queue; sample buffers are
+/// consumed synchronously by `StageVideoFrameSink` on the capture queue.
 final class StageVideoView: NSView, @unchecked Sendable {
     private var activeDisplayLayer = StageVideoView.makeDisplayLayer()
     private var activeFrameGeometry: CaptureFrameGeometry?
     private var retiringDisplayLayer: AVSampleBufferDisplayLayer?
     private var retiringFrameGeometry: CaptureFrameGeometry?
     private var renderGeneration: UInt64 = 0
+    private let frameSink = StageVideoFrameSink()
     var reducesMotion = false
 
     override init(frame frameRect: NSRect) {
@@ -209,6 +262,10 @@ final class StageVideoView: NSView, @unchecked Sendable {
         layer?.masksToBounds = true
 
         layer?.addSublayer(activeDisplayLayer)
+        frameSink.update(
+            renderer: activeDisplayLayer.sampleBufferRenderer,
+            generation: renderGeneration
+        )
     }
 
     @available(*, unavailable)
@@ -233,13 +290,12 @@ final class StageVideoView: NSView, @unchecked Sendable {
         startsTransition: Bool,
         renderGeneration: UInt64
     ) {
-        let sendableSampleBuffer = SendableSampleBuffer(sampleBuffer)
+        guard frameSink.enqueue(sampleBuffer, generation: renderGeneration) else { return }
         DispatchQueue.main.async { [weak self] in
             guard let self, renderGeneration == self.renderGeneration else { return }
-            if startsTransition, activeFrameGeometry != nil {
-                transition(to: sendableSampleBuffer.value, geometry: geometry)
+            if startsTransition, retiringDisplayLayer != nil {
+                revealPreparedTransition(geometry: geometry)
             } else {
-                enqueue(sendableSampleBuffer.value, on: activeDisplayLayer)
                 activeFrameGeometry = geometry
                 needsLayout = true
             }
@@ -249,11 +305,40 @@ final class StageVideoView: NSView, @unchecked Sendable {
     func synchronizeRenderGeneration(_ generation: UInt64) {
         guard generation >= renderGeneration else { return }
         renderGeneration = generation
+        frameSink.update(
+            renderer: activeDisplayLayer.sampleBufferRenderer,
+            generation: generation
+        )
+    }
+
+    func prepareForSourceTransition(renderGeneration generation: UInt64) {
+        guard generation >= renderGeneration else { return }
+        renderGeneration = generation
+        removeRetiringLayer()
+
+        let oldLayer = activeDisplayLayer
+        oldLayer.removeAllAnimations()
+        let newLayer = Self.makeDisplayLayer()
+        newLayer.opacity = 0
+        layer?.addSublayer(newLayer)
+
+        activeDisplayLayer = newLayer
+        retiringDisplayLayer = oldLayer
+        retiringFrameGeometry = activeFrameGeometry
+        activeFrameGeometry = nil
+        frameSink.update(
+            renderer: newLayer.sampleBufferRenderer,
+            generation: generation
+        )
     }
 
     func clear(renderGeneration generation: UInt64) {
         guard generation >= renderGeneration else { return }
         renderGeneration = generation
+        frameSink.update(
+            renderer: activeDisplayLayer.sampleBufferRenderer,
+            generation: generation
+        )
         removeRetiringLayer()
         activeFrameGeometry = nil
         activeDisplayLayer.removeAllAnimations()
@@ -265,6 +350,7 @@ final class StageVideoView: NSView, @unchecked Sendable {
     }
 
     func clearForDismantle() {
+        frameSink.clear()
         removeRetiringLayer()
         activeFrameGeometry = nil
         activeDisplayLayer.removeAllAnimations()
@@ -274,28 +360,20 @@ final class StageVideoView: NSView, @unchecked Sendable {
         )
     }
 
-    private func transition(
-        to sampleBuffer: CMSampleBuffer,
-        geometry: CaptureFrameGeometry
-    ) {
-        removeRetiringLayer()
-
-        let oldLayer = activeDisplayLayer
-        let oldGeometry = activeFrameGeometry
+    private func revealPreparedTransition(geometry: CaptureFrameGeometry) {
+        guard let oldLayer = retiringDisplayLayer else {
+            activeFrameGeometry = geometry
+            needsLayout = true
+            return
+        }
+        let newLayer = activeDisplayLayer
+        let oldGeometry = retiringFrameGeometry
         let oldStartOpacity = oldLayer.presentation()?.opacity ?? oldLayer.opacity
         oldLayer.removeAllAnimations()
-
-        let newLayer = Self.makeDisplayLayer()
-        newLayer.opacity = 0
-        layer?.addSublayer(newLayer)
-        activeDisplayLayer = newLayer
         activeFrameGeometry = geometry
-        retiringDisplayLayer = oldLayer
-        retiringFrameGeometry = oldGeometry
 
         updateFrame(of: oldLayer, geometry: oldGeometry)
         updateFrame(of: newLayer, geometry: geometry)
-        enqueue(sampleBuffer, on: newLayer)
 
         let duration: CFTimeInterval = reducesMotion ? 0.10 : 0.20
         let newOpacity = CAKeyframeAnimation(keyPath: "opacity")
@@ -334,14 +412,6 @@ final class StageVideoView: NSView, @unchecked Sendable {
         newLayer.add(newOpacity, forKey: "betterMeetsSourceIn")
         oldLayer.add(oldOpacity, forKey: "betterMeetsSourceOut")
         CATransaction.commit()
-    }
-
-    private func enqueue(_ sampleBuffer: CMSampleBuffer, on displayLayer: AVSampleBufferDisplayLayer) {
-        let renderer = displayLayer.sampleBufferRenderer
-        if renderer.status == .failed {
-            renderer.flush()
-        }
-        renderer.enqueue(sampleBuffer)
     }
 
     private func removeRetiringLayer() {
@@ -392,15 +462,5 @@ final class StageVideoView: NSView, @unchecked Sendable {
             CAMediaTimingFunction(name: .easeInEaseOut),
             CAMediaTimingFunction(name: .easeOut)
         ]
-    }
-}
-
-/// The app does not mutate sample buffers on this render path. This wrapper
-/// retains one while ownership moves from the capture queue to the main queue.
-private struct SendableSampleBuffer: @unchecked Sendable {
-    let value: CMSampleBuffer
-
-    init(_ value: CMSampleBuffer) {
-        self.value = value
     }
 }

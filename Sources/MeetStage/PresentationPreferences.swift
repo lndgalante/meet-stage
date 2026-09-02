@@ -374,9 +374,10 @@ struct PresentationPreferencesStore {
     }
 
     var demoVoiceActions: DemoVoiceActions {
-        // Safe-by-default: new installs highlight only. Clicking/typing (which
-        // synthesize real input into the source app) is an explicit opt-in.
-        get { value(forKey: Self.demoVoiceActionsKey, default: .highlightOnly) }
+        // Demo Mode promises to actuate controls only when the presenter uses
+        // an explicit action verb. Keep that behavior on by default; presenters
+        // can still opt into highlight-only operation from Demo settings.
+        get { value(forKey: Self.demoVoiceActionsKey, default: .highlightAndClick) }
         nonmutating set { defaults.set(newValue.rawValue, forKey: Self.demoVoiceActionsKey) }
     }
 

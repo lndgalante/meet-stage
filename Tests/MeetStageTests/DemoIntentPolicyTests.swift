@@ -90,6 +90,20 @@ struct DemoIntentPolicyTests {
         #expect(command.element.label == "Discover")
     }
 
+    @Test("Click in a named button actuates it")
+    func clickInNamedButton() throws {
+        let command = try #require(
+            DemoIntentPolicy.resolve(
+                transcript: "Click in Discreet button.",
+                elements: [element("Discreet")],
+                voiceActions: .highlightAndClick
+            )
+        )
+
+        #expect(command.kind == .click)
+        #expect(command.element.label == "Discreet")
+    }
+
     @Test("Highlight-only settings never actuate the source")
     func highlightOnlyNeverClicks() throws {
         let command = try #require(

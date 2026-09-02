@@ -1,17 +1,6 @@
 import CoreGraphics
-import CoreVideo
 import Foundation
 import Vision
-
-/// Retains a capture pixel buffer while it crosses from the capture queue into
-/// the recognition task. Demo Mode never mutates the buffer on this path.
-struct DemoImageBuffer: @unchecked Sendable {
-    let value: CVPixelBuffer
-
-    init(_ value: CVPixelBuffer) {
-        self.value = value
-    }
-}
 
 /// Recognizes on-screen text in a captured frame as a fallback element source
 /// for apps whose Accessibility tree is sparse (canvas or web-rendered UIs).
@@ -22,18 +11,18 @@ enum DemoTextRecognizer {
     static let maximumLabelLength = 40
     static let maximumWordCount = 5
     static let minimumConfidence: Float = 0.3
+    static let maximumImageEdge: CGFloat = 1_600
 
-    /// Runs text recognition on `buffer` and maps each line into a targetable
-    /// element. `geometry.contentRect` is in buffer pixels (top-left); the frame
-    /// is normalized against it, then projected onto `sourceFrame` (global
-    /// Quartz points).
+    /// Runs text recognition on an independent screenshot and maps each line
+    /// into a targetable element. Screenshot capture avoids retaining one of the
+    /// live stream's IOSurface-backed buffers across asynchronous Vision work.
     static func recognize(
-        buffer: DemoImageBuffer,
-        geometry: CaptureFrameGeometry,
+        image: CGImage,
         sourceFrame: CGRect,
         generation: Int
     ) async -> DemoElementIndex {
-        let contentRect = geometry.contentRect
+        let imageSize = CGSize(width: image.width, height: image.height)
+        let contentRect = CGRect(origin: .zero, size: imageSize)
         guard contentRect.width > 0, contentRect.height > 0,
             sourceFrame.width > 0, sourceFrame.height > 0
         else {
@@ -46,7 +35,7 @@ enum DemoTextRecognizer {
 
         let observations: [RecognizedTextObservation]
         do {
-            observations = try await request.perform(on: buffer.value)
+            observations = try await request.perform(on: image)
         } catch {
             AppLog.demoMode.error(
                 "Text recognition failed: \(error.localizedDescription, privacy: .public)"
@@ -67,7 +56,7 @@ enum DemoTextRecognizer {
             else { continue }
 
             let pixelRect = observation.boundingBox.toImageCoordinates(
-                geometry.bufferSize,
+                imageSize,
                 origin: .upperLeft
             )
             guard

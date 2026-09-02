@@ -6,6 +6,7 @@ struct MeetStageApp: App {
     @NSApplicationDelegateAdaptor(BetterMeetsAppDelegate.self) private var appDelegate
     @StateObject private var captureManager = CaptureManager.shared
     @StateObject private var windowState = BetterMeetsWindowState.shared
+    @StateObject private var updateController = BetterMeetsUpdateController()
 
     init() {
         guard let iconURL = Bundle.main.url(forResource: "BetterMeets", withExtension: "icns"),
@@ -26,6 +27,13 @@ struct MeetStageApp: App {
         .defaultSize(width: ControlWindowSizing.size.width, height: ControlWindowSizing.size.height)
         .windowResizability(.contentSize)
         .commands {
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") {
+                    updateController.checkForUpdates()
+                }
+                .disabled(!updateController.isConfigured)
+            }
+
             CommandGroup(replacing: .undoRedo) {
                 Button(captureManager.annotationUndoManager.undoMenuItemTitle) {
                     captureManager.annotationUndoManager.undo()
