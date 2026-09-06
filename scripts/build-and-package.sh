@@ -13,9 +13,29 @@ case "$CONFIGURATION" in
         ;;
 esac
 
-APP_DIR="$PROJECT_DIR/dist/BetterMeets.app"
+if [[ "$CONFIGURATION" == debug ]]; then
+    APP_DIR="$PROJECT_DIR/dist/BetterMeets.app"
+else
+    APP_DIR="$PROJECT_DIR/dist/release/BetterMeets.app"
+fi
+
+# Never replace the code/resources a running process uses for privacy checks.
+require_stopped_app() {
+    if /usr/bin/pgrep -f -x "$APP_DIR/Contents/MacOS/MeetStage" >/dev/null; then
+        echo "Quit $APP_DIR before replacing it. Use ./dev-app.sh to rebuild and relaunch." >&2
+        exit 1
+    fi
+}
+require_stopped_app
 CONTENTS_DIR="$APP_DIR/Contents"
 SIGNING_IDENTITY="${BETTERMEETS_CODESIGN_IDENTITY:-}"
+if [[ "$CONFIGURATION" == debug && -z "$SIGNING_IDENTITY" ]]; then
+    SIGNING_IDENTITY="$(security find-identity -v -p codesigning | awk '/"Apple Development:/ { print $2; exit }')"
+fi
+if [[ -z "$SIGNING_IDENTITY" ]]; then
+    echo "Local ad-hoc signing: macOS may ask for capture permission again after a rebuild." >&2
+    echo "For stable development permissions, install an Apple Development certificate in Xcode → Settings → Accounts → Manage Certificates." >&2
+fi
 UPDATE_FEED_URL="${BETTERMEETS_UPDATE_FEED_URL:-}"
 UPDATE_PUBLIC_KEY="${BETTERMEETS_UPDATE_PUBLIC_KEY:-}"
 SDK_PATH="$(xcrun --sdk macosx --show-sdk-path)"
@@ -56,6 +76,7 @@ xcrun --sdk macosx --toolchain "$METAL_TOOLCHAIN_IDENTIFIER" \
 xcrun --sdk macosx --toolchain "$METAL_TOOLCHAIN_IDENTIFIER" \
     metallib "$METAL_AIR" -o "$METAL_LIBRARY"
 
+require_stopped_app
 rm -rf "$APP_DIR"
 mkdir -p "$CONTENTS_DIR/MacOS" "$CONTENTS_DIR/Resources" "$CONTENTS_DIR/Frameworks"
 cp "$PROJECT_DIR/.build/$CONFIGURATION/MeetStage" "$CONTENTS_DIR/MacOS/MeetStage"
@@ -104,7 +125,7 @@ sign_sparkle_component() {
         --preserve-metadata=entitlements
         --sign "$signing_target"
     )
-    if [[ -n "$SIGNING_IDENTITY" ]]; then
+    if [[ -n "$SIGNING_IDENTITY" && "$CONFIGURATION" == release ]]; then
         signing_arguments+=(--timestamp)
     fi
     codesign "${signing_arguments[@]}" "$component"
@@ -118,22 +139,15 @@ sign_sparkle_component "$SPARKLE_VERSION_DIR/Updater.app"
 sign_sparkle_component "$SPARKLE_DESTINATION"
 
 if [[ -n "$SIGNING_IDENTITY" ]]; then
-    # Developer ID builds need the hardened runtime and a trusted timestamp
-    # before Apple will accept them for notarization. The entitlements grant
-    # microphone access (Demo Mode) that the hardened runtime blocks by default.
-    codesign \
-        --force \
-        --options runtime \
-        --timestamp \
-        --entitlements "$ENTITLEMENTS" \
-        --sign "$SIGNING_IDENTITY" \
-        "$APP_DIR"
+    signing_arguments=(--force --options runtime --entitlements "$ENTITLEMENTS" --sign "$SIGNING_IDENTITY")
+    if [[ "$CONFIGURATION" == release ]]; then
+        signing_arguments+=(--timestamp)
+    fi
+    codesign "${signing_arguments[@]}" "$APP_DIR"
 else
-    # A stable designated requirement keeps Screen Recording approval valid
-    # across local builds even though the ad-hoc binary hash changes. Ad-hoc code
-    # has no Developer Team ID, so library validation cannot establish that the
-    # embedded Sparkle framework belongs to the app. Disable it only for this
-    # local package; Developer ID releases keep library validation enabled.
+    # Ad-hoc signatures have no team identity for Sparkle library validation.
+    # The identifier requirement is retained for existing local installs, but
+    # it cannot guarantee TCC permission persistence between rebuilt binaries.
     codesign \
         --force \
         --options runtime \

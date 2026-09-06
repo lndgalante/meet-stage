@@ -25,9 +25,25 @@ Idle, paused, permission, and error screens all use the same default stage size.
 The stage keeps standard macOS window semantics beneath its hidden chrome, so it
 can be dragged from its surface and selected by window-capture utilities.
 
-BetterMeets automatically assigns **Command–Option–1** through
-**Command–Option–9** to the first nine available windows. Choose another global
+BetterMeets automatically assigns **Option–1** through
+**Option–9** to the first nine available windows. Choose another global
 modifier—or turn global shortcuts off—in **BetterMeets → Settings → General**.
+
+The controller contains the window carousel and a short selection/status hint.
+After selecting a source, the vertical action menu follows the original app
+window: beside it when a screen gutter fits, or inset over its right edge when
+it fills the screen. The menu follows moves and resizes and hides when the
+source is offscreen or another app is in front. Settings are also available
+from the controller's context menu and the app menu. The action menu's gear
+opens a settings popover to its left, with section tabs and checkbox rows; it
+closes with Escape or a click outside. Feature context menus open their settings
+in the same popover.
+
+The action menu is a separate, independent presenter window. It is never drawn
+into the Demo Stage or attached as its child window. Share **Demo Stage** in
+Google Meet or Zoom to keep these controls out of the shared window; sharing
+the entire display or the BetterMeets application can include presenter UI.
+
 Right-click a source to move it to a specific shortcut or unpin it. Manual pins
 remain stable across refreshes and app launches, and an
 explicitly unpinned window stays unassigned until you pin it again. If the exact
@@ -98,11 +114,17 @@ text recognition for canvas or web-rendered apps whose accessibility is sparse.
 It needs microphone access (for transcription) and, to read controls and click
 them, Accessibility access; BetterMeets requests both the first time you enable
 it. If Accessibility is declined, Demo Mode still highlights controls it can read
-but will not click. Set Settings → Demo → Voice actions to **Highlight only** to
-keep BetterMeets from ever clicking. All transcription is on device; no audio or
-audio leaves your Mac. Demo Mode stays entirely on device unless you explicitly
-enable Cloud understanding in Settings; when enabled, each command sends the
-transcript and a screenshot of the shared window to the provider you selected.
+but will not click. All transcription is on device; audio never leaves your Mac.
+The first Voice introduction explains clicking and cloud use before listening
+starts. Conversational understanding is automatic. With an API key, commands
+send the transcript and a screenshot of the shared window to the selected model's
+provider, Anthropic or OpenAI. Without a key, commands stay on device.
+
+Settings → **Voice** contains only the model selector and API key. Remove the key
+to return to on-device understanding. **Focus** contains only spotlight size and
+outside opacity. **General** contains the global
+shortcut switch and modifier selector, with a live key preview; switching shortcuts
+off preserves your modifier choice for next time.
 
 The live pipeline is intentionally bounded for presentation workloads. Smaller
 sources keep their native pixel size, while 4K and 5K windows are scaled to a
@@ -146,15 +168,17 @@ The native equivalent of `pnpm dev` is:
 
 This command:
 
-1. Builds the Swift package in debug mode.
-2. Creates `dist/BetterMeets.app` with its Info.plist and icon.
-3. Signs the app with its stable local identity.
-4. Stops the previous BetterMeets process.
+1. Stops the previous BetterMeets process before changing its app bundle.
+2. Builds the Swift package in debug mode.
+3. Creates `dist/BetterMeets.app` with its Info.plist and icon.
+4. Signs with `BETTERMEETS_CODESIGN_IDENTITY`, an available Apple Development
+   certificate, or an ad-hoc signature when no certificate is installed.
 5. Launches the new build.
 
-There is no hot reload. After changing Swift code, run `./dev-app.sh` again. The
-build happens before the running app is stopped, so a compiler error leaves the
-current instance alone.
+There is no hot reload. After changing Swift code, run `./dev-app.sh` again.
+`--no-launch` builds without opening the app, and requires the target app to
+already be quit. Release builds go to a separate directory so packaging a
+release cannot replace the running development app.
 
 To build and package the debug app without launching it:
 
@@ -242,22 +266,22 @@ the automated and manual verification strategy.
 ## Screen Recording permission
 
 Both development and release builds use bundle identifier
-`com.lndgalante.bettermeets` and the same designated signing requirement. Keep these
-values stable: changing either can make macOS treat the build as a different
-Screen Recording client.
+`com.lndgalante.bettermeets`. Permission persistence also depends on the code
+signing identity. Ad-hoc signatures can invalidate a grant after rebuilding,
+even when System Settings still displays an enabled BetterMeets entry.
 
-If capture permission becomes stuck:
+For development, add an **Apple Development** certificate in **Xcode → Settings
+→ Accounts → Manage Certificates**. `./dev-app.sh` automatically uses the first
+available Apple Development identity; set `BETTERMEETS_CODESIGN_IDENTITY` to
+choose a specific one. Keep that certificate across builds. A signing-identity
+change may require granting access once more.
 
-1. Open **System Settings → Privacy & Security → Screen & System Audio Recording**.
-2. Confirm BetterMeets is enabled.
-3. Quit BetterMeets and run `./dev-app.sh` again.
-
-As a last resort, reset only BetterMeets' Screen Recording decision, then launch
-the app and grant access again:
-
-```bash
-tccutil reset ScreenCapture com.lndgalante.bettermeets
-```
+The app checks permission on launch without opening a system dialog. Use
+**Allow Screen Recording** in the controller to request access explicitly.
+If BetterMeets is already enabled in System Settings, quit and reopen the
+packaged app. If the existing grant still does not apply, remove and re-add
+BetterMeets in **Privacy & Security → Screen & System Audio Recording** after
+fixing the signing identity. Do not reset other applications' permissions.
 
 Demo Mode adds two more permissions, keyed to the same stable identity:
 Microphone (for on-device transcription) and Accessibility (to read and click
@@ -292,7 +316,7 @@ swift test
 swift format lint --strict --recursive Sources Tests Package.swift scripts/generate-app-icon.swift
 ./build-app.sh
 plutil -lint Resources/Info.plist
-codesign --verify --deep --strict "dist/BetterMeets.app"
+codesign --verify --deep --strict "dist/release/BetterMeets.app"
 git diff --check
 ```
 
@@ -316,7 +340,7 @@ Create the optimized local build with:
 ./build-app.sh
 ```
 
-The result is `dist/BetterMeets.app`. It is ad-hoc signed for local use and is
+The result is `dist/release/BetterMeets.app`. It is ad-hoc signed for local use and is
 not notarized for public distribution. Because ad-hoc signatures have no team
 identity, this local package alone disables library validation so it can load
 Sparkle; Developer ID builds retain library validation.

@@ -3,7 +3,7 @@
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-APP_DIR="$PROJECT_DIR/dist/BetterMeets.app"
+APP_DIR="$PROJECT_DIR/dist/release/BetterMeets.app"
 ARCHIVE_PATH="$PROJECT_DIR/dist/BetterMeets.zip"
 NOTARY_LOG_PATH="$PROJECT_DIR/dist/BetterMeets-notarization-log.json"
 NOTARY_PROFILE="${BETTERMEETS_NOTARY_PROFILE:-}"

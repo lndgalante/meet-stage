@@ -3,7 +3,7 @@
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
-APP_DIR="$PROJECT_DIR/dist/BetterMeets.app"
+APP_DIR="$PROJECT_DIR/dist/release/BetterMeets.app"
 
 /bin/zsh "$PROJECT_DIR/scripts/build-and-package.sh" release
 

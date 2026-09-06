@@ -13,8 +13,6 @@ elif [[ $# -gt 0 ]]; then
     exit 64
 fi
 
-/bin/zsh "$PROJECT_DIR/scripts/build-and-package.sh" debug
-
 if [[ "$SHOULD_LAUNCH" == true ]]; then
     if /usr/bin/pgrep -x MeetStage >/dev/null; then
         /usr/bin/pkill -TERM -x MeetStage
@@ -31,7 +29,11 @@ if [[ "$SHOULD_LAUNCH" == true ]]; then
             exit 1
         fi
     fi
+fi
 
+/bin/zsh "$PROJECT_DIR/scripts/build-and-package.sh" debug
+
+if [[ "$SHOULD_LAUNCH" == true ]]; then
     /usr/bin/open -n "$APP_DIR"
     echo "Built and launched $APP_DIR"
 else

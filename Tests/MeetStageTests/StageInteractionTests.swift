@@ -56,6 +56,10 @@ struct StageInteractionTests {
                 == ControlWindowSizing.sourceRegionHeight
         )
         #expect(ControlMetrics.sourceTileRadius + inset == ControlWindowSizing.panelCornerRadius)
+        #expect(
+            ControlMetrics.sourcePreviewHeight + ControlMetrics.sourceLabelSpacing + ControlMetrics.sourceLabelHeight
+                == ControlMetrics.sourceTileHeight
+        )
     }
 
     @Test("The stage keeps standard macOS window semantics")
@@ -66,20 +70,47 @@ struct StageInteractionTests {
         #expect(WindowConfigurator.stageStyleMask.contains(.fullSizeContentView))
     }
 
-    @Test("The controller can become key for Full Keyboard Access")
+    @Test("The controller has no hidden title bar or transparent shadow margins")
     @MainActor
-    func controllerUsesKeyCapableWindowStyle() {
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 320, height: 170),
-            styleMask: WindowConfigurator.controlStyleMask,
-            backing: .buffered,
-            defer: false
+    func controllerFitsVisibleSurface() async throws {
+        let size = ControlWindowSizing.size
+        let window = ControlWindow()
+        defer { window.close() }
+        window.contentView = NSHostingView(
+            rootView: SourcePanelBackground().frame(width: size.width, height: size.height)
         )
+        window.contentView?.layoutSubtreeIfNeeded()
 
         #expect(window.canBecomeKey)
-        #expect(window.styleMask.contains(.titled))
+        #expect(window.canBecomeMain)
+        #expect(!window.styleMask.contains(.titled))
         #expect(window.styleMask.contains(.closable))
         #expect(window.styleMask.contains(.miniaturizable))
+        #expect(window.hasShadow)
+        #expect(window.frame.size == size)
+        #expect(window.contentView?.bounds.size == size)
+        #expect(size.width == ControlWindowSizing.panelWidth)
+        #expect(size.height == ControlWindowSizing.sourceRegionHeight + ControlWindowSizing.guidanceHeight)
+        #expect(window.minSize == window.maxSize)
+        #expect(window.responds(to: #selector(NSWindow.performClose(_:))))
+    }
+
+    @Test("The borderless controller supports native close and minimize commands")
+    @MainActor
+    func controllerWindowCommands() {
+        let window = ControlWindow()
+        window.orderFront(nil)
+        let close = NSMenuItem(title: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
+        let minimize = NSMenuItem(
+            title: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
+        #expect(window.validateMenuItem(close))
+        #expect(window.validateMenuItem(minimize))
+        window.performClose(nil)
+        #expect(!window.isVisible)
+        #expect(!window.validateMenuItem(close))
+        window.orderFront(nil)
+        #expect(window.isVisible)
+        window.close()
     }
 
     @Test("The native drag surface wins stage hit testing")
@@ -122,6 +153,35 @@ struct StageInteractionTests {
         #expect(dragSurface.bounds.width > 0)
         #expect(dragSurface.bounds.height > 0)
         #expect(frameView.hitTest(center) === dragSurface)
+    }
+
+    @Test("The controller footer routes pointer drags to its native window surface")
+    @MainActor
+    func controllerFooterDragSurface() async throws {
+        let window = ControlWindow()
+        defer { window.close() }
+        let footer = SourceStatusFooter(
+            guidance: SourceSelectionGuidance(
+                state: .idle,
+                selectedApplication: nil,
+                pendingApplication: nil,
+                suggestedApplication: nil,
+                shortcut: nil
+            )
+        )
+        let host = NSHostingView(rootView: footer.frame(width: ControlWindowSizing.panelWidth))
+        window.contentView = host
+        host.layoutSubtreeIfNeeded()
+        window.installDragSurface()
+        await withCheckedContinuation { continuation in
+            DispatchQueue.main.async { continuation.resume() }
+        }
+        let frameView = try #require(host.superview)
+        let surface = try #require(frameView.firstDescendant(ofType: WindowDragView.self))
+        let center = surface.convert(NSPoint(x: surface.bounds.midX, y: surface.bounds.midY), to: frameView)
+        #expect(surface.bounds.width == ControlWindowSizing.panelWidth)
+        #expect(surface.bounds.height == ControlWindowSizing.guidanceHeight)
+        #expect(frameView.hitTest(center) === surface)
     }
 }
 

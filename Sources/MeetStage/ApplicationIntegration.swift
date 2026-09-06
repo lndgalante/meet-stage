@@ -3,6 +3,7 @@ import AppKit
 enum BetterMeetsWindowID {
     static let control = NSUserInterfaceItemIdentifier("BetterMeets.control")
     static let stage = NSUserInterfaceItemIdentifier("BetterMeets.stage")
+    static let stageActions = NSUserInterfaceItemIdentifier("BetterMeets.stageActions")
 }
 
 /// Observable window state for command titles and validation. SwiftUI does not
@@ -109,6 +110,10 @@ enum BetterMeetsWindowActions {
         showWindow(identifier: BetterMeetsWindowID.stage)
     }
 
+    static func showStageActions() {
+        showWindow(identifier: BetterMeetsWindowID.stageActions)
+    }
+
     static func minimizeStage() {
         stageWindow?.miniaturize(nil)
         BetterMeetsWindowState.shared.refresh()
@@ -199,7 +204,7 @@ final class BetterMeetsAppDelegate: NSObject, NSApplicationDelegate {
 }
 
 @MainActor
-final class StageWindowActionTarget: NSObject {
+final class StageWindowActionTarget: NSObject, WindowMenuProviding {
     weak var window: NSWindow?
 
     func makeMenu() -> NSMenu {

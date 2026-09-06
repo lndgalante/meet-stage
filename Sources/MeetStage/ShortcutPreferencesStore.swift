@@ -8,6 +8,7 @@ struct ShortcutPreferencesStore {
     static let pinsKey = "MeetStage.shortcutPins.v1"
     static let exclusionsKey = "MeetStage.shortcutExclusions.v1"
     static let modifierKey = "MeetStage.globalShortcutModifier.v1"
+    static let lastEnabledModifierKey = "MeetStage.lastEnabledShortcutModifier.v1"
 
     private let defaults: UserDefaults
 
@@ -50,13 +51,24 @@ struct ShortcutPreferencesStore {
 
     func loadGlobalShortcutModifier() -> GlobalShortcutModifier {
         guard let rawValue = defaults.string(forKey: Self.modifierKey) else {
-            return .commandOption
+            return .option
         }
-        return GlobalShortcutModifier(rawValue: rawValue) ?? .commandOption
+        return GlobalShortcutModifier(rawValue: rawValue) ?? .option
     }
 
     func saveGlobalShortcutModifier(_ modifier: GlobalShortcutModifier) {
+        let enabledModifier = modifier == .disabled ? loadEnabledShortcutModifier() : modifier
+        defaults.set(enabledModifier.rawValue, forKey: Self.lastEnabledModifierKey)
         defaults.set(modifier.rawValue, forKey: Self.modifierKey)
+    }
+
+    func loadEnabledShortcutModifier() -> GlobalShortcutModifier {
+        let current = loadGlobalShortcutModifier()
+        guard current == .disabled else { return current }
+        guard let rawValue = defaults.string(forKey: Self.lastEnabledModifierKey),
+            let modifier = GlobalShortcutModifier(rawValue: rawValue), modifier != .disabled
+        else { return .option }
+        return modifier
     }
 
     func savePins(_ pins: [Int: PinnedWindow]) {

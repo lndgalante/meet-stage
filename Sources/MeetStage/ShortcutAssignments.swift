@@ -3,16 +3,11 @@ import CoreGraphics
 import SwiftUI
 
 /// The system-wide modifier chord used by source slots 1–9.
-///
-/// Option-only shortcuts were the original BetterMeets behavior, but they steal
-/// useful characters on many keyboard layouts. New installs use a safer chord,
-/// while existing users can still opt into the legacy behavior or disable global
-/// shortcuts entirely.
 enum GlobalShortcutModifier: String, CaseIterable, Identifiable, Sendable {
+    case option
     case commandOption
     case controlCommand
     case commandShift
-    case option
     case disabled
 
     var id: Self { self }
@@ -22,7 +17,7 @@ enum GlobalShortcutModifier: String, CaseIterable, Identifiable, Sendable {
         case .commandOption: String(localized: "Command–Option")
         case .controlCommand: String(localized: "Control–Command")
         case .commandShift: String(localized: "Command–Shift")
-        case .option: String(localized: "Option only (legacy)")
+        case .option: String(localized: "Option")
         case .disabled: String(localized: "Off")
         }
     }

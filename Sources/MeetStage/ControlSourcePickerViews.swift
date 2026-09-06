@@ -26,10 +26,6 @@ struct SourceScrollFadeMask: View {
     }
 }
 
-/// Edge affordance for the horizontally scrollable source row: a chevron fades
-/// in on whichever side has more windows to reveal, so a clipped row reads as
-/// "scroll this way for more" rather than as a muddy dark cut-off. It pairs with
-/// the scroller's own alpha fade mask (which softens the partial tiles).
 struct SourceScrollEdgeShadow: View {
     let leadingStrength: CGFloat
     let trailingStrength: CGFloat
@@ -41,8 +37,11 @@ struct SourceScrollEdgeShadow: View {
             chevron(systemName: "chevron.compact.right", strength: trailingStrength)
         }
         .padding(.horizontal, ControlMetrics.outerPadding)
-        .padding(.vertical, ControlMetrics.sourceTileVerticalInset)
-        // Align the edge affordances to the rail's shared six-point inset.
+        .padding(
+            .top,
+            ControlMetrics.sourceTileVerticalInset + ControlMetrics.sourceLabelHeight
+                + ControlMetrics.sourceLabelSpacing
+        )
         .frame(maxHeight: .infinity, alignment: .top)
     }
 
@@ -52,7 +51,7 @@ struct SourceScrollEdgeShadow: View {
             .foregroundStyle(.white.opacity(0.76))
             .shadow(color: .black.opacity(0.56), radius: 2)
             .opacity(Double(min(max(strength, 0), 1)))
-            .frame(height: ControlMetrics.sourceTileHeight)
+            .frame(height: ControlMetrics.sourcePreviewHeight)
     }
 }
 
@@ -61,52 +60,47 @@ struct EmptyShortcutSlot: View {
     let pinnedWindowDescription: String?
     let shortcutModifier: GlobalShortcutModifier
 
-    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    @Environment(\.colorSchemeContrast) private var contrast
 
-    private var isUnavailablePin: Bool { pinnedWindowDescription != nil }
+    private var isUnavailable: Bool { pinnedWindowDescription != nil }
 
     var body: some View {
-        ZStack(alignment: .topLeading) {
-            RoundedRectangle(cornerRadius: ControlMetrics.sourceTileRadius, style: .continuous)
-                .fill(Color.black.opacity(isUnavailablePin ? 0.20 : 0.14))
+        VStack(spacing: ControlMetrics.sourceLabelSpacing) {
+            Text(isUnavailable ? "Unavailable" : "Empty")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(height: ControlMetrics.sourceLabelHeight)
 
-            RoundedRectangle(cornerRadius: ControlMetrics.sourceTileRadius, style: .continuous)
-                .strokeBorder(
-                    isUnavailablePin
-                        ? ControlPalette.warning.opacity(
-                            colorSchemeContrast == .increased ? 0.78 : 0.42
-                        )
-                        : Color.white.opacity(
-                            colorSchemeContrast == .increased ? 0.38 : 0.11
-                        ),
-                    style: StrokeStyle(
-                        lineWidth: colorSchemeContrast == .increased ? 1.5 : 1,
-                        dash: [3, 3]
+            ZStack {
+                RoundedRectangle(cornerRadius: ControlMetrics.sourceTileRadius)
+                    .fill(.primary.opacity(0.035))
+                RoundedRectangle(cornerRadius: ControlMetrics.sourceTileRadius)
+                    .strokeBorder(
+                        isUnavailable ? ControlPalette.warning : .primary.opacity(contrast == .increased ? 0.5 : 0.20),
+                        style: StrokeStyle(lineWidth: 1, dash: [3, 3])
                     )
-                )
-
-            Text(shortcutModifier.displayName(for: slot))
-                .font(.caption2.bold().monospaced())
-                .foregroundStyle(Color.white.opacity(isUnavailablePin ? 0.72 : 0.46))
-                .padding(.horizontal, 4)
-                .padding(.vertical, 2)
-                .background(Color.black.opacity(0.34), in: Capsule())
-                .padding(4)
-
-            if isUnavailablePin {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(ControlPalette.warning)
+                Image(systemName: isUnavailable ? "pin.slash" : "macwindow")
+                    .font(.system(size: 18, weight: .light))
+                    .foregroundStyle(.secondary)
+                Text(shortcutModifier.displayName(for: slot))
+                    .font(.system(size: 11, weight: .semibold).monospaced())
+                    .foregroundStyle(.secondary)
+                    .padding(6)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
-                    .padding(5)
-                    .accessibilityHidden(true)
             }
+            .frame(height: ControlMetrics.sourcePreviewHeight)
+
         }
         .frame(width: ControlMetrics.sourceTileWidth, height: ControlMetrics.sourceTileHeight)
         .help(helpText)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(shortcutModifier.spokenName(for: slot)), empty shortcut slot")
-        .accessibilityHint(accessibilityHint)
+        .accessibilityLabel(helpText)
+        .accessibilityHint(
+            isUnavailable
+                ? "The pinned window will return here when it is available"
+                : "A window can be pinned here from its context menu")
     }
 
     private var helpText: String {
@@ -114,13 +108,6 @@ struct EmptyShortcutSlot: View {
             return "\(shortcutModifier.displayName(for: slot)): \(pinnedWindowDescription) is unavailable"
         }
         return "\(shortcutModifier.displayName(for: slot)): Empty shortcut slot"
-    }
-
-    private var accessibilityHint: String {
-        if pinnedWindowDescription != nil {
-            return "The pinned window is currently unavailable"
-        }
-        return "A window can be pinned here from its context menu"
     }
 }
 
@@ -146,26 +133,16 @@ struct CompactWindowButton: View {
 
     var body: some View {
         Button(action: action) {
-            sourcePreview
-                .frame(
-                    width: ControlMetrics.sourceTileWidth,
-                    height: ControlMetrics.sourceTileHeight,
-                    alignment: .topLeading
-                )
-                .overlay(alignment: .bottomTrailing) {
-                    if let icon = source.applicationIcon {
-                        ApplicationIconBadge(icon: icon)
-                            .padding(3)
-                    }
-                }
+            VStack(spacing: ControlMetrics.sourceLabelSpacing) {
+                identityRow
+                sourcePreview
+            }
+            .frame(width: ControlMetrics.sourceTileWidth, height: ControlMetrics.sourceTileHeight)
+            .contentShape(Rectangle())
         }
         .buttonStyle(CompactIconButtonStyle())
-        .overlay {
-            RoundedRectangle(cornerRadius: ControlMetrics.sourceTileRadius, style: .continuous)
-                .strokeBorder(ControlPalette.accent, lineWidth: 2)
-                .padding(-2)
-                .opacity(isKeyboardFocused ? 1 : 0)
-        }
+        .focusable()
+        .focusEffectDisabled()
         .contextMenu {
             Menu(shortcutModifier == .disabled ? "Pin Source Slot" : "Pin Global Shortcut") {
                 ForEach(ShortcutSlot.all, id: \.self) { slot in
@@ -225,111 +202,114 @@ struct CompactWindowButton: View {
 
     private var sourcePreview: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: ControlMetrics.sourceTileRadius, style: .continuous)
-                .fill(Color.black.opacity(0.78))
-
+            Color.black.opacity(0.85)
             if let thumbnail = source.thumbnail {
                 Image(nsImage: thumbnail)
                     .resizable()
                     .scaledToFill()
-                    .frame(
-                        width: ControlMetrics.sourcePreviewWidth,
-                        height: ControlMetrics.sourcePreviewHeight
-                    )
-                    .clipped()
             } else if let icon = source.applicationIcon {
                 Image(nsImage: icon)
                     .resizable()
                     .scaledToFit()
-                    .padding(10)
+                    .frame(width: 32, height: 32)
             } else {
                 Image(systemName: "macwindow")
-                    .foregroundStyle(Color.white.opacity(0.44))
+                    .foregroundStyle(.white.opacity(0.65))
             }
-
-            LinearGradient(
-                colors: [Color.black.opacity(0.30), .clear, Color.black.opacity(0.22)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-
-            Color.white.opacity(isHovering ? 0.045 : 0)
-
-            VStack {
-                HStack {
-                    if let shortcut {
-                        Text(shortcutModifier.displayName(for: shortcut))
-                            .font(.caption2.bold().monospaced())
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 2)
-                            .foregroundStyle(.white)
-                            .background(
-                                isShortcutAvailable
-                                    ? Color.black.opacity(0.66)
-                                    : Color.red.opacity(0.90),
-                                in: Capsule()
-                            )
-                            .overlay {
-                                Capsule()
-                                    .strokeBorder(Color.white.opacity(0.13), lineWidth: 0.5)
-                            }
-                    }
-                    Spacer()
-                    if isPending {
-                        ProgressView()
-                            .controlSize(.mini)
-                            .tint(ControlPalette.warning)
-                    }
-                }
-                Spacer()
-                HStack {
-                    if isPaused {
-                        Image(systemName: "pause.circle.fill")
-                            .symbolRenderingMode(.palette)
-                            .foregroundStyle(.white, ControlPalette.warning)
-                            .font(.system(size: ControlMetrics.sourceBadgeIconSize))
-                    } else if isSelected && !isPending {
-                        Image(systemName: "checkmark.circle.fill")
-                            .symbolRenderingMode(.palette)
-                            .foregroundStyle(.white, ControlPalette.accent)
-                            .font(.system(size: ControlMetrics.sourceBadgeIconSize))
-                    }
-                    Spacer()
-                }
-            }
-            .padding(4)
         }
         .frame(width: ControlMetrics.sourcePreviewWidth, height: ControlMetrics.sourcePreviewHeight)
-        .clipShape(
-            RoundedRectangle(cornerRadius: ControlMetrics.sourceTileRadius, style: .continuous)
-        )
+        .clipped()
+        .overlay { Color.white.opacity(isHovering ? 0.08 : 0) }
+        .overlay(alignment: .bottomTrailing) {
+            if let shortcut {
+                shortcutKeycap(shortcut)
+                    .padding(5)
+            }
+        }
+        .overlay(alignment: .bottomLeading) {
+            if isKeyboardFocused {
+                Image(systemName: "return")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(4)
+                    .background(.black.opacity(0.8), in: RoundedRectangle(cornerRadius: 4))
+                    .padding(5)
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: ControlMetrics.sourceTileRadius, style: .continuous))
         .overlay {
             RoundedRectangle(cornerRadius: ControlMetrics.sourceTileRadius, style: .continuous)
-                .strokeBorder(borderColor, lineWidth: borderWidth)
+                .strokeBorder(borderColor, lineWidth: isSelected || isPending || isKeyboardFocused ? 2 : 1)
+            if isKeyboardFocused {
+                RoundedRectangle(cornerRadius: ControlMetrics.sourceTileRadius - 3, style: .continuous)
+                    .inset(by: 3)
+                    .strokeBorder(.white, style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
+            }
         }
-        .shadow(color: .black.opacity(0.28), radius: 2, y: 1)
-        .animation(
-            reduceMotion ? nil : .easeOut(duration: 0.14),
-            value: visualState
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: visualState)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: isHovering)
+    }
+
+    private var identityRow: some View {
+        HStack(spacing: 4) {
+            if let icon = source.applicationIcon {
+                Image(nsImage: icon)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(
+                        width: ControlMetrics.sourceApplicationIconSize,
+                        height: ControlMetrics.sourceApplicationIconSize)
+            }
+            Text(source.applicationName)
+                .font(.system(size: 11, weight: isSelected ? .medium : .regular))
+                .lineLimit(1)
+            Spacer(minLength: 0)
+            if isPending {
+                ProgressView().controlSize(.mini)
+            } else if isPaused || isSelected {
+                Image(systemName: isPaused ? "pause.fill" : "play.fill")
+                    .font(.system(size: 9, weight: .semibold))
+                    .foregroundStyle(isPaused ? ControlPalette.warning : ControlPalette.accent)
+                    .frame(width: 12)
+            }
+        }
+        .frame(height: ControlMetrics.sourceLabelHeight)
+        .accessibilityHidden(true)
+    }
+
+    private func shortcutKeycap(_ slot: Int) -> some View {
+        HStack(spacing: 3) {
+            if !isShortcutAvailable {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 9))
+            }
+            Text(shortcutModifier.displayName(for: slot))
+                .font(.system(size: 11, weight: .semibold).monospaced())
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 5)
+        .padding(.vertical, 3)
+        .background(
+            keycapColor,
+            in: RoundedRectangle(cornerRadius: 5, style: .continuous)
         )
-        .animation(
-            reduceMotion ? nil : .easeOut(duration: 0.12),
-            value: isHovering
-        )
+        .overlay {
+            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                .strokeBorder(.white.opacity(0.2), lineWidth: 0.5)
+        }
+    }
+
+    private var keycapColor: Color {
+        if !isShortcutAvailable { return .red.opacity(0.95) }
+        if isPaused || isPending { return ControlPalette.warning }
+        if isSelected { return ControlPalette.accent }
+        return .black.opacity(0.82)
     }
 
     private var borderColor: Color {
-        if isPending { return ControlPalette.warning }
-        if isPaused { return ControlPalette.warning }
-        if isSelected { return ControlPalette.accent }
-        if colorSchemeContrast == .increased {
-            return .white.opacity(isHovering ? 0.58 : 0.40)
-        }
-        return .white.opacity(isHovering ? 0.26 : 0.12)
-    }
-
-    private var borderWidth: CGFloat {
-        isPending || isSelected || colorSchemeContrast == .increased ? 1.5 : 1
+        if isPending || isPaused { return ControlPalette.warning }
+        if isSelected || isKeyboardFocused { return ControlPalette.accent }
+        return .white.opacity(colorSchemeContrast == .increased ? 0.6 : isHovering ? 0.35 : 0.18)
     }
 
     private var visualState: Int {
@@ -362,113 +342,5 @@ struct CompactWindowButton: View {
         } else {
             Text(shortcutModifier.displayName(for: slot))
         }
-    }
-}
-
-private struct ApplicationIconBadge: View {
-    let icon: NSImage
-
-    var body: some View {
-        Image(nsImage: icon)
-            .resizable()
-            .scaledToFit()
-            .frame(
-                width: ControlMetrics.sourceApplicationIconSize,
-                height: ControlMetrics.sourceApplicationIconSize
-            )
-            .frame(
-                width: ControlMetrics.sourceApplicationBadgeSize,
-                height: ControlMetrics.sourceApplicationBadgeSize
-            )
-            .background(
-                Color.black.opacity(0.72),
-                in: RoundedRectangle(cornerRadius: 5, style: .continuous)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 5, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.24), lineWidth: 0.75)
-            }
-            .shadow(color: Color.black.opacity(0.46), radius: 2, y: 1)
-            .accessibilityHidden(true)
-    }
-}
-
-private struct WindowHoverPreview: View {
-    let source: WindowSource
-    let shortcut: Int?
-    let shortcutModifier: GlobalShortcutModifier
-    let isShortcutAvailable: Bool
-
-    @Environment(\.colorScheme) private var colorScheme
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 9) {
-            ZStack {
-                Color.black
-
-                if let thumbnail = source.thumbnail {
-                    Image(nsImage: thumbnail)
-                        .resizable()
-                        .scaledToFit()
-                } else if let icon = source.applicationIcon {
-                    Image(nsImage: icon)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 64, height: 64)
-                }
-            }
-            .frame(width: 288, height: 162)
-            .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
-            .overlay {
-                RoundedRectangle(cornerRadius: 9, style: .continuous)
-                    .strokeBorder(
-                        colorScheme == .dark
-                            ? Color.white.opacity(0.10)
-                            : Color.black.opacity(0.10),
-                        lineWidth: 1
-                    )
-            }
-
-            HStack(spacing: 8) {
-                if let icon = source.applicationIcon {
-                    Image(nsImage: icon)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 24, height: 24)
-                }
-
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(source.title)
-                        .font(.callout.weight(.semibold))
-                        .lineLimit(1)
-                    Text(source.applicationName)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-
-                Spacer()
-
-                if let shortcut {
-                    Text(
-                        isShortcutAvailable
-                            ? shortcutModifier.displayName(for: shortcut)
-                            : "\(shortcutModifier.displayName(for: shortcut)) unavailable"
-                    )
-                    .font(.caption.bold().monospaced())
-                    .foregroundStyle(isShortcutAvailable ? Color.primary : Color.red)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 4)
-                    .background(.quaternary, in: Capsule())
-                } else {
-                    Text("Right-click to pin")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-        .padding(10)
-        .frame(width: 308)
     }
 }

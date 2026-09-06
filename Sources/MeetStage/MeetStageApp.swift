@@ -20,12 +20,11 @@ struct MeetStageApp: App {
     }
 
     var body: some Scene {
-        Window("BetterMeets", id: "control") {
-            ControlView(manager: captureManager)
-                .frame(width: ControlWindowSizing.size.width, height: ControlWindowSizing.size.height)
+        Window("BetterMeets — Demo Stage", id: "stage") {
+            StageSceneView(manager: captureManager)
         }
-        .defaultSize(width: ControlWindowSizing.size.width, height: ControlWindowSizing.size.height)
-        .windowResizability(.contentSize)
+        .defaultSize(width: initialStageSize.width, height: initialStageSize.height)
+        .windowStyle(.hiddenTitleBar)
         .commands {
             CommandGroup(after: .appInfo) {
                 Button("Check for Updates…") {
@@ -157,6 +156,11 @@ struct MeetStageApp: App {
                 }
                 .keyboardShortcut("s", modifiers: [.command, .shift])
 
+                Button("Show Stage Actions") {
+                    BetterMeetsWindowActions.showStageActions()
+                }
+                .disabled(captureManager.selectedWindowID == nil)
+
                 Button("Minimize Demo Stage") {
                     BetterMeetsWindowActions.minimizeStage()
                 }
@@ -178,13 +182,6 @@ struct MeetStageApp: App {
                 .keyboardShortcut("?", modifiers: [.command])
             }
         }
-
-        Window("BetterMeets — Demo Stage", id: "stage") {
-            StageView(manager: captureManager)
-                .frame(minWidth: 480, minHeight: 270)
-        }
-        .defaultSize(width: initialStageSize.width, height: initialStageSize.height)
-        .windowStyle(.hiddenTitleBar)
 
         Settings {
             BetterMeetsSettingsView(manager: captureManager)
@@ -216,5 +213,18 @@ struct MeetStageApp: App {
             prefix = "Share"
         }
         return "\(prefix) \(source.applicationName) — \(source.title)"
+    }
+}
+
+private struct StageSceneView: View {
+    @ObservedObject var manager: CaptureManager
+    @Environment(\.openSettings) private var openSettings
+
+    var body: some View {
+        StageView(manager: manager)
+            .frame(minWidth: 480, minHeight: 270)
+            .task {
+                ControlWindowController.shared.show(manager: manager, openSettings: { openSettings() })
+            }
     }
 }

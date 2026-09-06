@@ -188,11 +188,7 @@ struct CompactIconButtonStyle: ButtonStyle {
     }
 }
 
-/// The promoted Demo Mode voice control: a circular hero button that nests into
-/// the control bar's center gap and protrudes below it. When listening it takes
-/// on an accent fill and restrained halo so "live" reads at a glance; off, it
-/// is a calm elevated disc. Emphasis by size, elevation, and color — never by
-/// motion alone (there is always a static color/icon cue).
+/// The larger voice control marks listening with an accent fill and static halo.
 struct DemoHeroButton: View {
     let isListening: Bool
     let showsPermissionWarning: Bool
@@ -205,7 +201,7 @@ struct DemoHeroButton: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
-    private var diameter: CGFloat { ControlWindowSizing.heroDiameter }
+    private var diameter: CGFloat { StageActionsMetrics.heroDiameter }
 
     var body: some View {
         Button(action: action) {
@@ -232,7 +228,7 @@ struct DemoHeroButton: View {
         .onHover { isHovering = $0 }
         .contextMenu {
             if let settingsAction {
-                Button("Demo Mode Settings…", action: settingsAction)
+                Button("Voice Settings…", action: settingsAction)
             }
         }
         .overlay {

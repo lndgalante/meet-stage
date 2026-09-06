@@ -182,11 +182,9 @@ struct PresentationPreferencesStore {
     static let stageLogoDataKey = "presentation.stageLogoData"
     static let stageLogoStorageVersionKey = "presentation.stageLogoStorageVersion"
     static let demoModeEnabledKey = "presentation.demoModeEnabled"
-    static let demoVoiceActionsKey = "presentation.demoVoiceActions"
     static let demoHighlightColorKey = "presentation.demoHighlightColor"
     static let demoZoomSizeKey = "presentation.demoZoomSize"
-    static let demoSmartUnderstandingKey = "presentation.demoSmartUnderstanding"
-    static let demoCloudConsentedKey = "presentation.demoCloudConsented"
+    static let voiceOnboardingKey = "presentation.hasCompletedVoiceOnboarding"
     static let demoBrainProviderKey = "presentation.demoBrainProvider"
 
     private let defaults: UserDefaults
@@ -373,19 +371,9 @@ struct PresentationPreferencesStore {
         nonmutating set { defaults.set(newValue, forKey: Self.demoModeEnabledKey) }
     }
 
-    var demoVoiceActions: DemoVoiceActions {
-        // Demo Mode promises to actuate controls only when the presenter uses
-        // an explicit action verb. Keep that behavior on by default; presenters
-        // can still opt into highlight-only operation from Demo settings.
-        get { value(forKey: Self.demoVoiceActionsKey, default: .highlightAndClick) }
-        nonmutating set { defaults.set(newValue.rawValue, forKey: Self.demoVoiceActionsKey) }
-    }
-
-    var demoCloudConsented: Bool {
-        // Off by default: sending a window screenshot + transcript to the
-        // selected cloud provider requires the presenter's explicit consent.
-        get { defaults.bool(forKey: Self.demoCloudConsentedKey) }
-        nonmutating set { defaults.set(newValue, forKey: Self.demoCloudConsentedKey) }
+    var hasCompletedVoiceOnboarding: Bool {
+        get { defaults.bool(forKey: Self.voiceOnboardingKey) }
+        nonmutating set { defaults.set(newValue, forKey: Self.voiceOnboardingKey) }
     }
 
     var demoBrainProvider: DemoBrainProvider {
@@ -401,13 +389,6 @@ struct PresentationPreferencesStore {
     var demoZoomSize: PresentationSize {
         get { value(forKey: Self.demoZoomSizeKey, default: .medium) }
         nonmutating set { defaults.set(newValue.rawValue, forKey: Self.demoZoomSizeKey) }
-    }
-
-    var demoSmartUnderstanding: Bool {
-        // Defaults on: the coordinator only uses it when the on-device model is
-        // actually available, and always falls back to the deterministic policy.
-        get { defaults.object(forKey: Self.demoSmartUnderstandingKey) as? Bool ?? true }
-        nonmutating set { defaults.set(newValue, forKey: Self.demoSmartUnderstandingKey) }
     }
 
     private func value<Value>(

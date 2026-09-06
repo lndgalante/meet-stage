@@ -2,62 +2,21 @@ import AppKit
 import SwiftUI
 
 enum ControlWindowSizing {
-    // The controller is one cohesive panel: the source row, a compact utility
-    // row split three-per-side around a center notch, and a circular Demo Mode
-    // button cradled by the panel's lower edge.
-    static let panelWidth: CGFloat = 262
-    static let panelCornerRadius: CGFloat = 15
-
-    // The source rail consumes the former grip region, keeping the panel's full
-    // height useful without increasing the widget's footprint.
-    static let sourceRegionHeight: CGFloat = 64
-    static let effectBarHeight: CGFloat = 36
-    static let panelBodyHeight = sourceRegionHeight + effectBarHeight
-
-    /// One shared inset governs the rail's outer padding and the gaps between
-    /// source cards, giving the picker a single, legible spacing rhythm.
-    static let sourceRailInset: CGFloat = 6
+    static let panelWidth: CGFloat = 360
+    static let panelCornerRadius: CGFloat = 16
+    static let sourceRegionHeight: CGFloat = 104
+    static let guidanceHeight: CGFloat = 24
+    static let sourceRailInset: CGFloat = 8
     static let sourceAreaWidth = panelWidth - sourceRailInset * 2
     static let contentWidth = sourceAreaWidth
-
-    /// Hero (Demo Mode) geometry. Its center sits slightly above the panel's
-    /// bottom edge, leaving only the lower cap exposed. The panel follows that
-    /// cap so the disc reads as seated in the chrome rather than pasted over it.
-    static let heroDiameter: CGFloat = 44
-    static let heroGap: CGFloat = 60
-    /// Slightly smaller than the disc so the disc covers the cut: one visible edge.
-    static let heroNotchRadius: CGFloat = heroDiameter / 2 - 0.5
-    /// How far the disc center sits ABOVE the panel's bottom edge, so the disc is
-    /// mostly embedded and only its lower ~third protrudes (feels part of the UI).
-    static let heroRise: CGFloat = 9
-    /// Center of the hero, measured from the panel's top edge.
-    static let heroCenterY = panelBodyHeight - heroRise
-    static let heroBottomInPanel = heroCenterY + heroDiameter / 2
-
-    /// Transparent margin around the panel — wider than the shadow's reach so the
-    /// soft shadow fades to nothing (a rounded halo) well before the window's
-    /// rectangular edge, instead of saturating the margin into a light rectangle.
-    static let shadowMargin: CGFloat = 30
     static let size = NSSize(
-        width: panelWidth + shadowMargin * 2,
-        height: heroBottomInPanel + shadowMargin * 2
+        width: panelWidth,
+        height: sourceRegionHeight + guidanceHeight
     )
-
-    // Absolute positions inside the window (panel is inset by the shadow margin).
-    static let panelTop = shadowMargin
-    static let heroCenterYAbsolute = shadowMargin + heroCenterY
 }
 
 /// Applies AppKit-only window behavior that SwiftUI scenes cannot express.
 struct WindowConfigurator: NSViewRepresentable {
-    static let controlStyleMask: NSWindow.StyleMask = [
-        .titled,
-        .closable,
-        .miniaturizable,
-        .utilityWindow,
-        .fullSizeContentView
-    ]
-
     static let stageStyleMask: NSWindow.StyleMask = [
         .titled,
         .closable,
@@ -67,7 +26,6 @@ struct WindowConfigurator: NSViewRepresentable {
     ]
 
     enum Kind {
-        case control
         case stage(aspectRatio: CGFloat)
     }
 
@@ -107,41 +65,6 @@ struct WindowConfigurator: NSViewRepresentable {
         guard let window else { return }
 
         switch kind {
-        case .control:
-            let compactSize = ControlWindowSizing.size
-            window.identifier = BetterMeetsWindowID.control
-            window.setFrameAutosaveName("BetterMeets.ControlWindow")
-            window.isReleasedWhenClosed = false
-            window.level = .floating
-            window.collectionBehavior.formUnion([.canJoinAllSpaces, .fullScreenAuxiliary])
-            window.styleMask = Self.controlStyleMask
-            window.isOpaque = false
-            window.backgroundColor = .clear
-            // The panel draws its own soft SwiftUI shadow; the native window
-            // shadow would trace the notched silhouette as a crisp dark line.
-            window.hasShadow = false
-            window.titleVisibility = .hidden
-            window.titlebarAppearsTransparent = true
-            window.titlebarSeparatorStyle = .none
-            window.toolbar = nil
-            // A standard titled window is retained so the controller can become
-            // key and participate in keyboard focus. Its tiny custom silhouette
-            // cannot accommodate the minimum native titlebar width, so lifecycle
-            // actions live in the Window menu, Dock menu, ⌘W, and context menu.
-            window.standardWindowButton(.closeButton)?.isHidden = true
-            window.standardWindowButton(.miniaturizeButton)?.isHidden = true
-            window.standardWindowButton(.zoomButton)?.isHidden = true
-            window.standardWindowButton(.closeButton)?.superview?.isHidden = true
-            window.isMovable = true
-            window.isMovableByWindowBackground = true
-            window.setContentSize(compactSize)
-            window.minSize = compactSize
-            window.maxSize = compactSize
-            if !NSScreen.screens.contains(where: { $0.visibleFrame.intersects(window.frame) }) {
-                window.center()
-            }
-            BetterMeetsWindowState.shared.refresh()
-
         case let .stage(aspectRatio):
             configureStage(window, aspectRatio: aspectRatio, coordinator: coordinator)
         }
@@ -249,10 +172,15 @@ struct WindowConfigurator: NSViewRepresentable {
     }
 }
 
+@MainActor
+protocol WindowMenuProviding: AnyObject {
+    func makeMenu() -> NSMenu
+}
+
 final class WindowDragView: NSView {
     private var dragStartPointerLocation: NSPoint?
     private var dragStartWindowOrigin: NSPoint?
-    weak var actionTarget: StageWindowActionTarget?
+    weak var actionTarget: (any WindowMenuProviding)?
 
     // Keep AppKit from consuming the gesture as a background-window drag.
     // This view tracks the pointer itself so movement stays 1:1 and testable.

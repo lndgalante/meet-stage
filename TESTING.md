@@ -54,8 +54,11 @@ After changing capture lifecycle, source discovery, presentation monitoring,
 window configuration, or permissions, build the packaged debug app with
 `./dev-app.sh` and verify:
 
-1. Screen Recording permission can be requested, granted, and recovered by
-   restarting the packaged app.
+1. Launching without Screen Recording permission shows inline guidance without
+   opening a system dialog. The controller's permission button requests access.
+   Verify access can be granted and recovered by restarting the packaged app.
+   With an Apple Development certificate, rebuild twice and confirm access
+   persists. Packaging a release must leave the running debug bundle unchanged.
 2. Selecting, switching, pausing, and resuming windows never publishes a source
    as live before its first complete frame.
 3. Closing, minimizing, hiding, restoring, and renaming a source preserves the
@@ -80,26 +83,29 @@ window configuration, or permissions, build the packaged debug app with
 10. Turn on Reduce Motion and confirm zoom is restrained, cursor travel does not
     animate, and all controls remain usable. Spotlight and Draw cancel the
     current auto zoom and continue to take input precedence.
-11. Enable Demo Mode. Confirm the microphone prompt appears the first time and
+11. Enable Demo Mode. Confirm the Voice introduction appears once, before any
+    listening or cloud request. “Not Now” must leave Voice off; “Continue” must
+    remember the introduction across launches. Confirm the microphone prompt
+    appears when access has not yet been granted and
     that a revoked microphone permission re-disables the toggle at next launch.
     With a live, focused source, naming a visible control ("the Receive button")
     highlights it on the Demo Stage and zooms to it, and the presenter-only
     caption never appears in the shared capture. Confirm listening continues
     while BetterMeets is focused but no command fires unless the source is
     frontmost, and that everything tears down on stop, pause, and source switch.
-12. With Voice actions set to "Highlight and click" and Accessibility granted,
-    saying "click <control>" glides the pointer to the control and opens it; set
-    to "Highlight only" and confirm no click is ever performed. With Accessibility
+12. With Accessibility granted, saying "click <control>" glides the pointer to
+    the control and opens it; naming the control without an action verb must
+    only highlight it. With Accessibility
     declined, confirm Demo Mode still highlights text-recognized controls but does
     not click. Verify a Chromium/Electron app's web controls become targetable
     (the accessibility enhancement plus text-recognition fallback), and that
     repeating the same phrase does not double-fire within the debounce window.
-13. With Cloud understanding enabled, start a command and immediately turn cloud
-    consent off, change provider, focus another app, and switch source in separate
-    runs. Confirm the old request never applies an action, and changing provider
-    turns Cloud understanding off until explicitly enabled for the new vendor.
-    Verify the microphone prompt names both supported cloud providers and that
-    on-device commands still work with cloud consent disabled.
+13. After the Voice introduction, add a model API key and confirm cloud
+    understanding works automatically. Start a command and immediately remove
+    the key, change provider, focus another app, and switch source in separate
+    runs. Confirm the old request never applies an action. Switching providers
+    must use only the selected provider's key, without another introduction.
+    Verify on-device commands still work when the selected model has no key.
 14. With Cloud understanding and input actuation enabled, confirm “show the
     Search field” only highlights it, “type hello in Search” enters exactly
     “hello,” and negated or screen-authored instructions never type. Move focus
@@ -109,6 +115,36 @@ window configuration, or permissions, build the packaged debug app with
     front, and issue click and type commands. Confirm neither command actuates
     until the selected window itself is focused. Repeat with two maximized
     same-frame windows and confirm the ambiguous match fails closed.
+16. Select a source with Option–1 through Option–9. Verify the controller shows
+    only the carousel and guidance, including the paused and empty states.
+    Resize and move the source: the vertical actions should use the right
+    gutter, then the left gutter, or sit inside when neither fits, centered
+    vertically and kept on screen. Check a second display, full screen,
+    minimizing, switching apps, stopping capture, and keyboard access through
+    Window → Show Stage Actions. Share only Demo Stage in Google Meet and
+    confirm the controls stay absent with both inside and outside placement.
+17. Open the action menu's gear and confirm Settings appears to its left with
+    an arrow pointing to the gear. The card border must stop beneath the tab
+    strip in both active and inactive windows. Verify General has only the
+    shortcut toggle and modifier selector, and Voice only the model and API key.
+    Turn shortcuts off and back on, including across a restart, and confirm the
+    modifier choice returns. Verify the key preview and that Focus contains only
+    spotlight size and outside opacity. Check all tabs, Escape/outside-click
+    dismissal, logo import,
+    and focus while interacting with the popover. The settings popover must
+    also stay absent from the shared Demo Stage.
 
 Record the macOS version and meeting app when a manual result depends on
 window-server or capture-framework behavior.
+
+
+## Source widget regression check
+
+The source controller is a borderless native window. Its full content and window
+frame must both measure 360 × 128 points, with no padding for a painted shadow.
+The window server supplies the shadow outside those bounds. Verify Tab/arrows and
+Return, Option–number source selection, live/pause cues, pin and hover menus,
+Command-W, Command-M, Command-Control-C restore, and dragging from the footer.
+Tests cover key/main eligibility, Close/Minimize validation, exact bounds, native
+footer hit testing, and 1:1 pointer movement. A window screenshot should include
+only the visible widget and must have no detached title-bar line.

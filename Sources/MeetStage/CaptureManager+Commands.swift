@@ -155,6 +155,16 @@ extension CaptureManager {
         select(source)
     }
 
+    var globalShortcutsEnabled: Bool { globalShortcutModifier != .disabled }
+
+    var preferredShortcutModifier: GlobalShortcutModifier {
+        shortcutStore.loadEnabledShortcutModifier()
+    }
+
+    func setGlobalShortcutsEnabled(_ enabled: Bool) {
+        setGlobalShortcutModifier(enabled ? preferredShortcutModifier : .disabled)
+    }
+
     func setGlobalShortcutModifier(_ modifier: GlobalShortcutModifier) {
         guard globalShortcutModifier != modifier else { return }
         globalShortcutModifier = modifier

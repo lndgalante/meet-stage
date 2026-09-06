@@ -31,17 +31,40 @@ struct PresentationPreferencesTests {
         #expect(manager.demoVoiceActions == .highlightAndClick)
     }
 
-    @Test("Preserves an explicit highlight-only voice action preference")
+    @Test("Voice uses highlight and click even when the removed setting was saved")
     @MainActor
-    func persistsHighlightOnlyVoiceActions() throws {
+    func voiceAlwaysAllowsExplicitClicks() throws {
         let fixture = try PreferencesFixture()
         defer { fixture.dispose() }
 
-        let manager = fixture.makeManager()
-        manager.setDemoVoiceActions(.highlightOnly)
+        fixture.defaults.set("highlightOnly", forKey: "presentation.demoVoiceActions")
 
         let restoredManager = fixture.makeManager()
-        #expect(restoredManager.demoVoiceActions == .highlightOnly)
+        #expect(restoredManager.demoVoiceActions == .highlightAndClick)
+    }
+
+    @Test("Voice introduction is remembered and cloud use follows the selected model")
+    @MainActor
+    func voiceOnboardingPersistsAcrossModelChanges() throws {
+        let fixture = try PreferencesFixture()
+        defer { fixture.dispose() }
+        let store = PresentationPreferencesStore(defaults: fixture.defaults)
+        fixture.defaults.set(true, forKey: "presentation.demoCloudConsented")
+        fixture.defaults.set(true, forKey: PresentationPreferencesStore.demoModeEnabledKey)
+        let manager = fixture.makeManager()
+
+        #expect(!store.hasCompletedVoiceOnboarding)
+        #expect(!manager.demoCloudConsented)
+        #expect(!manager.demoModeEnabled)
+        store.hasCompletedVoiceOnboarding = true
+        let restoredManager = fixture.makeManager()
+        #expect(restoredManager.demoCloudConsented)
+
+        for provider in DemoBrainProvider.allCases {
+            restoredManager.setDemoBrainProvider(provider)
+            #expect(restoredManager.demoCloudConsented)
+            #expect(store.demoBrainProvider == provider)
+        }
     }
 
     @Test("Persists every presentation appearance setting")

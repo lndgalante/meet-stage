@@ -27,6 +27,11 @@ extension CaptureManager {
             return
         }
 
+        if !presentationStore.hasCompletedVoiceOnboarding {
+            guard VoiceOnboarding.show() else { return }
+            presentationStore.hasCompletedVoiceOnboarding = true
+        }
+
         switch DemoSpeechTranscriber.microphoneAuthorization {
         case .authorized:
             enableDemoMode()
@@ -85,11 +90,6 @@ extension CaptureManager {
         startDemoModeIfPossible()
     }
 
-    func setDemoVoiceActions(_ value: DemoVoiceActions) {
-        demoVoiceActions = value
-        presentationStore.demoVoiceActions = value
-    }
-
     func setDemoHighlightColor(_ value: PresentationColor) {
         demoHighlightColor = value
         presentationStore.demoHighlightColor = value
@@ -100,18 +100,7 @@ extension CaptureManager {
         presentationStore.demoZoomSize = value
     }
 
-    func setDemoSmartUnderstanding(_ value: Bool) {
-        demoSmartUnderstanding = value
-        presentationStore.demoSmartUnderstanding = value
-    }
-
-    func setDemoCloudConsented(_ value: Bool) {
-        if !value {
-            cancelDemoBrainRequest()
-        }
-        demoCloudConsented = value
-        presentationStore.demoCloudConsented = value
-    }
+    var demoCloudConsented: Bool { presentationStore.hasCompletedVoiceOnboarding }
 
     /// Switches which cloud model the brain uses, and refreshes the key state so
     /// the UI reflects whether the newly selected provider has a key.
@@ -120,10 +109,6 @@ extension CaptureManager {
         cancelDemoBrainRequest()
         demoBrainProvider = value
         presentationStore.demoBrainProvider = value
-        // Consent names a concrete third-party recipient in Settings. Switching
-        // vendors requires a fresh opt-in instead of carrying consent across.
-        demoCloudConsented = false
-        presentationStore.demoCloudConsented = false
         hasDemoBrainKey = value.keyStore.hasKey
     }
 
@@ -143,9 +128,6 @@ extension CaptureManager {
         // so this session never reads the Keychain back and never prompts for it.
         cachedBrainKeys[provider] = trimmed.isEmpty ? nil : trimmed
         hasDemoBrainKey = provider.keyStore.hasKey
-        if trimmed.isEmpty {
-            setDemoCloudConsented(false)
-        }
         demoModeUnavailableReason = nil
     }
 
@@ -169,19 +151,6 @@ extension CaptureManager {
         if demoMode.isListening, demoMode.caption?.status == .thinking {
             demoMode.setCaption(.listening)
         }
-    }
-
-    /// Whether any smarter-understanding tier is available. On-device embeddings
-    /// ship with the OS, so this is effectively always true; Apple Intelligence
-    /// adds the conversational (pronoun) tier on top when present.
-    var isDemoSmartUnderstandingAvailable: Bool {
-        demoEmbeddingMatcher.isAvailable || DemoModelIntentResolver.isAvailable
-    }
-
-    /// Whether the conversational (Apple Intelligence) tier is present, on top of
-    /// the always-available semantic tier.
-    var isDemoConversationalTierAvailable: Bool {
-        DemoModelIntentResolver.isAvailable
     }
 
     // MARK: - Activation
@@ -470,7 +439,7 @@ extension CaptureManager {
 
     func handleDemoTranscript(_ segment: DemoTranscriptSegment) {
         guard demoModeEnabled, isLive, isSelectedSourceFocused, segment.isFinal else { return }
-        guard demoSmartUnderstanding, looksLikeDemoCommand(segment.text) else { return }
+        guard looksLikeDemoCommand(segment.text) else { return }
 
         // Brain-first: with a key configured AND the presenter's consent to send
         // a screenshot to the selected provider, the conversational vision model

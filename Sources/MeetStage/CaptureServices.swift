@@ -2,6 +2,20 @@ import AppKit
 import MeetStageCore
 import ScreenCaptureKit
 
+@MainActor
+protocol ScreenRecordingAuthorizing {
+    var isAuthorized: Bool { get }
+    func requestAccess() -> Bool
+}
+
+struct SystemScreenRecordingAuthorization: ScreenRecordingAuthorizing {
+    var isAuthorized: Bool { CGPreflightScreenCaptureAccess() }
+
+    func requestAccess() -> Bool {
+        CGRequestScreenCaptureAccess()
+    }
+}
+
 /// Platform services composed at the `CaptureManager` boundary. Keeping these
 /// dependencies injectable prevents persistence, screenshot work, and cloud
 /// provider construction from being hidden inside the coordinator.

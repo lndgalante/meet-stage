@@ -78,6 +78,9 @@ struct StageView: View {
                 kind: .stage(aspectRatio: manager.displayedStageAspectRatio)
             )
         )
+        .background {
+            StageActionsInstaller(manager: manager)
+        }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(String(localized: "Demo Stage"))
         .accessibilityValue(stageAccessibilityValue)
@@ -86,6 +89,9 @@ struct StageView: View {
         )
         .accessibilityAction(named: String(localized: "Show Controller")) {
             BetterMeetsWindowActions.showController()
+        }
+        .accessibilityAction(named: String(localized: "Show Stage Actions")) {
+            BetterMeetsWindowActions.showStageActions()
         }
         .accessibilityAction(named: String(localized: "Minimize Demo Stage")) {
             BetterMeetsWindowActions.minimizeStage()

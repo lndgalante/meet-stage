@@ -50,16 +50,42 @@ struct ShortcutPreferencesStoreTests {
     }
 
     @Test
-    func globalShortcutModifierUsesSafeDefaultAndPersistsChoice() throws {
+    func globalShortcutModifierDefaultsToOptionAndPersistsChoice() throws {
         let fixture = try makeFixture()
         defer { fixture.clear() }
 
-        #expect(fixture.store.loadGlobalShortcutModifier() == .commandOption)
-        fixture.store.saveGlobalShortcutModifier(.disabled)
-        #expect(fixture.store.loadGlobalShortcutModifier() == .disabled)
+        #expect(fixture.store.loadGlobalShortcutModifier() == .option)
+        for modifier in GlobalShortcutModifier.allCases {
+            fixture.store.saveGlobalShortcutModifier(modifier)
+            #expect(fixture.store.loadGlobalShortcutModifier() == modifier)
+        }
 
         fixture.defaults.set("not-a-modifier", forKey: ShortcutPreferencesStore.modifierKey)
-        #expect(fixture.store.loadGlobalShortcutModifier() == .commandOption)
+        #expect(fixture.store.loadGlobalShortcutModifier() == .option)
+    }
+
+    @Test("Turning shortcuts off retains the chosen modifier across launches")
+    func disablingShortcutsKeepsModifier() throws {
+        let fixture = try makeFixture()
+        defer { fixture.clear() }
+
+        fixture.store.saveGlobalShortcutModifier(.controlCommand)
+        fixture.store.saveGlobalShortcutModifier(.disabled)
+
+        let restored = ShortcutPreferencesStore(defaults: fixture.defaults)
+        #expect(restored.loadGlobalShortcutModifier() == .disabled)
+        #expect(restored.loadEnabledShortcutModifier() == .controlCommand)
+
+        restored.saveGlobalShortcutModifier(restored.loadEnabledShortcutModifier())
+        #expect(restored.loadGlobalShortcutModifier() == .controlCommand)
+    }
+
+    @Test("A disabled legacy shortcut setting restores Option when enabled")
+    func disabledLegacyShortcutsUseOption() throws {
+        let fixture = try makeFixture()
+        defer { fixture.clear() }
+        fixture.defaults.set("disabled", forKey: ShortcutPreferencesStore.modifierKey)
+        #expect(fixture.store.loadEnabledShortcutModifier() == .option)
     }
 
     private func makeFixture() throws -> PreferencesFixture {

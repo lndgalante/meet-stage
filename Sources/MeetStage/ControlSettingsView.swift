@@ -9,7 +9,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case stage
     case spotlight
     case annotations
-    case demo
+    case voice = "demo"
     case clicks
     case keystrokes
 
@@ -18,7 +18,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .general: String(localized: "General")
-        case .demo: String(localized: "Demo")
+        case .voice: String(localized: "Voice")
         case .stage: String(localized: "Stage")
         case .spotlight: String(localized: "Focus")
         case .annotations: String(localized: "Draw")
@@ -31,44 +31,27 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 struct BetterMeetsSettingsView: View {
     @ObservedObject var manager: CaptureManager
     @Environment(\.legibilityWeight) private var legibilityWeight
+    @Environment(\.colorSchemeContrast) private var contrast
     @AppStorage(SettingsTab.storageKey) private var selectedTabRawValue = SettingsTab.general.rawValue
     @State private var isChoosingLogo = false
     @State private var isLogoDropTargeted = false
     @State private var logoImportError: String?
     @State private var brainKeyDraft = ""
     @State private var isConfirmingKeyRemoval = false
-    /// Settings content is capped to this height and scrolls beyond it, so a tall
-    /// tab (Demo) never overflows the screen above the button and overlaps rows.
-    private static let maxTabContentHeight: CGFloat = 560
-    // Start at the cap so the window opens correctly sized for a tall tab, then
-    // settles to the exact measured height (avoids a first-frame zero-height pop).
+    private static let tabBarWidth: CGFloat = 500
+    private static let maxTabContentHeight: CGFloat = 480
+    // Start at the cap until the selected pane has reported its natural height.
     @State private var tabContentHeight: CGFloat = maxTabContentHeight
 
     var body: some View {
-        VStack(spacing: 16) {
-            Picker(
-                "Settings section",
-                selection: selectedTabBinding
-            ) {
-                ForEach(SettingsTab.allCases) { tab in
-                    Text(tab.title)
-                        .tag(tab)
-                }
-            }
-            .labelsHidden()
-            .pickerStyle(.segmented)
-            .frame(width: 500)
-
-            // Some tabs (Demo especially) are taller than the window can be on
-            // shorter screens; scroll past the cap rather than clip or overlap
-            // the last rows. Below the cap the popover fits the content exactly.
+        VStack(spacing: 0) {
             ScrollView(.vertical, showsIndicators: false) {
                 Group {
                     switch selectedTab {
                     case .general:
                         generalSettings
-                    case .demo:
-                        demoSettings
+                    case .voice:
+                        voiceSettings
                     case .stage:
                         stageSettings
                     case .spotlight:
@@ -93,8 +76,42 @@ struct BetterMeetsSettingsView: View {
             }
             .scrollBounceBehavior(.basedOnSize)
             .frame(height: min(tabContentHeight, Self.maxTabContentHeight))
+            .padding(.horizontal, 18)
+            .padding(.top, 28)
+            .padding(.bottom, 18)
+            .background(.primary.opacity(0.025), in: RoundedRectangle(cornerRadius: 8))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(.primary.opacity(contrast == .increased ? 0.45 : 0.14), lineWidth: 1)
+                    // Leave a gap so the border cannot show through the translucent tabs.
+                    .mask {
+                        VStack(spacing: 0) {
+                            HStack(spacing: 0) {
+                                Rectangle()
+                                Color.clear.frame(width: Self.tabBarWidth + 8)
+                                Rectangle()
+                            }
+                            .frame(height: 2)
+                            Rectangle()
+                        }
+                    }
+            }
+            .overlay(alignment: .top) {
+                Picker("Settings section", selection: selectedTabBinding) {
+                    ForEach(SettingsTab.allCases) { tab in
+                        Text(tab.title).tag(tab)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
+                .frame(width: Self.tabBarWidth)
+                .offset(y: -11)
+                .accessibilitySortPriority(1)
+            }
         }
-        .padding(18)
+        .padding(.horizontal, 20)
+        .padding(.top, 28)
+        .padding(.bottom, 20)
         .frame(width: 568)
         .fontWeight(legibilityWeight == .bold ? .bold : nil)
         .accessibilityElement(children: .contain)
@@ -149,125 +166,64 @@ struct BetterMeetsSettingsView: View {
     private var generalSettings: some View {
         VStack(spacing: 12) {
             SettingsPreviewWell {
-                HStack(spacing: 12) {
-                    Image(nsImage: NSApp.applicationIconImage)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 42, height: 42)
-                        .accessibilityHidden(true)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("BetterMeets")
-                            .font(.headline)
-                        Text("Global source switching")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                VStack(spacing: 5) {
+                    KeystrokeBadge(
+                        label: "\(manager.preferredShortcutModifier.symbolPrefix) 1",
+                        size: .medium,
+                        appearance: .dark
+                    )
+                    Text(
+                        manager.globalShortcutsEnabled
+                            ? "Switch between apps with keys 1–9" : "Global shortcuts are off"
+                    )
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 }
             }
 
             SettingsFormRow(title: "Global shortcuts") {
+                Toggle(
+                    "Switch apps from anywhere",
+                    isOn: Binding(
+                        get: { manager.globalShortcutsEnabled },
+                        set: { manager.setGlobalShortcutsEnabled($0) }
+                    )
+                )
+                .toggleStyle(.checkbox)
+            }
+
+            SettingsFormRow(title: "Modifier keys") {
                 Picker(
-                    "Global shortcuts",
+                    "Modifier keys",
                     selection: Binding(
-                        get: { manager.globalShortcutModifier },
+                        get: { manager.preferredShortcutModifier },
                         set: { manager.setGlobalShortcutModifier($0) }
                     )
                 ) {
-                    ForEach(GlobalShortcutModifier.allCases) { modifier in
-                        Text(modifier.label)
+                    ForEach(GlobalShortcutModifier.allCases.filter { $0 != .disabled }) { modifier in
+                        Text(modifier.symbolPrefix)
+                            .help(modifier.label)
+                            .accessibilityLabel(modifier.label)
                             .tag(modifier)
                     }
                 }
                 .labelsHidden()
-                .frame(maxWidth: 240)
+                .pickerStyle(.segmented)
+                .disabled(!manager.globalShortcutsEnabled)
             }
-
-            DemoSettingsNote(
-                symbol: "keyboard",
-                text:
-                    manager.globalShortcutModifier == .disabled
-                    ? "Global shortcuts are off. Source slots and pins remain available in BetterMeets."
-                    : "Source slots use \(manager.globalShortcutModifier.symbolPrefix)1 through \(manager.globalShortcutModifier.symbolPrefix)9. Choose Off if another app needs those shortcuts."
-            )
         }
     }
 
-    private var demoSettings: some View {
+    private var voiceSettings: some View {
         VStack(spacing: 12) {
             SettingsPreviewWell {
-                DemoHighlightPreview(color: manager.demoHighlightColor)
-            }
-
-            SettingsFormRow(title: "Voice actions") {
-                Picker(
-                    "Voice actions",
-                    selection: Binding(
-                        get: { manager.demoVoiceActions },
-                        set: { manager.setDemoVoiceActions($0) }
-                    )
-                ) {
-                    ForEach(DemoVoiceActions.allCases) { option in
-                        Text(option.label)
-                            .tag(option)
-                    }
+                HStack(spacing: 12) {
+                    Image(systemName: "waveform")
+                        .font(.system(size: 24, weight: .medium))
+                        .foregroundStyle(Color.accentColor)
+                    Text("“Open settings”")
+                        .font(.system(size: 15, weight: .medium))
                 }
-                .labelsHidden()
-                .pickerStyle(.segmented)
-            }
-
-            SettingsFormRow(title: "Understanding") {
-                Toggle(
-                    "Conversational understanding",
-                    isOn: Binding(
-                        get: { manager.demoSmartUnderstanding },
-                        set: { manager.setDemoSmartUnderstanding($0) }
-                    )
-                )
-                .labelsHidden()
-                .toggleStyle(.switch)
-                .disabled(!manager.isDemoSmartUnderstandingAvailable)
-            }
-
-            if manager.demoSmartUnderstanding, !manager.isDemoConversationalTierAvailable {
-                DemoSettingsNote(
-                    text:
-                        "Matches controls you describe, on device. Turn on Apple Intelligence "
-                        + "for conversational commands like “open it” that refer back."
-                )
-            }
-
-            SettingsFormRow(title: "Highlight color") {
-                PresentationColorPicker(
-                    selection: manager.demoHighlightColor,
-                    onSelect: { manager.setDemoHighlightColor($0) }
-                )
-            }
-
-            SettingsFormRow(title: "Zoom size") {
-                Picker(
-                    "Zoom size",
-                    selection: Binding(
-                        get: { manager.demoZoomSize },
-                        set: { manager.setDemoZoomSize($0) }
-                    )
-                ) {
-                    ForEach(PresentationSize.allCases) { size in
-                        Text(size.label)
-                            .tag(size)
-                    }
-                }
-                .labelsHidden()
-                .pickerStyle(.segmented)
-            }
-
-            if manager.demoModeNeedsClickAccessibility {
-                DemoSettingsNote(
-                    text:
-                        "Allow BetterMeets under Accessibility to open controls. "
-                        + "Until then, controls are only highlighted.",
-                    actionTitle: "Open Settings",
-                    action: { manager.openAccessibilitySettings() }
-                )
             }
 
             SettingsFormRow(title: "Model") {
@@ -287,7 +243,7 @@ struct BetterMeetsSettingsView: View {
                 .pickerStyle(.segmented)
             }
 
-            SettingsFormRow(title: "Conversation AI") {
+            SettingsFormRow(title: "API key") {
                 VStack(alignment: .leading, spacing: 5) {
                     HStack(spacing: 6) {
                         SecureField(
@@ -312,32 +268,8 @@ struct BetterMeetsSettingsView: View {
                     }
                     Text(
                         manager.hasDemoBrainKey
-                            ? "\(manager.demoBrainProvider.vendor) key saved to your Keychain. Enables natural commands like “now open it”."
-                            : "Add a \(manager.demoBrainProvider.vendor) key for natural commands like “now open it” (\(manager.demoBrainProvider.label))."
-                    )
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-
-            SettingsFormRow(title: "Cloud understanding") {
-                VStack(alignment: .leading, spacing: 5) {
-                    Toggle(
-                        "Send screenshots to \(manager.demoBrainProvider.vendor)",
-                        isOn: Binding(
-                            get: { manager.demoCloudConsented },
-                            set: { manager.setDemoCloudConsented($0) }
-                        )
-                    )
-                    .labelsHidden()
-                    .toggleStyle(.switch)
-                    .disabled(!manager.hasDemoBrainKey)
-
-                    Text(
-                        "When on, each command sends a screenshot of the shared window and "
-                            + "your spoken words to \(manager.demoBrainProvider.vendor) to resolve the "
-                            + "target. Turn off to keep everything on device (understanding is more limited)."
+                            ? "\(manager.demoBrainProvider.vendor) key saved in Keychain."
+                            : "Add a \(manager.demoBrainProvider.vendor) key to use this model."
                     )
                     .font(.caption2)
                     .foregroundStyle(.secondary)
@@ -609,61 +541,6 @@ struct BetterMeetsSettingsView: View {
     }
 }
 
-/// An inline advisory note inside a settings tab, with an optional action.
-private struct DemoSettingsNote: View {
-    var symbol = "exclamationmark.triangle.fill"
-    let text: String
-    var actionTitle: String?
-    var action: (() -> Void)?
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 7) {
-            Image(systemName: symbol)
-                .font(.system(size: 11))
-                .foregroundStyle(.orange)
-            Text(text)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-            if let actionTitle, let action {
-                Button(actionTitle, action: action)
-                    .buttonStyle(.borderless)
-                    .font(.caption.weight(.semibold))
-                    .fixedSize()
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .accessibilityElement(children: .contain)
-    }
-}
-
-/// Static preview of the Demo Mode highlight over a sample control.
-private struct DemoHighlightPreview: View {
-    let color: PresentationColor
-
-    var body: some View {
-        Text("Discover")
-            .font(.system(size: 13, weight: .semibold))
-            .foregroundStyle(.primary)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .background(.quaternary, in: Capsule())
-            .overlay {
-                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .stroke(color.color, lineWidth: 3)
-                    .background(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(color.color.opacity(0.12))
-                    )
-                    .padding(-7)
-                    .shadow(color: color.color.opacity(0.5), radius: 6)
-            }
-            .accessibilityHidden(true)
-    }
-}
-
 private struct SettingsFormRow<Content: View>: View {
     let title: String
     let content: Content
@@ -675,9 +552,9 @@ private struct SettingsFormRow<Content: View>: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            Text(title)
-                .font(.callout.weight(.medium))
-                .frame(width: 112, alignment: .trailing)
+            Text("\(title):")
+                .font(.callout)
+                .frame(width: 105, alignment: .trailing)
 
             content
                 .frame(maxWidth: .infinity, alignment: .leading)

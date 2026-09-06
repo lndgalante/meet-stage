@@ -42,17 +42,11 @@ extension CaptureManager {
     }
 
     func requestWindowRefresh(isManual: Bool) {
-        guard CGPreflightScreenCaptureAccess() else {
+        guard screenRecordingAuthorization.isAuthorized else {
             windows = []
             reconcileShortcuts(with: [])
             state = .permissionRequired
 
-            if isManual, !requestedPermissionThisLaunch {
-                requestedPermissionThisLaunch = true
-                if CGRequestScreenCaptureAccess() {
-                    refreshWindows()
-                }
-            }
             return
         }
 
@@ -73,6 +67,19 @@ extension CaptureManager {
 
         windowRefreshTask = Task { [weak self] in
             await self?.performWindowRefresh(isManual: isManual)
+        }
+    }
+
+    func requestScreenRecordingPermission() {
+        if screenRecordingAuthorization.isAuthorized {
+            refreshWindows()
+        } else if !requestedPermissionThisLaunch {
+            requestedPermissionThisLaunch = true
+            if screenRecordingAuthorization.requestAccess() {
+                refreshWindows()
+            }
+        } else {
+            openScreenRecordingSettings()
         }
     }
 

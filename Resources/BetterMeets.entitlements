@@ -12,8 +12,8 @@
     <!--
       Demo Mode transcribes narration through an AVAudioEngine microphone tap.
       The hardened runtime denies microphone access without this entitlement,
-      and ad-hoc dev builds do not enable the hardened runtime, so this file
-      only affects Developer ID builds. Keep it in sync with the mic prompt in
+      so both certificate-signed and ad-hoc builds need this entitlement.
+      Keep it in sync with the development entitlements and the mic prompt in
       Info.plist (NSMicrophoneUsageDescription).
     -->
     <key>com.apple.security.device.audio-input</key>

@@ -55,11 +55,9 @@ final class CaptureManager: ObservableObject {
     // Cached so the permission badge re-renders when trust changes; AXIsProcessTrusted
     // is only re-read via refreshAccessibilityTrust() (on activation and while listening).
     @Published var isAccessibilityTrustedForDemo = AccessibilityElementIndexer.isAccessibilityTrusted
-    @Published var demoVoiceActions: DemoVoiceActions
+    let demoVoiceActions: DemoVoiceActions = .highlightAndClick
     @Published var demoHighlightColor: PresentationColor
     @Published var demoZoomSize: PresentationSize
-    @Published var demoSmartUnderstanding: Bool
-    @Published var demoCloudConsented: Bool
     @Published var demoBrainProvider: DemoBrainProvider
     @Published var shortcutPins: [Int: PinnedWindow] = [:]
     @Published var shortcutExclusions: Set<PinnedWindow> = []
@@ -85,6 +83,7 @@ final class CaptureManager: ObservableObject {
     let presentationStore: PresentationPreferencesStore
     let stageLogoStore: StageLogoStore
     let thumbnailLoader: any WindowThumbnailLoading
+    let screenRecordingAuthorization: any ScreenRecordingAuthorizing
     let demoBrainRegistry: DemoBrainRegistry
     let inactiveStageAspectRatio: CGFloat
     let sampleQueue = DispatchQueue(
@@ -180,6 +179,7 @@ final class CaptureManager: ObservableObject {
         defaults: UserDefaults = .standard,
         stageLogoStore: StageLogoStore = .live(),
         thumbnailLoader: any WindowThumbnailLoading = WindowThumbnailLoader(),
+        screenRecordingAuthorization: any ScreenRecordingAuthorizing = SystemScreenRecordingAuthorization(),
         demoBrainRegistry: DemoBrainRegistry = .live()
     ) {
         let shortcutStore = ShortcutPreferencesStore(defaults: defaults)
@@ -189,6 +189,7 @@ final class CaptureManager: ObservableObject {
         self.presentationStore = presentationStore
         self.stageLogoStore = stageLogoStore
         self.thumbnailLoader = thumbnailLoader
+        self.screenRecordingAuthorization = screenRecordingAuthorization
         self.demoBrainRegistry = demoBrainRegistry
         self.inactiveStageAspectRatio = inactiveStageAspectRatio
         stageAspectRatio = inactiveStageAspectRatio
@@ -204,11 +205,8 @@ final class CaptureManager: ObservableObject {
         clickHighlightSize = presentationStore.clickHighlightSize
         keystrokeHighlightSize = presentationStore.keystrokeHighlightSize
         keystrokeAppearance = presentationStore.keystrokeAppearance
-        demoVoiceActions = presentationStore.demoVoiceActions
         demoHighlightColor = presentationStore.demoHighlightColor
         demoZoomSize = presentationStore.demoZoomSize
-        demoSmartUnderstanding = presentationStore.demoSmartUnderstanding
-        demoCloudConsented = presentationStore.demoCloudConsented
         let demoBrainProvider = presentationStore.demoBrainProvider
         self.demoBrainProvider = demoBrainProvider
         hasDemoBrainKey = demoBrainProvider.keyStore.hasKey
@@ -253,10 +251,10 @@ final class CaptureManager: ObservableObject {
         highlightsKeystrokes =
             presentationStore.highlightsKeystrokes
             && GlobalKeystrokeMonitor.hasAccessibilityPermission
-        // Demo Mode requires the microphone; re-gate the persisted flag against
-        // live authorization so a revoked permission cannot silently arm it.
+        // Restore listening only after the introduction and with microphone access.
         demoModeEnabled =
             presentationStore.demoModeEnabled
+            && presentationStore.hasCompletedVoiceOnboarding
             && DemoSpeechTranscriber.isMicrophoneAuthorized
         shortcutPins = shortcutStore.loadPins()
         shortcutExclusions = shortcutStore.loadExclusions()
