@@ -151,6 +151,12 @@ struct MeetStageApp: App {
                 .keyboardShortcut("m", modifiers: [.command, .control])
                 .disabled(!windowState.controllerIsVisible)
 
+                Button("Place Controller Beside Dock") {
+                    BetterMeetsWindowActions.placeControllerBesideDock()
+                }
+                .keyboardShortcut("d", modifiers: [.command, .control])
+                .disabled(!windowState.controllerIsVisible)
+
                 Button("Show Demo Stage") {
                     BetterMeetsWindowActions.showStage()
                 }

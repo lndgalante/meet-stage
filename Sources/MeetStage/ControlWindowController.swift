@@ -21,9 +21,14 @@ final class ControlWindowController {
     }
 }
 
-final class ControlWindow: NSWindow, WindowMenuProviding {
+final class ControlWindow: NSWindow, WindowMenuProviding, NSGestureRecognizerDelegate {
     var openSettingsAction: (() -> Void)?
     private let dragSurface = WindowDragView()
+    private lazy var dockAttachment = ControlDockAttachment(window: self)
+    private lazy var dragGesture = NSPanGestureRecognizer(target: self, action: #selector(dragWidget(_:)))
+    private var dragStartOrigin: NSPoint?
+    private var dragStartPointer: NSPoint?
+    private static let frameName = "BetterMeets.ControlWindow"
 
     // Borderless NSWindow defaults reject focus, including Full Keyboard Access.
     override var canBecomeKey: Bool { true }
@@ -60,30 +65,46 @@ final class ControlWindow: NSWindow, WindowMenuProviding {
         backgroundColor = .clear
         hasShadow = true
         isMovable = true
-        isMovableByWindowBackground = true
+        isMovableByWindowBackground = false
         minSize = ControlWindowSizing.size
         maxSize = ControlWindowSizing.size
     }
 
     func restorePosition() {
-        let restored = setFrameUsingName("BetterMeets.ControlWindow")
-        setContentSize(ControlWindowSizing.size)
-        let screen = NSScreen.screens.first { $0.visibleFrame.intersects(frame) } ?? NSScreen.main
-        if let bounds = screen?.visibleFrame {
-            let origin = restored ? frame.origin : CGPoint(x: bounds.maxX - frame.width - 24, y: bounds.minY + 24)
-            setFrameOrigin(
-                CGPoint(
-                    x: min(max(origin.x, bounds.minX), bounds.maxX - frame.width),
-                    y: min(max(origin.y, bounds.minY), bounds.maxY - frame.height)
-                )
-            )
+        // Native restoration clamps to visibleFrame and would lift a saved position above the Dock.
+        let origin = ControlWindowPlacement.savedOrigin(
+            from: UserDefaults.standard.string(forKey: "NSWindow Frame \(Self.frameName)")
+        )
+        let screen = origin.flatMap { origin in NSScreen.screens.first { $0.frame.contains(origin) } } ?? NSScreen.main
+        position(on: screen, savedOrigin: origin)
+        setFrameAutosaveName(Self.frameName)
+        dockAttachment.restore()
+    }
+
+    @objc func placeBesideDock() {
+        if !dockAttachment.attach() {
+            position(on: screen ?? NSScreen.main, savedOrigin: nil)
         }
-        setFrameAutosaveName("BetterMeets.ControlWindow")
+        saveFrame(usingName: Self.frameName)
+    }
+
+    private func position(on screen: NSScreen?, savedOrigin: CGPoint?) {
+        guard let screen else { return }
+        setFrame(
+            ControlWindowPlacement.frame(
+                size: ControlWindowSizing.size, screen: screen.frame, visibleScreen: screen.visibleFrame,
+                dock: DockFrameResolver.currentFrame(), savedOrigin: savedOrigin
+            ),
+            display: true
+        )
     }
 
     func installDragSurface() {
         guard let contentView, let frameView = contentView.superview else { return }
         dragSurface.actionTarget = self
+        dragSurface.dragHandler = dockAttachment
+        dragSurface.toolTip = String(
+            localized: "Drag anywhere to move. Release near the Dock to attach. Option skips snapping.")
         dragSurface.frame = NSRect(
             x: contentView.frame.minX,
             y: contentView.frame.minY,
@@ -93,11 +114,54 @@ final class ControlWindow: NSWindow, WindowMenuProviding {
         dragSurface.autoresizingMask = [.width, .maxYMargin]
         // SwiftUI's hosting view consumes background drags; the footer's native surface must sit above it.
         frameView.addSubview(dragSurface, positioned: .above, relativeTo: contentView)
+        // Delay clicks until the pan fails so dragging a preview cannot select it.
+        dragGesture.delaysPrimaryMouseButtonEvents = true
+        dragGesture.delegate = self
+        frameView.addGestureRecognizer(dragGesture)
+    }
+
+    func gestureRecognizer(
+        _ gestureRecognizer: NSGestureRecognizer,
+        shouldBeRequiredToFailBy otherGestureRecognizer: NSGestureRecognizer
+    ) -> Bool {
+        gestureRecognizer === dragGesture
+    }
+
+    @objc private func dragWidget(_ gesture: NSPanGestureRecognizer) {
+        let pointer = convertPoint(toScreen: gesture.location(in: nil))
+        if gesture.state == .began {
+            dragStartOrigin = frame.origin
+            let translation = gesture.translation(in: nil)
+            dragStartPointer = NSPoint(x: pointer.x - translation.x, y: pointer.y - translation.y)
+            dockAttachment.beginDragging()
+            NSCursor.closedHand.set()
+        }
+        guard let dragStartOrigin, let dragStartPointer else { return }
+
+        if gesture.state == .began || gesture.state == .changed || gesture.state == .ended {
+            let origin = NSPoint(
+                x: dragStartOrigin.x + pointer.x - dragStartPointer.x,
+                y: dragStartOrigin.y + pointer.y - dragStartPointer.y
+            )
+            setFrameOrigin(dockAttachment.dragOrigin(for: origin, bypassSnap: gesture.modifierFlags.contains(.option)))
+        }
+
+        if gesture.state == .ended || gesture.state == .cancelled || gesture.state == .failed {
+            if gesture.state != .ended {
+                _ = dockAttachment.dragOrigin(for: frame.origin, bypassSnap: true)
+            }
+            dockAttachment.endDragging()
+            self.dragStartOrigin = nil
+            self.dragStartPointer = nil
+            NSCursor.arrow.set()
+        }
     }
 
     func makeMenu() -> NSMenu {
         let menu = NSMenu()
         menu.addItem(withTitle: "Settings…", action: #selector(showSettings), keyEquivalent: "").target = self
+        menu.addItem(withTitle: "Place Beside Dock", action: #selector(placeBesideDock), keyEquivalent: "").target =
+            self
         menu.addItem(.separator())
         menu.addItem(withTitle: "Minimize Controller", action: #selector(performMiniaturize(_:)), keyEquivalent: "")
             .target = self

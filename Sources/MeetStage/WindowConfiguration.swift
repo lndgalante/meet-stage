@@ -2,11 +2,11 @@ import AppKit
 import SwiftUI
 
 enum ControlWindowSizing {
-    static let panelWidth: CGFloat = 360
+    static let panelWidth: CGFloat = 336
     static let panelCornerRadius: CGFloat = 16
-    static let sourceRegionHeight: CGFloat = 104
-    static let guidanceHeight: CGFloat = 24
-    static let sourceRailInset: CGFloat = 8
+    static let sourceRegionHeight: CGFloat = 68
+    static let guidanceHeight: CGFloat = 20
+    static let sourceRailInset: CGFloat = 16
     static let sourceAreaWidth = panelWidth - sourceRailInset * 2
     static let contentWidth = sourceAreaWidth
     static let size = NSSize(
@@ -177,10 +177,18 @@ protocol WindowMenuProviding: AnyObject {
     func makeMenu() -> NSMenu
 }
 
+@MainActor
+protocol WindowDragHandling: AnyObject {
+    func beginDragging()
+    func dragOrigin(for proposedOrigin: NSPoint, bypassSnap: Bool) -> NSPoint
+    func endDragging()
+}
+
 final class WindowDragView: NSView {
     private var dragStartPointerLocation: NSPoint?
     private var dragStartWindowOrigin: NSPoint?
     weak var actionTarget: (any WindowMenuProviding)?
+    weak var dragHandler: (any WindowDragHandling)?
 
     // Keep AppKit from consuming the gesture as a background-window drag.
     // This view tracks the pointer itself so movement stays 1:1 and testable.
@@ -213,6 +221,7 @@ final class WindowDragView: NSView {
 
         dragStartPointerLocation = pointerLocation
         dragStartWindowOrigin = window.frame.origin
+        dragHandler?.beginDragging()
         NSCursor.closedHand.set()
     }
 
@@ -226,15 +235,18 @@ final class WindowDragView: NSView {
             return
         }
 
+        let proposedOrigin = NSPoint(
+            x: dragStartWindowOrigin.x + pointerLocation.x - dragStartPointerLocation.x,
+            y: dragStartWindowOrigin.y + pointerLocation.y - dragStartPointerLocation.y
+        )
         window.setFrameOrigin(
-            NSPoint(
-                x: dragStartWindowOrigin.x + pointerLocation.x - dragStartPointerLocation.x,
-                y: dragStartWindowOrigin.y + pointerLocation.y - dragStartPointerLocation.y
-            )
+            dragHandler?.dragOrigin(for: proposedOrigin, bypassSnap: event.modifierFlags.contains(.option))
+                ?? proposedOrigin
         )
     }
 
     override func mouseUp(with event: NSEvent) {
+        if dragStartWindowOrigin != nil { dragHandler?.endDragging() }
         dragStartPointerLocation = nil
         dragStartWindowOrigin = nil
         NSCursor.openHand.set()

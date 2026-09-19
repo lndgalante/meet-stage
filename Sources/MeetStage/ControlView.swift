@@ -1,31 +1,22 @@
 import SwiftUI
 
-/*
- THESIS: Recognize a window, switch it, and see what the audience is viewing.
- OWN-WORLD: Native macOS utility; real previews, app icons, system type and materials.
- STORY: App identity → preview → current sharing status.
- FIRST VIEWPORT: Four labeled sources, shortcut keycaps, and status with trailing guidance.
- FORM: Surface seed 324e2ed7; approved C, a compact filmstrip with labels above previews.
- FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, and DESIGN.md
- */
-
 enum ControlMetrics {
     static let outerPadding = ControlWindowSizing.sourceRailInset
-    static let sourceTileSpacing = ControlWindowSizing.sourceRailInset
+    static let sourceTileSpacing: CGFloat = 8
     static let visibleSourceTileCount: CGFloat = 4
     static let sourceTileWidth: CGFloat =
         (ControlWindowSizing.sourceAreaWidth
             - sourceTileSpacing * (visibleSourceTileCount - 1))
         / visibleSourceTileCount
-    static let sourceTileVerticalInset = ControlWindowSizing.sourceRailInset
+    static let sourceTileVerticalInset: CGFloat = 4
     static let sourceViewportHeight = ControlWindowSizing.sourceRegionHeight
     static let sourceTileHeight =
         sourceViewportHeight - sourceTileVerticalInset * 2
     static let sourceTileRadius: CGFloat = 8
     static let sourcePreviewWidth = sourceTileWidth
-    static let sourcePreviewHeight: CGFloat = 66
+    static let sourcePreviewHeight: CGFloat = 40
     static let sourceLabelHeight: CGFloat = 18
-    static let sourceLabelSpacing: CGFloat = 4
+    static let sourceLabelSpacing: CGFloat = 2
     static let sourceApplicationIconSize: CGFloat = 14
     static let sourceScrollFadeWidth: CGFloat = 22
     static let sourceScrollCoordinateSpace = "source-scroll"
@@ -65,10 +56,16 @@ struct ControlView: View {
             SourcePanelBackground()
         }
         .clipShape(RoundedRectangle(cornerRadius: ControlWindowSizing.panelCornerRadius, style: .continuous))
+        .contentShape(Rectangle())
+        .allowsWindowActivationEvents()
         .fontWeight(legibilityWeight == .bold ? .bold : nil)
         .contextMenu {
             Button("Settings…") {
                 openSettings()
+            }
+
+            Button("Place Beside Dock") {
+                BetterMeetsWindowActions.placeControllerBesideDock()
             }
 
             Divider()
@@ -173,6 +170,7 @@ struct ControlView: View {
                     }
                 }
                 .frame(maxHeight: .infinity, alignment: .top)
+                .contentShape(Rectangle())
             }
             .coordinateSpace(name: ControlMetrics.sourceScrollCoordinateSpace)
             .frame(width: ControlWindowSizing.sourceAreaWidth, height: ControlMetrics.sourceViewportHeight)

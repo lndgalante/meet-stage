@@ -38,13 +38,12 @@ struct StageInteractionTests {
         #expect(window.frame.origin.y == initialOrigin.y - 13)
     }
 
-    @Test("The source rail uses one balanced inset and gap")
+    @Test("The source rail fits within the Dock-height controller")
     func sourceRailSpacingIsBalanced() {
         let inset = ControlWindowSizing.sourceRailInset
 
         #expect((ControlWindowSizing.panelWidth - ControlWindowSizing.sourceAreaWidth) / 2 == inset)
-        #expect(ControlMetrics.sourceTileSpacing == inset)
-        #expect(ControlMetrics.sourceTileVerticalInset == inset)
+        #expect(ControlWindowSizing.size.height == 88)
         #expect(
             ControlMetrics.sourceTileWidth * ControlMetrics.visibleSourceTileCount
                 + ControlMetrics.sourceTileSpacing
@@ -55,11 +54,42 @@ struct StageInteractionTests {
             ControlMetrics.sourceTileHeight + ControlMetrics.sourceTileVerticalInset * 2
                 == ControlWindowSizing.sourceRegionHeight
         )
-        #expect(ControlMetrics.sourceTileRadius + inset == ControlWindowSizing.panelCornerRadius)
         #expect(
             ControlMetrics.sourcePreviewHeight + ControlMetrics.sourceLabelSpacing + ControlMetrics.sourceLabelHeight
                 == ControlMetrics.sourceTileHeight
         )
+    }
+
+    @Test("The controller's native drag surface snaps, saves attachment, and pulls free")
+    @MainActor
+    func magneticControllerDrag() throws {
+        let suite = "MagneticControllerDrag.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let window = ControlWindow()
+        defer { window.close() }
+        window.setFrameOrigin(CGPoint(x: 900, y: 200))
+        let target = DockSnapTarget(
+            side: .right, frame: CGRect(origin: CGPoint(x: 1200, y: 20), size: window.frame.size))
+        let attachment = ControlDockAttachment(window: window, defaults: defaults) { _ in [target] }
+        let surface = WindowDragView(frame: CGRect(origin: .zero, size: window.frame.size))
+        surface.dragHandler = attachment
+        window.contentView = surface
+
+        surface.mouseDown(with: try mouseEvent(type: .leftMouseDown, location: CGPoint(x: 100, y: 10), in: window))
+        surface.mouseDragged(
+            with: try mouseEvent(type: .leftMouseDragged, location: CGPoint(x: 415, y: -165), in: window))
+        #expect(window.frame.origin == CGPoint(x: 1215, y: 25))
+        surface.mouseUp(with: try mouseEvent(type: .leftMouseUp, location: CGPoint(x: 100, y: 10), in: window))
+        #expect(window.frame == target.frame)
+        #expect(defaults.string(forKey: ControlDockAttachment.preferenceKey) == "right")
+
+        surface.mouseDown(with: try mouseEvent(type: .leftMouseDown, location: CGPoint(x: 100, y: 10), in: window))
+        surface.mouseDragged(
+            with: try mouseEvent(type: .leftMouseDragged, location: CGPoint(x: 100, y: 110), in: window))
+        #expect(window.frame.minY == target.frame.minY + 100)
+        surface.mouseUp(with: try mouseEvent(type: .leftMouseUp, location: CGPoint(x: 100, y: 10), in: window))
+        #expect(defaults.string(forKey: ControlDockAttachment.preferenceKey) == nil)
     }
 
     @Test("The stage keeps standard macOS window semantics")
@@ -182,6 +212,30 @@ struct StageInteractionTests {
         #expect(surface.bounds.width == ControlWindowSizing.panelWidth)
         #expect(surface.bounds.height == ControlWindowSizing.guidanceHeight)
         #expect(frameView.hitTest(center) === surface)
+    }
+
+    @Test("The controller accepts the first mouse-down across its surface")
+    @MainActor
+    func controllerAcceptsFirstDrag() throws {
+        let suite = "ControllerFirstDrag.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let window = ControlWindow()
+        defer { window.close() }
+        let host = NSHostingView(rootView: ControlView(manager: CaptureManager(defaults: defaults), openSettings: {}))
+        window.contentView = host
+        host.layoutSubtreeIfNeeded()
+        window.installDragSurface()
+        let frameView = try #require(host.superview)
+
+        for point in [
+            CGPoint(x: 8, y: 44), CGPoint(x: 51, y: 76), CGPoint(x: 129, y: 44), CGPoint(x: 280, y: 44),
+            CGPoint(x: 142, y: 10)
+        ] {
+            let hit = try #require(frameView.hitTest(point))
+            let event = try mouseEvent(type: .leftMouseDown, location: point, in: window)
+            #expect(hit.acceptsFirstMouse(for: event))
+        }
     }
 }
 

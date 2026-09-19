@@ -81,9 +81,11 @@ struct EmptyShortcutSlot: View {
                         isUnavailable ? ControlPalette.warning : .primary.opacity(contrast == .increased ? 0.5 : 0.20),
                         style: StrokeStyle(lineWidth: 1, dash: [3, 3])
                     )
-                Image(systemName: isUnavailable ? "pin.slash" : "macwindow")
-                    .font(.system(size: 18, weight: .light))
-                    .foregroundStyle(.secondary)
+                if isUnavailable {
+                    Image(systemName: "pin.slash")
+                        .font(.system(size: 18, weight: .light))
+                        .foregroundStyle(.secondary)
+                }
                 Text(shortcutModifier.displayName(for: slot))
                     .font(.system(size: 11, weight: .semibold).monospaced())
                     .foregroundStyle(.secondary)
@@ -240,11 +242,6 @@ struct CompactWindowButton: View {
         .overlay {
             RoundedRectangle(cornerRadius: ControlMetrics.sourceTileRadius, style: .continuous)
                 .strokeBorder(borderColor, lineWidth: isSelected || isPending || isKeyboardFocused ? 2 : 1)
-            if isKeyboardFocused {
-                RoundedRectangle(cornerRadius: ControlMetrics.sourceTileRadius - 3, style: .continuous)
-                    .inset(by: 3)
-                    .strokeBorder(.white, style: StrokeStyle(lineWidth: 1, dash: [3, 2]))
-            }
         }
         .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: visualState)
         .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: isHovering)

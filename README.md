@@ -59,6 +59,23 @@ When you switch with a global shortcut, BetterMeets brings that source into view
 automatically. Click the live source, or press its configured shortcut again, to
 pause sharing. Repeat the same action to resume it.
 
+The controller measures 336 × 88 points. On first launch it centers beside a
+visible bottom Dock, with the same vertical center, when the gap is wide enough.
+It prefers the right side and falls back to the left, then above the Dock.
+Drag anywhere on the controller to choose a position; that position is restored next launch.
+Use **Window → Place Controller Beside Dock** (Control–Command–D), or right-click
+the status line and choose **Place Beside Dock**, to align it again. Dock placement
+uses its accessible bounds when Accessibility is already allowed, or its window
+bounds when available; otherwise it stays within the visible desktop.
+
+The controller uses native clear Liquid Glass with rounded Dock-style corners.
+Drag from a preview, app label, or the status line without holding any key.
+It follows the pointer freely and snaps to a 12-point gap only when released
+within 24 points of a Dock target. Starting a new drag detaches immediately;
+Option only skips snapping on release. Attached controllers follow Dock size changes
+when space permits and restore their attachment next launch. **Place Beside Dock**
+also attaches the controller when there is room.
+
 Use the attached control bar below the strip to draw temporary annotations,
 highlight mouse clicks, or show keystrokes on the Demo Stage. Annotation mode
 places its drawing surface over the selected app window and mirrors that ink on

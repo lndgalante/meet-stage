@@ -29,16 +29,16 @@ spacing:
 components:
   source-preview:
     rounded: "{rounded.source}"
-    width: "80pt"
-    height: "66pt"
+    width: "70pt"
+    height: "40pt"
   shortcut-keycap:
     typography: "{typography.shortcut}"
     rounded: "{rounded.keycap}"
     padding: "3pt 5pt"
   controller-panel:
     rounded: "{rounded.panel}"
-    width: "360pt"
-    height: "128pt"
+    width: "336pt"
+    height: "88pt"
   action-button:
     rounded: "{rounded.action}"
     width: "28pt"
@@ -75,12 +75,12 @@ Adaptive neutral materials keep the utility quiet; system accent and warning col
 
 ### Neutral
 
-- **Native Material** (`.regularMaterial`): the controller and presentation palette. Reduce Transparency substitutes `Color(nsColor: .windowBackgroundColor)`.
+- **Native Material**: the controller uses clear Liquid Glass through `.glassEffect(.clear, in:)`; the presentation palette retains `.regularMaterial`. Reduce Transparency substitutes `Color(nsColor: .windowBackgroundColor)`.
 - **System Text** (`.primary` / `.secondary`): identities, labels, and supporting guidance. The footer uses primary state text and secondary next-action text.
 - **Preview Contrast** (`Color.black` / `Color.white` with local opacities): thumbnail backdrops, shortcut text, inset preview edges, and focus details.
-- **Controller Tint**: the material receives a dark neutral overlay in dark appearance and a light neutral overlay in light appearance. The source defines these as black at 0.55 and white at 0.20, respectively; do not replace them with a sampled screenshot color.
+- **Controller Glass**: the system renders the material and reflective edge. Do not add a sampled background tint or a second decorative border. Increase Contrast and Reduce Transparency receive an explicit semantic inset edge.
 
-**The State Has Two Cues Rule.** Pair color with text, an icon, or an explicit focus shape: a play symbol for sharing, a pause symbol for paused, progress for switching, and a dashed inset with a Return glyph for keyboard focus.
+**The State Has Two Cues Rule.** Pair color with text or an icon: a play symbol for sharing, a pause symbol for paused, progress for switching, and a Return glyph for keyboard focus.
 
 ## Typography
 
@@ -94,9 +94,9 @@ System line metrics remain native; there is no authored line-height or tracking 
 
 ## Layout
 
-The controller uses four equal source columns inside the `controller-panel` bounds. Its source region is 104 points high; the status region is 24 points high. The rail uses `spacing.rail` for outer, vertical, and between-column spacing. Each source places an 18-point identity row above a `spacing.detail` gap and a `source-preview`. Shortcut keycaps sit at the bottom right of previews. Additional sources browse horizontally, with edge fades and directional chevrons only where content continues. Focus and selected-source changes scroll the relevant source into view.
+The controller uses four equal source columns inside the `controller-panel` bounds. Its source region is 68 points high; the status region is 20 points high. The rail uses 16-point horizontal insets, `spacing.rail` (8 points) between columns, and 4-point vertical insets. Each source places an 18-point identity row above a 2-point gap and a `source-preview`. Shortcut keycaps sit at the bottom right of previews. Additional sources browse horizontally, with edge fades and directional chevrons only where content continues. Focus and selected-source changes scroll the relevant source into view.
 
-The native borderless controller window exactly matches the visible rounded panel. It can become key and main, preserves close/minimize commands, restores position, and constrains restored coordinates to a visible screen. Its footer is the native drag surface; dragging must preserve one-to-one pointer movement without stealing source interactions.
+The native borderless controller window exactly matches the visible rounded panel. It can become key and main, preserves close/minimize commands, restores position, and constrains restored coordinates to the screen while allowing the empty gaps beside a bottom Dock. On first launch it centers in the right gap beside the Dock, sharing its vertical center, or tries the left gap and then the visible desktop above it. A Window menu and context command attach the widget at a fixed 12-point Dock gap. Dragging anywhere on the controller moves it freely. Releasing within 24 points of a Dock target attaches it; Option skips that snap. A new drag immediately releases attachment and suspends Dock tracking until the drop. Attachment follows Dock changes when space permits and persists across launches; free positions retain ordinary restoration. Exact Dock bounds come from Accessibility when already authorized or the window server when available; otherwise placement falls back to the visible desktop. The footer keeps its native drag surface. A native pan recognizer covers the remaining content, including labels and previews, and delays click delivery until the drag fails so clicks still select and drags do not. Both paths preserve one-to-one pointer movement. The panel and source rail cover their full hit areas and accept window activation events, so dragging works on the first press while another app is active.
 
 Settings retain a native segmented tab selector above the form. Their 568-point-wide surface sizes to content until a 480-point content-height cap, then scrolls vertically. A preview well precedes the two primary form controls; aligned callout labels and native segmented controls, checkboxes, sliders, and fields retain the established settings arrangement.
 
@@ -106,7 +106,7 @@ The presentation palette remains a separate 56-point-wide vertical surface with 
 
 ## Elevation & Depth
 
-The controller combines regular material, a neutral tint, and an inset one-point edge. Increase Contrast strengthens the edge from primary opacity 0.18 to 0.50. Its outer shadow belongs to the window server through `NSWindow.hasShadow`; the SwiftUI controller draws no outer shadow.
+The controller uses native clear Liquid Glass, including its system-rendered reflective edge, inside a 16-point continuous rounded rectangle. It has no additional tint or decorative stroke. Reduce Transparency uses a solid system background with a primary edge at opacity 0.18; Increase Contrast adds a primary edge at opacity 0.50. Its outer shadow belongs to the window server through `NSWindow.hasShadow`; the SwiftUI controller draws no outer shadow.
 
 The incumbent presentation palette keeps the gradient tint and graduated edge in `PresenterPanelBackground`, currently called with `drawsShadow: false`. The larger voice control retains its own contact/ambient shadows, top-lit sheen, and a static listening halo. These native depth cues remain valid for that control. Settings use lightly tinted wells and inset borders; native popovers provide hover-preview elevation.
 
@@ -116,7 +116,7 @@ The incumbent presentation palette keeps the gradient tint and graduated edge in
 
 Continuous rounded rectangles define utility panels, preview clips, and shortcut keycaps using their named frontmatter radii. The controller's background, outline, and clip share one panel silhouette. Preview state outlines are inset, so selection does not enlarge the preview or collide with adjacent labels.
 
-The neutral preview edge is one point; selected, pending, and keyboard-focused previews use two points. Keyboard focus adds a separate white dashed inset and a Return glyph. Empty slots use a dashed outline and a passive window symbol. Native segmented controls, capsules in hover-preview shortcuts, and the circular voice action retain their own native forms.
+The neutral preview edge is one point; selected, pending, and keyboard-focused previews use two points. Keyboard focus adds a Return glyph. Empty slots use a dashed outline with a shortcut in the corner. Native segmented controls, capsules in hover-preview shortcuts, and the circular voice action retain their own native forms.
 
 ## Components
 

@@ -106,6 +106,10 @@ enum BetterMeetsWindowActions {
         BetterMeetsWindowState.shared.refresh()
     }
 
+    static func placeControllerBesideDock() {
+        (controllerWindow as? ControlWindow)?.placeBesideDock()
+    }
+
     static func showStage() {
         showWindow(identifier: BetterMeetsWindowID.stage)
     }

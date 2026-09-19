@@ -5,6 +5,9 @@
 "Show Controller" = "Show Controller";
 "Hide Controller" = "Hide Controller";
 "Minimize Controller" = "Minimize Controller";
+"Place Controller Beside Dock" = "Place Controller Beside Dock";
+"Place Beside Dock" = "Place Beside Dock";
+"Drag anywhere to move. Release near the Dock to attach. Option skips snapping." = "Drag anywhere to move. Release near the Dock to attach. Option skips snapping.";
 "Show Demo Stage" = "Show Demo Stage";
 "Minimize Demo Stage" = "Minimize Demo Stage";
 "Close Demo Stage" = "Close Demo Stage";

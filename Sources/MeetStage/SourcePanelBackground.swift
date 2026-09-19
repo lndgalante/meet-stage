@@ -3,23 +3,26 @@ import SwiftUI
 struct SourcePanelBackground: View {
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorSchemeContrast) private var contrast
-    @Environment(\.colorScheme) private var colorScheme
+
+    private var shape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: ControlWindowSizing.panelCornerRadius, style: .continuous)
+    }
 
     var body: some View {
-        RoundedRectangle(cornerRadius: ControlWindowSizing.panelCornerRadius, style: .continuous)
-            .fill(
-                reduceTransparency
-                    ? AnyShapeStyle(Color(nsColor: .windowBackgroundColor))
-                    : AnyShapeStyle(.regularMaterial)
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: ControlWindowSizing.panelCornerRadius, style: .continuous)
-                    .fill(colorScheme == .dark ? .black.opacity(0.55) : .white.opacity(0.20))
+        Group {
+            if reduceTransparency {
+                shape.fill(Color(nsColor: .windowBackgroundColor))
+            } else {
+                shape.fill(.clear)
+                    .glassEffect(.clear, in: shape)
             }
-            .overlay {
-                RoundedRectangle(cornerRadius: ControlWindowSizing.panelCornerRadius, style: .continuous)
-                    .strokeBorder(.primary.opacity(contrast == .increased ? 0.5 : 0.18), lineWidth: 1)
+        }
+        .overlay {
+            if contrast == .increased || reduceTransparency {
+                shape.strokeBorder(.primary.opacity(contrast == .increased ? 0.5 : 0.18), lineWidth: 1)
             }
+        }
+        .allowsHitTesting(false)
     }
 }
 
@@ -45,7 +48,7 @@ struct SourceStatusFooter: View {
                 .foregroundStyle(.secondary)
         }
         .lineLimit(1)
-        .padding(.horizontal, 12)
+        .padding(.horizontal, ControlWindowSizing.sourceRailInset)
         .frame(height: ControlWindowSizing.guidanceHeight)
         .contentShape(Rectangle())
         .help(guidance.message)
