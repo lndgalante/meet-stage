@@ -6,13 +6,17 @@ to follow while keeping the parts that do not require macOS services testable.
 
 ## Ownership boundaries
 
-- `MeetStageCore` is a framework-free SwiftPM target for security and deployment
-  policies that do not depend on AppKit or ScreenCaptureKit. Its tests compile
-  and run without the executable target. `TypedActuationAuthorization` owns the
-  deterministic cloud-typing boundary; `CloudModelConfiguration` owns validated
-  provider model identifiers and deployment overrides.
-- `MeetStageApp`, `ControlView`, and `StageView` own SwiftUI composition only.
-  AppKit window mutations live in `WindowConfigurator`.
+- `MeetStageCore` is a framework-free SwiftPM target for capture-frame validation
+  and bounded asynchronous work.
+- `MeetStageApp` owns scenes and commands. `WorkspaceView` composes the tools,
+  vertical `ControlView`, `StageView`, and `StageStatusBar` in one native window.
+  `BetterMeetsWindowState` shares Stage Only state with menus, Dock actions, and
+  App Intents. `WindowConfigurator` applies AppKit-only window behavior once the
+  hosting view joins a window; it never changes geometry on source updates.
+- `StageView` renders content without owning or creating windows. The workspace
+  fits it into available space without cropping. Stage Only removes control
+  surfaces and the toolbar; Escape restores them. Native traffic lights,
+  window resizing, full screen, and frame restoration remain available.
 - `CaptureManager` is the main-actor coordinator. Its root file owns observable
   state and dependencies; responsibility-focused extensions own discovery,
   commands, lifecycle, presentation integration, and stream callbacks. The
@@ -77,60 +81,7 @@ to follow while keeping the parts that do not require macOS services testable.
   source-coordinate mapping, capture-cursor visibility, and preference updates.
   It must never synthesize source pointer, click, or keyboard input; its
   monitors are strictly observational. Manual spotlight and annotation tools
-  cancel any automatic zoom. Demo Mode is the one subsystem allowed to actuate
-  the source app, and it does so through its own charter (below), never through
-  this extension.
-- Demo Mode (`CaptureManager+DemoMode`, `DemoModeSession`, and the `Demo*`
-  modules) is the deliberate, separately chartered exception to the
-  no-synthesized-input rule: while it is armed and the selected source is
-  focused, it transcribes the presenter's narration on device
-  (`DemoSpeechTranscriber`, macOS Speech framework), matches spoken control
-  names against an index of the source window's controls, and either highlights
-  a control or clicks it. The decision layer is pure and testable —
-  `DemoText`/`DemoLabelMatcher` (tokenizing and fuzzy matching),
-  `DemoIntentPolicy` (verb-versus-reference classification and the contextual
-  cue gate that prevents incidental mentions from firing), and `DemoCommandGate`
-  (per-target debounce). The semantic tier caches vectors for the current
-  control inventory instead of recomputing them for every utterance. The
-  platform edges are isolated: `DemoSpeechListening`
-  (live transcription), `AccessibilityElementIndexer` (bounded off-main AX-tree
-  walk, with the Chromium/Electron enhancement attributes), `DemoTextRecognizer`
-  (Vision text recognition over an on-demand captured frame as a fallback for
-  sparse AX trees, limited to one cancellable recognition task at a time), and
-  `DemoActionExecutor` (the *only* place BetterMeets posts
-  synthesized events — a visible cursor glide plus click, and typed Unicode
-  keystrokes into a verified text field, both gated on Accessibility trust). An
-  optional conversational tier resolves natural, multi-turn commands against a
-  downscaled window screenshot. It is a pluggable `DemoBrain`: `ClaudeDemoBrain`
-  (Claude Haiku 4.5) and `OpenAIDemoBrain` (GPT-5.6 Luna) are both held, and
-  `demoBrainProvider` selects the active one so the presenter can compare them on
-  their own demo. Both share one system prompt and user-message assembly
-  (`DemoBrainPrompt`), one HTTP request/retry loop (`DemoBrainTransport`), and one
-  reply validator (`DemoBrainDecoding`), so the comparison is close to apples to
-  apples — the caveat being that OpenAI additionally enforces the reply shape with
-  a strict `json_schema`, while Claude relies on prompt-only JSON plus the
-  validator's salvage. The tier is off
-  unless the presenter both saves that provider's API key (`AnthropicKeyStore` /
-  `OpenAIKeyStore`, each Keychain) and grants cloud consent (`demoCloudConsented`,
-  default off) — otherwise Demo Mode stays fully on-device. Each cloud request
-  snapshots its provider and source, uses an ephemeral URL session, and
-  re-validates consent, provider, source, and focus before network dispatch and
-  before applying the response. Revoking consent, changing provider, losing
-  focus, or switching source cancels and invalidates in-flight work.
-  Switching provider also resets cloud consent so screenshots are never sent to
-  a newly selected vendor without a fresh opt-in.
-  The brain returns a structured action (highlight, click, type, circle,
-  spotlight, zoom); every action is debounced (`DemoCommandGate`) and every
-  input-synthesizing one is authorized from the transcript. Typed payloads must
-  be present in an explicit spoken typing command, and the live focused window
-  plus the exact editable AX element are revalidated before every character.
-  Highlights dual-render like every other effect (source overlay plus
-  Demo Stage); the caption HUD renders only on the presenter's non-captured
-  overlay. Clicking/typing is controlled by the voice-actions setting (default
-  `Highlight and click`) and still requires an explicit spoken action command.
-  Actuation requires Accessibility trust; the microphone is a hard requirement
-  re-gated against live authorization at launch, exactly like keystroke
-  highlighting.
+  cancel any automatic zoom. No subsystem synthesizes mouse or keyboard events.
 - `StageFrameLayout` preserves the source aspect ratio inside configurable
   padding. `StageFrameBackdrop` and `StageView` own the visual composition:
   backdrop, blur, rounded source surface, layered shadow, auto-zoom transform,
@@ -142,6 +93,13 @@ to follow while keeping the parts that do not require macOS services testable.
   `CaptureState` to `.failed` so the Demo Stage explains what happened.
 
 ## Capture lifecycle
+
+`WorkspaceView` also installs `StageActionsPresenter`, which owns an independent
+nonactivating panel beside the selected source. `StageActionsPlacement` fits it
+to the source's screen. The panel tracks moves and resizes, hides for unavailable
+sources or unrelated foreground apps, and shares `StageActionsView` and its
+actions with the workspace through a compact layout. Stage Only does not remove
+the installer, so the floating tools stay available while the workspace is shared.
 
 The user-visible state follows this flow:
 
@@ -182,7 +140,7 @@ same commit. Do not spread shortcut branches through `CaptureManager` or views.
 
 `swift test` exercises source eligibility, shortcut reconciliation, preference
 compatibility, presentation and annotation policies, auto-zoom and frame
-geometry, exact-window actuation policy, capture-frame generation acceptance,
+geometry, capture-frame generation acceptance,
 and AppKit window interaction. ScreenCaptureKit streams, mouse event monitoring,
 Carbon hotkeys, permission prompts, and end-to-end window-server behavior
 require the packaged app and are verified manually with the checklist in

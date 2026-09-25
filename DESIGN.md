@@ -1,163 +1,82 @@
 ---
 name: BetterMeets
-description: Compact native macOS controls for recognizing, switching, and presenting app windows.
-typography:
-  label:
-    fontFamily: "SF system"
-    fontSize: "11pt"
-    fontWeight: 400
-  label-selected:
-    fontFamily: "SF system"
-    fontSize: "11pt"
-    fontWeight: 500
-  shortcut:
-    fontFamily: "SF system monospaced"
-    fontSize: "11pt"
-    fontWeight: 600
-  guidance:
-    fontFamily: "SF system"
-    fontSize: "10pt"
+description: A native macOS workspace for choosing, polishing, and presenting app windows.
 rounded:
   panel: "16pt"
   source: "8pt"
   keycap: "5pt"
-  action: "9.5pt"
+  action: "8pt"
 spacing:
-  rail: "8pt"
+  workspace: "12pt"
   detail: "4pt"
-  form: "12pt"
 components:
+  sidebar:
+    width: "176pt"
   source-preview:
-    rounded: "{rounded.source}"
-    width: "70pt"
-    height: "40pt"
-  shortcut-keycap:
-    typography: "{typography.shortcut}"
-    rounded: "{rounded.keycap}"
-    padding: "3pt 5pt"
-  controller-panel:
-    rounded: "{rounded.panel}"
-    width: "336pt"
-    height: "88pt"
+    width: "148pt"
+    height: "84pt"
   action-button:
-    rounded: "{rounded.action}"
-    width: "28pt"
-    height: "28pt"
+    height: "30pt"
+  status:
+    height: "52pt"
 ---
 
-# Design System: BetterMeets
+# BetterMeets design system
 
-## Overview
+One native window contains the presentation workspace. Tools sit above a
+vertically scrolling window list on the left. The source preview fills the
+remaining area at its own aspect ratio. A status strip below the stage contains
+current state, source title, Open App, and Stop. The bottom area can support
+future presentation features without changing the source layout.
 
-**Creative North Star: "The Native Presentation Utility"**
+## Window behavior
 
-BetterMeets uses compact macOS utility surfaces, SF system typography, SF Symbols, native controls, and the user's system accent. Real window previews and app icons provide recognition; labels and state cues explain what the audience is seeing. Density serves quick switching while the presenter watches another app.
+Keep the standard traffic lights, title-bar dragging, native resizing, and full
+screen. The initial content size is 1180 × 780 points, with an 800 × 560 minimum.
+Remember size and position. Switching sources never resizes the workspace.
 
-The controller, settings, and vertical presentation palette retain distinct jobs within this native system. Settings preserve restrained surfaces and two primary controls per tab, with supporting guidance or recovery actions where needed. Presentation controls stay in their own vertical palette, separate from the shared Stage.
+Stage Only hides tools, sources, status, and toolbar. Control–Command–S toggles
+it; Escape restores controls when annotation mode is inactive. Restore controls
+to access the traffic lights. Never imply that visible workspace controls are
+excluded from window sharing.
 
-**Key Characteristics:**
+## Materials and typography
 
-- Adaptive neutral materials with semantic system text and accent.
-- App identity above real previews, followed by sharing status and trailing guidance.
-- Compact native controls with pointer, keyboard, and VoiceOver access.
-- Brief state feedback that respects accessibility preferences.
+Use semantic system backgrounds, regular material, and SF system text. The
+stage well uses the system under-page color. Black is reserved for thumbnail
+letterboxing and captured imagery. System accent marks active tools and the
+selected source; orange indicates paused, pending, or permission states.
 
-This is a SwiftUI/AppKit system. Frontmatter dimensions ending in `pt` denote macOS logical points, not CSS physical units. Dynamic colors, semantic fonts, materials, and native window behavior are represented in `.impeccable/design.json` under `extensions.native`; they have no fixed CSS palette. Sidecar HTML/CSS is explicitly a preview translation, not production source.
+Panels use 16-point rounded corners and a subtle inset edge. Reduce Transparency
+replaces materials with a solid system control background. Increase Contrast
+strengthens edges. Semantic font styles and inherited legibility weight support
+Bold Text. Source details also appear in previews and accessibility labels.
 
-## Colors
+## Tools and sources
 
-Adaptive neutral materials keep the utility quiet; system accent and warning colors communicate actual state.
+Six labeled rows: Auto Polish, Spotlight, Annotate, Click Highlights, Keystrokes,
+and Settings. Active rows have an accent icon, fill, and small state marker.
+Right-click opens the tool's settings; the gear anchors a native settings popover.
 
-### Primary
+The floating source widget uses the same actions as an icon-only vertical rail:
+56 × 230 points, 18-point corners, 28-point buttons, and 6-point spacing. Preserve
+its translucent material and inset edge. It follows the selected source, prefers
+the right gutter then the left, and falls inside the source when neither fits.
+It stays separate from the shared workspace and remains available in Stage Only.
 
-- **System Accent** (`ControlPalette.accent = Color.accentColor`): selected source borders, selected shortcut keycaps, play symbols, keyboard focus, and active presentation controls. Honor the user's accent choice.
-- **State Warning** (`ControlPalette.warning = Color.orange`): paused or pending sources, unavailable pinned slots, permission warnings, and warning guidance. Shortcut conflicts use `Color.red` and an exclamation symbol.
+Each source shows app identity, an upright thumbnail, a shortcut keycap, and its
+window title. Selection outlines do not change layout. Paused and pending states
+have explicit symbols. Unavailable pinned windows retain their reserved slots.
+Empty unassigned slots do not consume sidebar space.
 
-### Neutral
+Up/Down moves source focus, Return selects, and Space previews. Hover previews
+appear after a short dwell to avoid distracting accidental passes. Selected and
+keyboard-focused windows scroll into view. All controls have accessibility
+labels, visible hover and keyboard focus, and press feedback.
 
-- **Native Material**: the controller uses clear Liquid Glass through `.glassEffect(.clear, in:)`; the presentation palette retains `.regularMaterial`. Reduce Transparency substitutes `Color(nsColor: .windowBackgroundColor)`.
-- **System Text** (`.primary` / `.secondary`): identities, labels, and supporting guidance. The footer uses primary state text and secondary next-action text.
-- **Preview Contrast** (`Color.black` / `Color.white` with local opacities): thumbnail backdrops, shortcut text, inset preview edges, and focus details.
-- **Controller Glass**: the system renders the material and reflective edge. Do not add a sampled background tint or a second decorative border. Increase Contrast and Reduce Transparency receive an explicit semantic inset edge.
+## Motion
 
-**The State Has Two Cues Rule.** Pair color with text or an icon: a play symbol for sharing, a pause symbol for paused, progress for switching, and a Return glyph for keyboard focus.
-
-## Typography
-
-**Body and label font:** SF through SwiftUI's system font APIs. **Shortcut font:** the system font with `.monospaced()`; no bundled display family.
-
-The hierarchy is deliberately shallow. App labels use `label`, selected labels and footer status use `label-selected`, shortcut keycaps use `shortcut`, and next-action guidance uses `guidance`. The source's small play/pause symbol is supporting state metadata, never the sole explanation of sharing. Hover previews use semantic `.callout.weight(.semibold)` for the window title and `.caption` for the app name and shortcut. Settings form labels retain `.callout` and native control typography.
-
-System line metrics remain native; there is no authored line-height or tracking scale. Bold Text is honored through `legibilityWeight`. Labels truncate at one line where the compact controller requires it, with source details exposed in the hover preview and VoiceOver labels.
-
-**The Recognition Before Decoration Rule.** Keep app identity, shortcuts, and sharing state more prominent than decorative effects; preserve native text metrics and meaningful labels.
-
-## Layout
-
-The controller uses four equal source columns inside the `controller-panel` bounds. Its source region is 68 points high; the status region is 20 points high. The rail uses 16-point horizontal insets, `spacing.rail` (8 points) between columns, and 4-point vertical insets. Each source places an 18-point identity row above a 2-point gap and a `source-preview`. Shortcut keycaps sit at the bottom right of previews. Additional sources browse horizontally, with edge fades and directional chevrons only where content continues. Focus and selected-source changes scroll the relevant source into view.
-
-The native borderless controller window exactly matches the visible rounded panel. It can become key and main, preserves close/minimize commands, restores position, and constrains restored coordinates to the screen while allowing the empty gaps beside a bottom Dock. On first launch it centers in the right gap beside the Dock, sharing its vertical center, or tries the left gap and then the visible desktop above it. A Window menu and context command attach the widget at a fixed 12-point Dock gap. Dragging anywhere on the controller moves it freely. Releasing within 24 points of a Dock target attaches it; Option skips that snap. A new drag immediately releases attachment and suspends Dock tracking until the drop. Attachment follows Dock changes when space permits and persists across launches; free positions retain ordinary restoration. Exact Dock bounds come from Accessibility when already authorized or the window server when available; otherwise placement falls back to the visible desktop. The footer keeps its native drag surface. A native pan recognizer covers the remaining content, including labels and previews, and delays click delivery until the drag fails so clicks still select and drags do not. Both paths preserve one-to-one pointer movement. The panel and source rail cover their full hit areas and accept window activation events, so dragging works on the first press while another app is active.
-
-Settings retain a native segmented tab selector above the form. Their 568-point-wide surface sizes to content until a 480-point content-height cap, then scrolls vertically. A preview well precedes the two primary form controls; aligned callout labels and native segmented controls, checkboxes, sliders, and fields retain the established settings arrangement.
-
-The presentation palette remains a separate 56-point-wide vertical surface with compact actions above and below the larger circular voice control. These surface-specific dimensions are not general breakpoints; the app has no web or mobile layout system.
-
-**The Visible Bounds Rule.** The controller's native window bounds must equal its visible panel bounds; use no transparent layout padding solely to contain an outer shadow and no titled frame hidden behind a smaller widget.
-
-## Elevation & Depth
-
-The controller uses native clear Liquid Glass, including its system-rendered reflective edge, inside a 16-point continuous rounded rectangle. It has no additional tint or decorative stroke. Reduce Transparency uses a solid system background with a primary edge at opacity 0.18; Increase Contrast adds a primary edge at opacity 0.50. Its outer shadow belongs to the window server through `NSWindow.hasShadow`; the SwiftUI controller draws no outer shadow.
-
-The incumbent presentation palette keeps the gradient tint and graduated edge in `PresenterPanelBackground`, currently called with `drawsShadow: false`. The larger voice control retains its own contact/ambient shadows, top-lit sheen, and a static listening halo. These native depth cues remain valid for that control. Settings use lightly tinted wells and inset borders; native popovers provide hover-preview elevation.
-
-**The Window Owns the Controller Shadow Rule.** Keep the controller's outer shadow outside content layout; do not generalize this rule into a ban on the presentation palette's existing control shadows or native gradients.
-
-## Shapes
-
-Continuous rounded rectangles define utility panels, preview clips, and shortcut keycaps using their named frontmatter radii. The controller's background, outline, and clip share one panel silhouette. Preview state outlines are inset, so selection does not enlarge the preview or collide with adjacent labels.
-
-The neutral preview edge is one point; selected, pending, and keyboard-focused previews use two points. Keyboard focus adds a Return glyph. Empty slots use a dashed outline with a shortcut in the corner. Native segmented controls, capsules in hover-preview shortcuts, and the circular voice action retain their own native forms.
-
-## Components
-
-### Source buttons
-
-Compact, recognizable window choices. Each plain button contains a real captured thumbnail, app icon/name, optional shortcut keycap, and state cue. Preview images fill and clip; the larger hover preview fits the image. Live sources show the accent border, accent keycap, and play symbol. Play and pause use the same 12-point-wide slot and 9-point semibold symbol size. Paused sources use warning borders/keycaps and a pause symbol; pending sources use warning borders/keycaps and progress. A conflicting shortcut remains red with a warning symbol even when its source is selected.
-
-Hover adds a restrained white preview overlay; after 450 ms it opens a native popover with the window title, app identity, larger preview, and shortcut information. Keyboard focus is distinct from selection. Arrow keys browse and Return selects; a selected source click pauses, and a paused source click resumes. Context menus pin or unpin source slots.
-
-The shared compact button style briefly scales to 0.96 and dims on press. Hover feedback uses 0.12-second ease-out, source state transitions 0.15-second ease-out, and compact press feedback 0.10-second ease-out. Reduce Motion removes the animations and press scale.
-
-### Empty and unavailable slots
-
-Passive placeholders preserve the source grid. An empty slot has a neutral dashed edge and the label Empty. An unavailable pin uses a warning edge, pin-slash symbol, and Unavailable label, retaining the pinned shortcut context. Neither placeholder implies an unsupported add action.
-
-### Status footer
-
-One status line below the source rail, without a divider or separate band. The state symbol and medium-weight title align left; secondary next-action guidance aligns right. Long text truncates with priority given to the title; the combined accessibility label and help always describe the full guidance. The same region supplies native window dragging and controller context commands.
-
-### Presentation actions
-
-Native symbol buttons remain in the separate vertical palette. Active actions use accent symbols and low-opacity accent fills; hover and keyboard focus remain visible. The circular voice action is larger and uses a static listening halo, with permission warnings shown separately. Settings can open from the palette or controller without adding controls to shared Stage content.
-
-### Settings navigation and inputs
-
-Preserve the native segmented tab selector, restrained container, preview wells, and two primary controls per tab. Fields remain native `SecureField`/`TextField` controls, with native focus, validation feedback, and disabled behavior. Supporting help or permission recovery belongs near the relevant control. Avoid replacing established controls with web-style custom input or navigation chrome.
-
-## Do's and Don'ts
-
-### Do:
-
-- **Do** use native semantic colors and materials, including Reduce Transparency and Increase Contrast variants.
-- **Do** preserve the separate controller, settings, vertical presentation palette, and shared Stage.
-- **Do** keep source identity and sharing state readable at native utility scale, with full context in help and accessibility labels.
-- **Do** maintain distinct live, paused, pending, unavailable, shortcut-conflict, and keyboard-focus cues.
-- **Do** preserve native keyboard access, source context menus, position restoration, and footer dragging when changing the controller.
-
-### Don't:
-
-- **Don't** add transparent shadow padding or hide a titled frame behind the controller surface.
-- **Don't** hard-code a sampled accent or material color as the native palette.
-- **Don't** make color the only indication of source state or keyboard focus.
-- **Don't** turn empty source slots into unsupported add buttons.
-- **Don't** apply controller-specific shadow rules to eliminate the existing voice-control depth or native material gradients.
+Use a critically damped 0.3-second spring for source scrolling. Selection and
+hover use short color/opacity transitions. Stage Only cross-fades the layout
+without sliding the entire stage. Reduce Motion removes spatial effects while
+retaining state feedback. Input stays available during every transition.

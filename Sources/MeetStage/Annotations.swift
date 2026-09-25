@@ -159,23 +159,6 @@ final class AnnotationSession: ObservableObject {
         scheduleFade(for: id, reducesMotion: reducesMotion)
     }
 
-    /// Adds a ready-made shape (used by Demo Mode's voice "circle this" command),
-    /// which fades on the same timer as a drawn stroke.
-    @discardableResult
-    func addShape(_ geometry: AnnotationStrokeGeometry, reducesMotion: Bool) -> UUID {
-        let stroke = AnnotationStroke(
-            id: UUID(),
-            points: [],
-            color: inkColor,
-            opacity: 1,
-            fadeDuration: AnnotationTiming.standardFadeDuration,
-            geometry: geometry
-        )
-        strokes.append(stroke)
-        scheduleFade(for: stroke.id, reducesMotion: reducesMotion)
-        return stroke.id
-    }
-
     private func scheduleFade(for id: UUID, reducesMotion: Bool) {
         let strokeLifetimeSeconds = lifetimeSeconds
         let sleep = sleep

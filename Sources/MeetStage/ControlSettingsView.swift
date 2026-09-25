@@ -9,7 +9,6 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case stage
     case spotlight
     case annotations
-    case voice = "demo"
     case clicks
     case keystrokes
 
@@ -18,7 +17,6 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .general: String(localized: "General")
-        case .voice: String(localized: "Voice")
         case .stage: String(localized: "Stage")
         case .spotlight: String(localized: "Focus")
         case .annotations: String(localized: "Draw")
@@ -36,8 +34,6 @@ struct BetterMeetsSettingsView: View {
     @State private var isChoosingLogo = false
     @State private var isLogoDropTargeted = false
     @State private var logoImportError: String?
-    @State private var brainKeyDraft = ""
-    @State private var isConfirmingKeyRemoval = false
     private static let tabBarWidth: CGFloat = 500
     private static let maxTabContentHeight: CGFloat = 480
     // Start at the cap until the selected pane has reported its natural height.
@@ -50,8 +46,6 @@ struct BetterMeetsSettingsView: View {
                     switch selectedTab {
                     case .general:
                         generalSettings
-                    case .voice:
-                        voiceSettings
                     case .stage:
                         stageSettings
                     case .spotlight:
@@ -135,21 +129,7 @@ struct BetterMeetsSettingsView: View {
         } message: {
             Text(logoImportError ?? "Choose another image and try again.")
         }
-        .alert(
-            "Remove \(manager.demoBrainProvider.vendor) API Key?",
-            isPresented: $isConfirmingKeyRemoval
-        ) {
-            Button("Remove Key", role: .destructive) {
-                manager.setDemoBrainKey("")
-                brainKeyDraft = ""
-            }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("The key will be deleted from your Keychain and cloud understanding will turn off.")
-        }
-        .onChange(of: manager.demoBrainProvider) { _, _ in
-            brainKeyDraft = ""
-        }
+
     }
 
     private var selectedTab: SettingsTab {
@@ -210,71 +190,6 @@ struct BetterMeetsSettingsView: View {
                 .labelsHidden()
                 .pickerStyle(.segmented)
                 .disabled(!manager.globalShortcutsEnabled)
-            }
-        }
-    }
-
-    private var voiceSettings: some View {
-        VStack(spacing: 12) {
-            SettingsPreviewWell {
-                HStack(spacing: 12) {
-                    Image(systemName: "waveform")
-                        .font(.system(size: 24, weight: .medium))
-                        .foregroundStyle(Color.accentColor)
-                    Text("“Open settings”")
-                        .font(.system(size: 15, weight: .medium))
-                }
-            }
-
-            SettingsFormRow(title: "Model") {
-                Picker(
-                    "Model",
-                    selection: Binding(
-                        get: { manager.demoBrainProvider },
-                        set: { manager.setDemoBrainProvider($0) }
-                    )
-                ) {
-                    ForEach(DemoBrainProvider.allCases) { provider in
-                        Text(provider.label)
-                            .tag(provider)
-                    }
-                }
-                .labelsHidden()
-                .pickerStyle(.segmented)
-            }
-
-            SettingsFormRow(title: "API key") {
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack(spacing: 6) {
-                        SecureField(
-                            "\(manager.demoBrainProvider.vendor) API key",
-                            text: $brainKeyDraft
-                        )
-                        .textFieldStyle(.roundedBorder)
-                        Button("Save") {
-                            manager.setDemoBrainKey(brainKeyDraft)
-                            brainKeyDraft = ""
-                        }
-                        .keyboardShortcut(.defaultAction)
-                        .disabled(
-                            brainKeyDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                        )
-
-                        if manager.hasDemoBrainKey {
-                            Button("Remove…", role: .destructive) {
-                                isConfirmingKeyRemoval = true
-                            }
-                        }
-                    }
-                    Text(
-                        manager.hasDemoBrainKey
-                            ? "\(manager.demoBrainProvider.vendor) key saved in Keychain."
-                            : "Add a \(manager.demoBrainProvider.vendor) key to use this model."
-                    )
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                }
             }
         }
     }

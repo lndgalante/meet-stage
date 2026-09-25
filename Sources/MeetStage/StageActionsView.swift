@@ -1,60 +1,65 @@
 import SwiftUI
 
+enum StageActionLayout {
+    case sidebar, floating
+}
+
+extension EnvironmentValues {
+    @Entry var stageActionLayout = StageActionLayout.sidebar
+}
+
 struct StageActionsView: View {
     @ObservedObject var manager: CaptureManager
+    var layout: StageActionLayout = .sidebar
     @State private var isShowingSettings = false
     @Environment(\.legibilityWeight) private var legibilityWeight
 
     var body: some View {
-        VStack(spacing: StageActionsMetrics.spacing) {
+        VStack(spacing: controlSpacing) {
+            if layout == .sidebar {
+                Text("Tools")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 6)
+                    .padding(.bottom, 4)
+            }
             upperControls
-            demoHero
-                .padding(.vertical, 4)
             lowerControls
         }
         .padding(.vertical, StageActionsMetrics.inset)
-        .frame(width: StageActionsMetrics.panelWidth)
+        .padding(.horizontal, layout == .sidebar ? 10 : 0)
+        .frame(width: layout == .floating ? StageActionsMetrics.panelWidth : nil)
         .background {
-            PresenterPanelBackground(cornerRadius: StageActionsMetrics.cornerRadius, drawsShadow: false)
+            if layout == .floating {
+                PresenterPanelBackground(cornerRadius: StageActionsMetrics.cornerRadius, drawsShadow: false)
+            }
         }
+        .environment(\.stageActionLayout, layout)
         .fontWeight(legibilityWeight == .bold ? .bold : nil)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Stage actions")
     }
 
-    private var demoHero: some View {
-        DemoHeroButton(
-            isListening: manager.demoModeEnabled,
-            showsPermissionWarning: manager.needsMicrophonePermission
-                || manager.demoModeNeedsClickAccessibility
-                || manager.demoModeUnavailableReason != nil,
-            help: demoModeControlHelp,
-            action: manager.toggleDemoMode,
-            settingsAction: { showSettings(.voice) }
-        )
-    }
-
     private var upperControls: some View {
-        VStack(spacing: StageActionsMetrics.spacing) {
+        VStack(spacing: controlSpacing) {
             ControlBarButton(
                 systemImage: "wand.and.sparkles",
-                title: "Auto polish",
+                title: "Auto Polish",
                 help: autoPresentationControlHelp,
                 isOn: manager.autoPresentationEnabled,
                 action: manager.toggleAutoPresentation,
                 settingsAction: { showSettings(.stage) }
             )
-            .frame(width: ControlMetrics.controlBarActionSize)
 
             ControlBarButton(
                 systemImage: "magnifyingglass",
-                title: "Focus spotlight",
+                title: "Spotlight",
                 help: spotlightControlHelp,
                 isOn: manager.spotlightEnabled,
                 action: manager.toggleSpotlight,
                 settingsAction: { showSettings(.spotlight) }
             )
-            .frame(width: ControlMetrics.controlBarActionSize)
 
             ControlBarButton(
                 systemImage: "pencil.and.outline",
@@ -64,26 +69,24 @@ struct StageActionsView: View {
                 action: manager.toggleAnnotations,
                 settingsAction: { showSettings(.annotations) }
             )
-            .frame(width: ControlMetrics.controlBarActionSize)
         }
     }
 
     private var lowerControls: some View {
-        VStack(spacing: StageActionsMetrics.spacing) {
+        VStack(spacing: controlSpacing) {
             ControlBarButton(
                 systemImage: "cursorarrow.rays",
-                title: "Highlight clicks",
+                title: "Click Highlights",
                 help: "Show click ripples on the selected window and Demo Stage",
                 isOn: manager.highlightsMouseClicks,
                 glyphOffset: ControlMetrics.clickHighlightGlyphOffset,
                 action: manager.toggleMouseClickHighlighting,
                 settingsAction: { showSettings(.clicks) }
             )
-            .frame(width: ControlMetrics.controlBarActionSize)
 
             ControlBarButton(
                 systemImage: "command.square",
-                title: "Highlight keystrokes",
+                title: "Keystrokes",
                 help: manager.needsKeystrokeAccessibilityPermission
                     ? "Allow Accessibility access, then turn on keystroke highlighting"
                     : "Highlight keystrokes on the Demo Stage",
@@ -93,7 +96,6 @@ struct StageActionsView: View {
                 action: manager.toggleKeystrokeHighlighting,
                 settingsAction: { showSettings(.keystrokes) }
             )
-            .frame(width: ControlMetrics.controlBarActionSize)
 
             ControlBarButton(
                 systemImage: "gearshape",
@@ -102,7 +104,6 @@ struct StageActionsView: View {
                 isPresented: isShowingSettings,
                 action: { isShowingSettings.toggle() }
             )
-            .frame(width: ControlMetrics.controlBarActionSize)
             .popover(isPresented: $isShowingSettings, arrowEdge: .trailing) {
                 BetterMeetsSettingsView(manager: manager)
                     .fixedSize()
@@ -113,6 +114,10 @@ struct StageActionsView: View {
     private func showSettings(_ tab: SettingsTab) {
         UserDefaults.standard.set(tab.rawValue, forKey: SettingsTab.storageKey)
         isShowingSettings = true
+    }
+
+    private var controlSpacing: CGFloat {
+        layout == .floating ? StageActionsMetrics.spacing : 4
     }
 
     private var annotationControlHelp: String {
@@ -150,30 +155,6 @@ struct StageActionsView: View {
                 localized:
                     "Polish the Demo Stage with activity zooms, a 2× system pointer, and a styled frame"
             )
-    }
-
-    private var demoModeControlHelp: String {
-        if manager.needsMicrophonePermission {
-            return String(localized: "Allow microphone access, then turn on Demo Mode")
-        }
-        if let reason = manager.demoModeUnavailableReason {
-            return reason
-        }
-        if manager.demoModeEnabled {
-            if manager.demoMode.isListening {
-                return manager.demoModeNeedsClickAccessibility
-                    ? String(
-                        localized:
-                            "Listening — allow Accessibility to open controls, not just highlight them"
-                    )
-                    : String(
-                        localized:
-                            "Listening — name a control to highlight it, or say “click” to open it"
-                    )
-            }
-            return String(localized: "Demo Mode starts listening when a window is live")
-        }
-        return String(localized: "Highlight and open controls by voice as you narrate your demo")
     }
 
 }

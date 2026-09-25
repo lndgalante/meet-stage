@@ -1,14 +1,14 @@
 import Foundation
 
 enum StageActionsMetrics {
-    static let heroDiameter: CGFloat = 44
+    static let actionSize: CGFloat = 28
     static let panelWidth: CGFloat = 56
     static let cornerRadius: CGFloat = 18
     static let inset: CGFloat = 10
     static let spacing: CGFloat = 6
     static let panelHeight =
         ControlMetrics.controlBarButtonHeight * 6
-        + spacing * 6 + heroDiameter + 8 + inset * 2
+        + spacing * 5 + inset * 2
     static let edgeGap: CGFloat = 12
     static let panelSize = CGSize(width: panelWidth, height: panelHeight)
 }

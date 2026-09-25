@@ -1,60 +1,5 @@
 import SwiftUI
 
-struct SourceScrollFadeMask: View {
-    let leadingStrength: CGFloat
-    let trailingStrength: CGFloat
-
-    var body: some View {
-        HStack(spacing: 0) {
-            LinearGradient(
-                colors: [Color.black.opacity(1 - leadingStrength), .black],
-                startPoint: .leading,
-                endPoint: .trailing
-            )
-            .frame(width: ControlMetrics.sourceScrollFadeWidth)
-
-            Rectangle()
-                .fill(.black)
-
-            LinearGradient(
-                colors: [.black, Color.black.opacity(1 - trailingStrength)],
-                startPoint: .leading,
-                endPoint: .trailing
-            )
-            .frame(width: ControlMetrics.sourceScrollFadeWidth)
-        }
-    }
-}
-
-struct SourceScrollEdgeShadow: View {
-    let leadingStrength: CGFloat
-    let trailingStrength: CGFloat
-
-    var body: some View {
-        HStack(spacing: 0) {
-            chevron(systemName: "chevron.compact.left", strength: leadingStrength)
-            Spacer(minLength: 0)
-            chevron(systemName: "chevron.compact.right", strength: trailingStrength)
-        }
-        .padding(.horizontal, ControlMetrics.outerPadding)
-        .padding(
-            .top,
-            ControlMetrics.sourceTileVerticalInset + ControlMetrics.sourceLabelHeight
-                + ControlMetrics.sourceLabelSpacing
-        )
-        .frame(maxHeight: .infinity, alignment: .top)
-    }
-
-    private func chevron(systemName: String, strength: CGFloat) -> some View {
-        Image(systemName: systemName)
-            .font(.system(size: 13, weight: .semibold))
-            .foregroundStyle(.white.opacity(0.76))
-            .shadow(color: .black.opacity(0.56), radius: 2)
-            .opacity(Double(min(max(strength, 0), 1)))
-            .frame(height: ControlMetrics.sourcePreviewHeight)
-    }
-}
-
 struct EmptyShortcutSlot: View {
     let slot: Int
     let pinnedWindowDescription: String?
@@ -95,7 +40,7 @@ struct EmptyShortcutSlot: View {
             .frame(height: ControlMetrics.sourcePreviewHeight)
 
         }
-        .frame(width: ControlMetrics.sourceTileWidth, height: ControlMetrics.sourceTileHeight)
+        .frame(width: ControlMetrics.sourceTileWidth)
         .help(helpText)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(helpText)
@@ -134,18 +79,44 @@ struct CompactWindowButton: View {
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
     var body: some View {
-        Button(action: action) {
+        Button {
+            hoverTask?.cancel()
+            showPreview = false
+            action()
+        } label: {
             VStack(spacing: ControlMetrics.sourceLabelSpacing) {
                 identityRow
                 sourcePreview
+                Text(source.title)
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(width: ControlMetrics.sourceTileWidth, height: ControlMetrics.sourceTileHeight)
+            .frame(width: ControlMetrics.sourceTileWidth)
+            .padding(6)
+            .background(
+                ControlPalette.accent.opacity(isSelected ? 0.09 : 0),
+                in: RoundedRectangle(cornerRadius: 12)
+            )
             .contentShape(Rectangle())
         }
         .buttonStyle(CompactIconButtonStyle())
         .focusable()
         .focusEffectDisabled()
+        .onKeyPress(.space) {
+            showPreview.toggle()
+            return .handled
+        }
+        .onKeyPress(.return) {
+            showPreview = false
+            action()
+            return .handled
+        }
         .contextMenu {
+            Button(isPaused ? "Resume Sharing" : isSelected ? "Pause Sharing" : "Put on Stage", action: action)
+            Button("Preview Window") { showPreview = true }
+            Divider()
             Menu(shortcutModifier == .disabled ? "Pin Source Slot" : "Pin Global Shortcut") {
                 ForEach(ShortcutSlot.all, id: \.self) { slot in
                     Button {
@@ -183,7 +154,7 @@ struct CompactWindowButton: View {
                 showPreview = false
             }
         }
-        .popover(isPresented: $showPreview, arrowEdge: .bottom) {
+        .popover(isPresented: $showPreview, arrowEdge: .trailing) {
             WindowHoverPreview(
                 source: source,
                 shortcut: shortcut,
@@ -208,7 +179,7 @@ struct CompactWindowButton: View {
             if let thumbnail = source.thumbnail {
                 Image(nsImage: thumbnail)
                     .resizable()
-                    .scaledToFill()
+                    .scaledToFit()
             } else if let icon = source.applicationIcon {
                 Image(nsImage: icon)
                     .resizable()

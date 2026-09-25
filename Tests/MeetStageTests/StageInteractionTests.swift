@@ -3,274 +3,81 @@ import SwiftUI
 import Testing
 @testable import MeetStage
 
-@Suite("Stage interaction")
+@Suite("Unified workspace", .serialized)
 struct StageInteractionTests {
-    @Test("The topmost stage surface tracks pointer movement 1:1")
+    @Test("Landscape and portrait sources fit without cropping or stretching")
+    func sourceFitsViewport() {
+        let viewport = CGSize(width: 960, height: 600)
+        #expect(WorkspaceMetrics.stageSize(fitting: viewport, aspectRatio: 16 / 9) == CGSize(width: 960, height: 540))
+        #expect(WorkspaceMetrics.stageSize(fitting: viewport, aspectRatio: 0.5) == CGSize(width: 300, height: 600))
+        #expect(WorkspaceMetrics.stageSize(fitting: .zero, aspectRatio: 1) == .zero)
+        #expect(WorkspaceMetrics.stageSize(fitting: viewport, aspectRatio: .nan) == CGSize(width: 960, height: 600))
+    }
+
+    @Test("Window configuration preserves native controls and the user's chosen size")
     @MainActor
-    func renderingSurfaceStartsWindowDrag() throws {
+    func nativeWindowBehavior() throws {
         let window = NSWindow(
-            contentRect: NSRect(x: 100, y: 100, width: 640, height: 360),
-            styleMask: [.borderless, .resizable],
+            contentRect: CGRect(x: 100, y: 100, width: 1000, height: 650),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
-        let surface = WindowDragView(frame: window.contentView?.bounds ?? .zero)
-        window.contentView = surface
-        let initialOrigin = window.frame.origin
-
-        surface.mouseDown(
-            with: try mouseEvent(
-                type: .leftMouseDown,
-                location: NSPoint(x: 320, y: 180),
-                in: window
-            )
-        )
-        surface.mouseDragged(
-            with: try mouseEvent(
-                type: .leftMouseDragged,
-                location: NSPoint(x: 344, y: 167),
-                in: window
-            )
-        )
-
-        #expect(!surface.mouseDownCanMoveWindow)
-        #expect(window.frame.origin.x == initialOrigin.x + 24)
-        #expect(window.frame.origin.y == initialOrigin.y - 13)
-    }
-
-    @Test("The source rail fits within the Dock-height controller")
-    func sourceRailSpacingIsBalanced() {
-        let inset = ControlWindowSizing.sourceRailInset
-
-        #expect((ControlWindowSizing.panelWidth - ControlWindowSizing.sourceAreaWidth) / 2 == inset)
-        #expect(ControlWindowSizing.size.height == 88)
-        #expect(
-            ControlMetrics.sourceTileWidth * ControlMetrics.visibleSourceTileCount
-                + ControlMetrics.sourceTileSpacing
-                * (ControlMetrics.visibleSourceTileCount - 1)
-                == ControlWindowSizing.sourceAreaWidth
-        )
-        #expect(
-            ControlMetrics.sourceTileHeight + ControlMetrics.sourceTileVerticalInset * 2
-                == ControlWindowSizing.sourceRegionHeight
-        )
-        #expect(
-            ControlMetrics.sourcePreviewHeight + ControlMetrics.sourceLabelSpacing + ControlMetrics.sourceLabelHeight
-                == ControlMetrics.sourceTileHeight
-        )
-    }
-
-    @Test("The controller's native drag surface snaps, saves attachment, and pulls free")
-    @MainActor
-    func magneticControllerDrag() throws {
-        let suite = "MagneticControllerDrag.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
-        let window = ControlWindow()
+        window.isReleasedWhenClosed = false
         defer { window.close() }
-        window.setFrameOrigin(CGPoint(x: 900, y: 200))
-        let target = DockSnapTarget(
-            side: .right, frame: CGRect(origin: CGPoint(x: 1200, y: 20), size: window.frame.size))
-        let attachment = ControlDockAttachment(window: window, defaults: defaults) { _ in [target] }
-        let surface = WindowDragView(frame: CGRect(origin: .zero, size: window.frame.size))
-        surface.dragHandler = attachment
-        window.contentView = surface
+        let toolbar = NSToolbar(identifier: "WorkspaceTest")
+        window.toolbar = toolbar
+        WindowConfigurator.configure(window)
+        let size = window.frame.size
+        WindowConfigurator.configure(window)
 
-        surface.mouseDown(with: try mouseEvent(type: .leftMouseDown, location: CGPoint(x: 100, y: 10), in: window))
-        surface.mouseDragged(
-            with: try mouseEvent(type: .leftMouseDragged, location: CGPoint(x: 415, y: -165), in: window))
-        #expect(window.frame.origin == CGPoint(x: 1215, y: 25))
-        surface.mouseUp(with: try mouseEvent(type: .leftMouseUp, location: CGPoint(x: 100, y: 10), in: window))
-        #expect(window.frame == target.frame)
-        #expect(defaults.string(forKey: ControlDockAttachment.preferenceKey) == "right")
-
-        surface.mouseDown(with: try mouseEvent(type: .leftMouseDown, location: CGPoint(x: 100, y: 10), in: window))
-        surface.mouseDragged(
-            with: try mouseEvent(type: .leftMouseDragged, location: CGPoint(x: 100, y: 110), in: window))
-        #expect(window.frame.minY == target.frame.minY + 100)
-        surface.mouseUp(with: try mouseEvent(type: .leftMouseUp, location: CGPoint(x: 100, y: 10), in: window))
-        #expect(defaults.string(forKey: ControlDockAttachment.preferenceKey) == nil)
-    }
-
-    @Test("The stage keeps standard macOS window semantics")
-    @MainActor
-    func stageUsesStandardWindowStyle() {
-        #expect(WindowConfigurator.stageStyleMask.contains(.titled))
-        #expect(WindowConfigurator.stageStyleMask.contains(.resizable))
-        #expect(WindowConfigurator.stageStyleMask.contains(.fullSizeContentView))
-    }
-
-    @Test("The controller has no hidden title bar or transparent shadow margins")
-    @MainActor
-    func controllerFitsVisibleSurface() async throws {
-        let size = ControlWindowSizing.size
-        let window = ControlWindow()
-        defer { window.close() }
-        window.contentView = NSHostingView(
-            rootView: SourcePanelBackground().frame(width: size.width, height: size.height)
-        )
-        window.contentView?.layoutSubtreeIfNeeded()
-
-        #expect(window.canBecomeKey)
-        #expect(window.canBecomeMain)
-        #expect(!window.styleMask.contains(.titled))
-        #expect(window.styleMask.contains(.closable))
-        #expect(window.styleMask.contains(.miniaturizable))
-        #expect(window.hasShadow)
         #expect(window.frame.size == size)
-        #expect(window.contentView?.bounds.size == size)
-        #expect(size.width == ControlWindowSizing.panelWidth)
-        #expect(size.height == ControlWindowSizing.sourceRegionHeight + ControlWindowSizing.guidanceHeight)
-        #expect(window.minSize == window.maxSize)
-        #expect(window.responds(to: #selector(NSWindow.performClose(_:))))
+        #expect(window.toolbar === toolbar)
+        #expect(window.styleMask.contains(.resizable))
+        #expect(window.collectionBehavior.contains(.fullScreenPrimary))
+        #expect(!window.isMovableByWindowBackground)
+        #expect(window.contentAspectRatio == .zero)
+        for type in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
+            let button = try #require(window.standardWindowButton(type))
+            #expect(!button.isHidden)
+        }
+        window.setFrameAutosaveName("")
     }
 
-    @Test("The borderless controller supports native close and minimize commands")
+    @Test("Stage rendering never installs a separate control or action window")
     @MainActor
-    func controllerWindowCommands() {
-        let window = ControlWindow()
-        window.orderFront(nil)
-        let close = NSMenuItem(title: "Close", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
-        let minimize = NSMenuItem(
-            title: "Minimize", action: #selector(NSWindow.performMiniaturize(_:)), keyEquivalent: "m")
-        #expect(window.validateMenuItem(close))
-        #expect(window.validateMenuItem(minimize))
-        window.performClose(nil)
-        #expect(!window.isVisible)
-        #expect(!window.validateMenuItem(close))
-        window.orderFront(nil)
-        #expect(window.isVisible)
-        window.close()
-    }
-
-    @Test("The native drag surface wins stage hit testing")
-    @MainActor
-    func dragSurfaceWinsStageHitTesting() async throws {
-        let defaultsName = "StageInteractionTests.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: defaultsName))
-        defer { defaults.removePersistentDomain(forName: defaultsName) }
-
+    func stageRemainsEmbedded() throws {
+        let suite = "WorkspaceTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
         let manager = CaptureManager(defaults: defaults)
-        let hostingView = NSHostingView(
-            rootView: StageView(manager: manager)
-                .frame(width: 640, height: 360)
-        )
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 640, height: 360),
-            styleMask: [.titled, .resizable, .fullSizeContentView],
+            contentRect: CGRect(x: 0, y: 0, width: 800, height: 560),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
-        window.contentView = hostingView
-        window.contentView?.layoutSubtreeIfNeeded()
-
-        await withCheckedContinuation { continuation in
-            DispatchQueue.main.async {
-                continuation.resume()
-            }
-        }
-
-        let frameView = try #require(window.contentView?.superview)
-        let dragSurface = try #require(
-            frameView.firstDescendant(ofType: WindowDragView.self)
-        )
-        let center = dragSurface.convert(
-            NSPoint(x: dragSurface.bounds.midX, y: dragSurface.bounds.midY),
-            to: frameView
-        )
-
-        #expect(window.titlebarSeparatorStyle == .none)
-        #expect(dragSurface.bounds.width > 0)
-        #expect(dragSurface.bounds.height > 0)
-        #expect(frameView.hitTest(center) === dragSurface)
-    }
-
-    @Test("The controller footer routes pointer drags to its native window surface")
-    @MainActor
-    func controllerFooterDragSurface() async throws {
-        let window = ControlWindow()
+        window.isReleasedWhenClosed = false
         defer { window.close() }
-        let footer = SourceStatusFooter(
-            guidance: SourceSelectionGuidance(
-                state: .idle,
-                selectedApplication: nil,
-                pendingApplication: nil,
-                suggestedApplication: nil,
-                shortcut: nil
-            )
-        )
-        let host = NSHostingView(rootView: footer.frame(width: ControlWindowSizing.panelWidth))
-        window.contentView = host
-        host.layoutSubtreeIfNeeded()
-        window.installDragSurface()
-        await withCheckedContinuation { continuation in
-            DispatchQueue.main.async { continuation.resume() }
-        }
-        let frameView = try #require(host.superview)
-        let surface = try #require(frameView.firstDescendant(ofType: WindowDragView.self))
-        let center = surface.convert(NSPoint(x: surface.bounds.midX, y: surface.bounds.midY), to: frameView)
-        #expect(surface.bounds.width == ControlWindowSizing.panelWidth)
-        #expect(surface.bounds.height == ControlWindowSizing.guidanceHeight)
-        #expect(frameView.hitTest(center) === surface)
+        let windowsBefore = Set(NSApp.windows.map(ObjectIdentifier.init))
+        window.contentView = NSHostingView(rootView: StageView(manager: manager))
+        window.contentView?.layoutSubtreeIfNeeded()
+        #expect(Set(NSApp.windows.map(ObjectIdentifier.init)) == windowsBefore)
+        #expect(window.identifier != BetterMeetsWindowID.stage)
     }
 
-    @Test("The controller accepts the first mouse-down across its surface")
+    @Test("Pause and resume cannot start a missing source or interrupt a pending switch")
     @MainActor
-    func controllerAcceptsFirstDrag() throws {
-        let suite = "ControllerFirstDrag.\(UUID().uuidString)"
+    func pauseAvailability() throws {
+        let suite = "WorkspacePauseTests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
-        let window = ControlWindow()
-        defer { window.close() }
-        let host = NSHostingView(rootView: ControlView(manager: CaptureManager(defaults: defaults), openSettings: {}))
-        window.contentView = host
-        host.layoutSubtreeIfNeeded()
-        window.installDragSurface()
-        let frameView = try #require(host.superview)
-
-        for point in [
-            CGPoint(x: 8, y: 44), CGPoint(x: 51, y: 76), CGPoint(x: 129, y: 44), CGPoint(x: 280, y: 44),
-            CGPoint(x: 142, y: 10)
-        ] {
-            let hit = try #require(frameView.hitTest(point))
-            let event = try mouseEvent(type: .leftMouseDown, location: point, in: window)
-            #expect(hit.acceptsFirstMouse(for: event))
+        let manager = CaptureManager(defaults: defaults)
+        for state in [CaptureState.idle, .loading, .paused, .switching, .permissionRequired] {
+            manager.state = state
+            #expect(!manager.canToggleCapturePause)
+            manager.toggleCapturePause()
+            #expect(manager.state == state)
         }
-    }
-}
-
-@MainActor
-private func mouseEvent(
-    type: NSEvent.EventType,
-    location: NSPoint,
-    in window: NSWindow
-) throws -> NSEvent {
-    try #require(
-        NSEvent.mouseEvent(
-            with: type,
-            location: location,
-            modifierFlags: [],
-            timestamp: 0,
-            windowNumber: window.windowNumber,
-            context: nil,
-            eventNumber: 1,
-            clickCount: 1,
-            pressure: 1
-        )
-    )
-}
-
-@MainActor
-private extension NSView {
-    func firstDescendant<View: NSView>(ofType type: View.Type) -> View? {
-        if let match = self as? View {
-            return match
-        }
-        for subview in subviews {
-            if let match = subview.firstDescendant(ofType: type) {
-                return match
-            }
-        }
-        return nil
     }
 }

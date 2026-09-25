@@ -15,16 +15,13 @@ struct MeetStageApp: App {
         NSApplication.shared.applicationIconImage = icon
     }
 
-    private var initialStageSize: NSSize {
-        StageWindowSizing.defaultWindowContentSize()
-    }
-
     var body: some Scene {
-        Window("BetterMeets — Demo Stage", id: "stage") {
-            StageSceneView(manager: captureManager)
+        Window("BetterMeets", id: "workspace") {
+            WorkspaceView(manager: captureManager)
         }
-        .defaultSize(width: initialStageSize.width, height: initialStageSize.height)
-        .windowStyle(.hiddenTitleBar)
+        .defaultSize(width: WorkspaceMetrics.defaultSize.width, height: WorkspaceMetrics.defaultSize.height)
+        .defaultPosition(.center)
+        .windowToolbarStyle(.unifiedCompact)
         .commands {
             CommandGroup(after: .appInfo) {
                 Button("Check for Updates…") {
@@ -48,6 +45,19 @@ struct MeetStageApp: App {
             }
 
             CommandMenu("Capture") {
+                Button(captureManager.state == .paused ? "Resume Sharing" : "Pause Sharing") {
+                    captureManager.toggleCapturePause()
+                }
+                .keyboardShortcut("p", modifiers: [.command, .shift])
+                .disabled(!captureManager.canToggleCapturePause)
+
+                Button("Open Source App") {
+                    captureManager.focusSelectedSourceIfPossible()
+                }
+                .keyboardShortcut("o", modifiers: [.command, .shift])
+                .disabled(!captureManager.isLive)
+                Divider()
+
                 Button("Refresh Windows") {
                     captureManager.refreshWindows()
                 }
@@ -58,7 +68,7 @@ struct MeetStageApp: App {
                     captureManager.stopCapture()
                 }
                 .keyboardShortcut(".", modifiers: [.command])
-                .disabled(!captureManager.isCapturing)
+                .disabled(!captureManager.canStopCapture)
 
                 Divider()
 
@@ -78,17 +88,6 @@ struct MeetStageApp: App {
             }
 
             CommandMenu("Presentation") {
-                Button(
-                    captureManager.demoModeEnabled
-                        ? "Turn Off Demo Mode"
-                        : "Turn On Demo Mode"
-                ) {
-                    captureManager.toggleDemoMode()
-                }
-                .keyboardShortcut("d", modifiers: [.command, .option])
-
-                Divider()
-
                 Button(
                     captureManager.autoPresentationEnabled
                         ? "Turn Off Auto Polish"
@@ -126,11 +125,15 @@ struct MeetStageApp: App {
                 }
                 .keyboardShortcut("k", modifiers: [.command, .option])
 
-                Button("Finish Annotating") {
-                    captureManager.finishAnnotations()
+                Button(captureManager.annotationsEnabled ? "Finish Annotating" : "Show Controls") {
+                    if captureManager.annotationsEnabled {
+                        captureManager.finishAnnotations()
+                    } else {
+                        windowState.stageOnly = false
+                    }
                 }
                 .keyboardShortcut(.escape, modifiers: [])
-                .disabled(!captureManager.annotationsEnabled)
+                .disabled(!captureManager.annotationsEnabled && !windowState.stageOnly)
 
                 Button("Clear Annotations") {
                     captureManager.clearAnnotations()
@@ -139,45 +142,24 @@ struct MeetStageApp: App {
                 .disabled(captureManager.annotations.isEmpty)
             }
 
+            CommandGroup(before: .sidebar) {
+                Button(windowState.stageOnly ? "Show Controls" : "Stage Only") {
+                    windowState.toggleStageOnly()
+                }
+                .keyboardShortcut("s", modifiers: [.command, .control])
+            }
+
             CommandGroup(before: .windowList) {
-                Button(windowState.controllerMenuTitle) {
-                    BetterMeetsWindowActions.toggleController()
-                }
-                .keyboardShortcut("c", modifiers: [.command, .control])
-
-                Button("Minimize Controller") {
-                    BetterMeetsWindowActions.minimizeController()
-                }
-                .keyboardShortcut("m", modifiers: [.command, .control])
-                .disabled(!windowState.controllerIsVisible)
-
-                Button("Place Controller Beside Dock") {
-                    BetterMeetsWindowActions.placeControllerBesideDock()
-                }
-                .keyboardShortcut("d", modifiers: [.command, .control])
-                .disabled(!windowState.controllerIsVisible)
-
-                Button("Show Demo Stage") {
+                Button("Show BetterMeets") {
                     BetterMeetsWindowActions.showStage()
                 }
                 .keyboardShortcut("s", modifiers: [.command, .shift])
 
-                Button("Show Stage Actions") {
+                Button("Show Source Tools") {
                     BetterMeetsWindowActions.showStageActions()
                 }
-                .disabled(captureManager.selectedWindowID == nil)
-
-                Button("Minimize Demo Stage") {
-                    BetterMeetsWindowActions.minimizeStage()
-                }
-                .keyboardShortcut("m", modifiers: [.command, .option])
-                .disabled(!windowState.stageCanMinimize)
-
-                Button(windowState.stageFullScreenMenuTitle) {
-                    BetterMeetsWindowActions.toggleStageFullScreen()
-                }
-                .keyboardShortcut("f", modifiers: [.command, .control, .option])
-
+                .keyboardShortcut("t", modifiers: [.command, .control])
+                .disabled(captureManager.selectedSource == nil)
                 Divider()
             }
 
@@ -219,18 +201,5 @@ struct MeetStageApp: App {
             prefix = "Share"
         }
         return "\(prefix) \(source.applicationName) — \(source.title)"
-    }
-}
-
-private struct StageSceneView: View {
-    @ObservedObject var manager: CaptureManager
-    @Environment(\.openSettings) private var openSettings
-
-    var body: some View {
-        StageView(manager: manager)
-            .frame(minWidth: 480, minHeight: 270)
-            .task {
-                ControlWindowController.shared.show(manager: manager, openSettings: { openSettings() })
-            }
     }
 }

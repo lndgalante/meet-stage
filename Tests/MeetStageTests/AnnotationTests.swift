@@ -43,7 +43,7 @@ struct AnnotationTests {
         #expect(frame == CGRect(x: 100, y: 500, width: 300, height: 200))
     }
 
-    @Test("Selected-window drawing stays above its source and below the controller")
+    @Test("Selected-window drawing stays above its source")
     @MainActor
     func configuresSourceDrawingWindow() {
         let panel = AnnotationPanel(

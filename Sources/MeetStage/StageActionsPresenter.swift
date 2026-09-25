@@ -1,8 +1,7 @@
 import AppKit
 import SwiftUI
 
-/// Owns an independent window, never a child of the source or shared Stage.
-/// Window-only capture therefore contains the Stage's content without controls.
+// The source widget is independent so sharing the workspace does not include it.
 struct StageActionsInstaller: NSViewRepresentable {
     @ObservedObject var manager: CaptureManager
 
@@ -56,7 +55,7 @@ final class StageActionsPresenter {
             defer: false
         )
         panel.contentView = NSHostingView(
-            rootView: StageActionsView(manager: manager)
+            rootView: StageActionsView(manager: manager, layout: .floating)
         )
         self.panel = panel
         trackingTask = Task { [weak panel] in

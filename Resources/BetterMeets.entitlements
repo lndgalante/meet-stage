@@ -1,22 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
-<dict>
-    <!--
-      BetterMeets is a directly distributed utility and intentionally does not
-      enable App Sandbox. ScreenCaptureKit capture, global event observation,
-      Accessibility inspection, and user-authorized input synthesis are core
-      features whose feasibility must be reassessed before an App Store build.
-      See SECURITY.md.
-    -->
-    <!--
-      Demo Mode transcribes narration through an AVAudioEngine microphone tap.
-      The hardened runtime denies microphone access without this entitlement,
-      so both certificate-signed and ad-hoc builds need this entitlement.
-      Keep it in sync with the development entitlements and the mic prompt in
-      Info.plist (NSMicrophoneUsageDescription).
-    -->
-    <key>com.apple.security.device.audio-input</key>
-    <true/>
-</dict>
+<dict/>
 </plist>

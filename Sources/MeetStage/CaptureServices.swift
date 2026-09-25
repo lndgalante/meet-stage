@@ -17,8 +17,7 @@ struct SystemScreenRecordingAuthorization: ScreenRecordingAuthorizing {
 }
 
 /// Platform services composed at the `CaptureManager` boundary. Keeping these
-/// dependencies injectable prevents persistence, screenshot work, and cloud
-/// provider construction from being hidden inside the coordinator.
+/// dependencies injectable prevents persistence and thumbnail loading from being hidden inside the coordinator.
 @MainActor
 protocol WindowThumbnailLoading: AnyObject {
     func load(for sources: [WindowSource]) async -> [WindowThumbnailResult]
@@ -79,21 +78,5 @@ final class WindowThumbnailLoader: WindowThumbnailLoading {
                 errorDescription: error.localizedDescription
             )
         }
-    }
-}
-
-struct DemoBrainRegistry: Sendable {
-    let claude: any DemoBrain
-    let openAI: any DemoBrain
-
-    static func live() -> DemoBrainRegistry {
-        DemoBrainRegistry(
-            claude: ClaudeDemoBrain(),
-            openAI: OpenAIDemoBrain()
-        )
-    }
-
-    func brain(for provider: DemoBrainProvider) -> any DemoBrain {
-        provider == .openai ? openAI : claude
     }
 }

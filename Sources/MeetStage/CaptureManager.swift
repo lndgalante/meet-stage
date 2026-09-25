@@ -49,16 +49,6 @@ final class CaptureManager: ObservableObject {
     @Published var clickHighlightSize: PresentationSize
     @Published var keystrokeHighlightSize: PresentationSize
     @Published var keystrokeAppearance: KeystrokeAppearance
-    @Published var demoModeEnabled = false
-    @Published var needsMicrophonePermission = false
-    @Published var demoModeUnavailableReason: String?
-    // Cached so the permission badge re-renders when trust changes; AXIsProcessTrusted
-    // is only re-read via refreshAccessibilityTrust() (on activation and while listening).
-    @Published var isAccessibilityTrustedForDemo = AccessibilityElementIndexer.isAccessibilityTrusted
-    let demoVoiceActions: DemoVoiceActions = .highlightAndClick
-    @Published var demoHighlightColor: PresentationColor
-    @Published var demoZoomSize: PresentationSize
-    @Published var demoBrainProvider: DemoBrainProvider
     @Published var shortcutPins: [Int: PinnedWindow] = [:]
     @Published var shortcutExclusions: Set<PinnedWindow> = []
     @Published var globalShortcutModifier: GlobalShortcutModifier
@@ -69,7 +59,6 @@ final class CaptureManager: ObservableObject {
     let annotations: AnnotationSession
     let spotlight: SpotlightSession
     let autoPresentation = AutoPresentationSession()
-    let demoMode = DemoModeSession()
 
     var displayedStageAspectRatio: CGFloat {
         StageWindowAspectRatioPolicy.displayedAspectRatio(
@@ -84,7 +73,6 @@ final class CaptureManager: ObservableObject {
     let stageLogoStore: StageLogoStore
     let thumbnailLoader: any WindowThumbnailLoading
     let screenRecordingAuthorization: any ScreenRecordingAuthorizing
-    let demoBrainRegistry: DemoBrainRegistry
     let inactiveStageAspectRatio: CGFloat
     let sampleQueue = DispatchQueue(
         label: "dev.poc.meetstage.screen-frames",
@@ -122,43 +110,6 @@ final class CaptureManager: ObservableObject {
     let sourceClickRipplePresenter = SourceClickRipplePresenter()
     let sourceSpotlightPresenter = SourceSpotlightPresenter()
     lazy var sourceAnnotationPresenter = SourceAnnotationPresenter()
-    lazy var sourceDemoOverlayPresenter = DemoSourceOverlayPresenter()
-    var demoSpeechTranscriber: DemoSpeechListening?
-    let demoEmbeddingMatcher = DemoEmbeddingMatcher()
-    let demoModelResolver = DemoModelIntentResolver()
-    func demoBrain(for provider: DemoBrainProvider) -> any DemoBrain {
-        demoBrainRegistry.brain(for: provider)
-    }
-    var demoConversation = DemoConversation()
-    /// In-memory cache of each provider's API key, so a voice command doesn't
-    /// re-read the Keychain secret — and re-trigger the access prompt — every time.
-    /// Primed on save; read from the Keychain at most once per provider per launch.
-    var cachedBrainKeys: [DemoBrainProvider: String] = [:]
-    var demoListeningStartTask: Task<Void, Never>?
-    var demoIndexRefreshTask: Task<Void, Never>?
-    var demoIndexWalkTask: Task<DemoElementIndex, Never>?
-    var demoRecognitionTask: Task<Void, Never>?
-    var demoRecognitionGeneration: UInt64 = 0
-    var demoActionTask: Task<Void, Never>?
-    var demoModelTask: Task<Void, Never>?
-    var demoBrainTask: Task<Void, Never>?
-    /// Invalidates cloud work across consent, provider, focus, and source
-    /// changes. A generation is stronger than cancellation alone because a
-    /// network stack can race cancellation with a completed response.
-    var demoBrainGeneration = 0
-    var demoSpotlightTask: Task<Void, Never>?
-    var demoCommandGate = DemoCommandGate()
-    var demoIndexGeneration = 0
-    /// Ownership token for the auto-dismissing voice spotlight. Any manual
-    /// spotlight toggle bumps it so the voice dismiss task never turns off a
-    /// spotlight the presenter enabled themselves.
-    var demoSpotlightGeneration = 0
-    /// Label of the last control Demo Mode acted on, so the on-device model can
-    /// resolve pronouns like "click it back".
-    var lastReferencedControl: String?
-    // Real value is set in init once the persisted provider is known.
-    @Published var hasDemoBrainKey = false
-    var demoBrainRequestGate = DemoBrainRequestGate()
     var workspaceMonitor: WorkspaceMonitor?
     var windowMonitoringTask: Task<Void, Never>?
     var windowRefreshTask: Task<Void, Never>?
@@ -179,8 +130,7 @@ final class CaptureManager: ObservableObject {
         defaults: UserDefaults = .standard,
         stageLogoStore: StageLogoStore = .live(),
         thumbnailLoader: any WindowThumbnailLoading = WindowThumbnailLoader(),
-        screenRecordingAuthorization: any ScreenRecordingAuthorizing = SystemScreenRecordingAuthorization(),
-        demoBrainRegistry: DemoBrainRegistry = .live()
+        screenRecordingAuthorization: any ScreenRecordingAuthorizing = SystemScreenRecordingAuthorization()
     ) {
         let shortcutStore = ShortcutPreferencesStore(defaults: defaults)
         let presentationStore = PresentationPreferencesStore(defaults: defaults)
@@ -190,7 +140,6 @@ final class CaptureManager: ObservableObject {
         self.stageLogoStore = stageLogoStore
         self.thumbnailLoader = thumbnailLoader
         self.screenRecordingAuthorization = screenRecordingAuthorization
-        self.demoBrainRegistry = demoBrainRegistry
         self.inactiveStageAspectRatio = inactiveStageAspectRatio
         stageAspectRatio = inactiveStageAspectRatio
         let annotationLifetimeSeconds = presentationStore.annotationLifetimeSeconds
@@ -205,11 +154,6 @@ final class CaptureManager: ObservableObject {
         clickHighlightSize = presentationStore.clickHighlightSize
         keystrokeHighlightSize = presentationStore.keystrokeHighlightSize
         keystrokeAppearance = presentationStore.keystrokeAppearance
-        demoHighlightColor = presentationStore.demoHighlightColor
-        demoZoomSize = presentationStore.demoZoomSize
-        let demoBrainProvider = presentationStore.demoBrainProvider
-        self.demoBrainProvider = demoBrainProvider
-        hasDemoBrainKey = demoBrainProvider.keyStore.hasKey
         stageFrameStyle = presentationStore.stageFrameStyle
         stageFramePadding = presentationStore.stageFramePadding
         stageFrameCornerRadius = presentationStore.stageFrameCornerRadius
@@ -251,11 +195,6 @@ final class CaptureManager: ObservableObject {
         highlightsKeystrokes =
             presentationStore.highlightsKeystrokes
             && GlobalKeystrokeMonitor.hasAccessibilityPermission
-        // Restore listening only after the introduction and with microphone access.
-        demoModeEnabled =
-            presentationStore.demoModeEnabled
-            && presentationStore.hasCompletedVoiceOnboarding
-            && DemoSpeechTranscriber.isMicrophoneAuthorized
         shortcutPins = shortcutStore.loadPins()
         shortcutExclusions = shortcutStore.loadExclusions()
         globalShortcutModifier = shortcutStore.loadGlobalShortcutModifier()
@@ -276,14 +215,6 @@ final class CaptureManager: ObservableObject {
         windowRefreshTask?.cancel()
         firstFrameTimeoutTask?.cancel()
         selectionTask?.cancel()
-        demoListeningStartTask?.cancel()
-        demoIndexRefreshTask?.cancel()
-        demoIndexWalkTask?.cancel()
-        demoRecognitionTask?.cancel()
-        demoActionTask?.cancel()
-        demoModelTask?.cancel()
-        demoBrainTask?.cancel()
-        demoSpotlightTask?.cancel()
     }
 
     // MARK: - View state

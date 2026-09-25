@@ -6,7 +6,6 @@
 
 @MainActor
 enum BetterMeetsWindowActions {
-    static func showController() {}
     static func showStage() {}
 }
 
@@ -16,4 +15,10 @@ final class CaptureManager {
 
     func stopCapture() {}
     func toggleAutoPresentation() {}
+}
+
+@MainActor
+final class BetterMeetsWindowState {
+    static let shared = BetterMeetsWindowState()
+    var stageOnly = false
 }

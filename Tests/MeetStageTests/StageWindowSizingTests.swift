@@ -49,39 +49,6 @@ struct StageWindowSizingTests {
     }
 
     @Test
-    func testWideStageUsesPreferredScreenFraction() {
-        let size = StageWindowSizing.windowContentSize(
-            aspectRatio: 16 / 9,
-            fitting: NSSize(width: 1_440, height: 900)
-        )
-
-        #expect(abs(size.width - 979) < 0.001)
-        #expect(abs(size.height - 551) < 0.001)
-    }
-
-    @Test
-    func testPortraitStageHonorsPreferredMinimumWidthWhenItFitsOnScreen() {
-        let size = StageWindowSizing.windowContentSize(
-            aspectRatio: 0.75,
-            fitting: NSSize(width: 1_440, height: 900)
-        )
-
-        #expect(abs(size.width - 640) < 0.001)
-        #expect(abs(size.height - 853) < 0.001)
-    }
-
-    @Test
-    func testPortraitStageDoesNotApplyMinimumWidthBeyondVisibleHeight() {
-        let size = StageWindowSizing.windowContentSize(
-            aspectRatio: 0.75,
-            fitting: NSSize(width: 1_440, height: 400)
-        )
-
-        #expect(abs(size.width - 204) < 0.001)
-        #expect(abs(size.height - 272) < 0.001)
-    }
-
-    @Test
     func testInvalidAspectRatioUsesSafeDefault() {
         #expect(abs(StageWindowSizing.normalizedAspectRatio(.nan) - 1.6) < 0.001)
         #expect(abs(StageWindowSizing.normalizedAspectRatio(-1) - 1.6) < 0.001)
@@ -91,35 +58,6 @@ struct StageWindowSizingTests {
     func testAspectRatioIsClampedToSupportedRange() {
         #expect(abs(StageWindowSizing.normalizedAspectRatio(0.2) - 0.75) < 0.001)
         #expect(abs(StageWindowSizing.normalizedAspectRatio(8) - 3) < 0.001)
-    }
-
-    @Test
-    func testEmptyVisibleSizeProducesEmptyWindowSize() {
-        let size = StageWindowSizing.windowContentSize(
-            aspectRatio: 16 / 9,
-            fitting: .zero
-        )
-
-        #expect(size == .zero)
-    }
-
-    @Test("Aspect changes preserve the user's chosen longest edge")
-    func preservesUserWindowSizeAcrossAspectChanges() {
-        let landscape = StageWindowSizing.resizedContentSize(
-            preserving: NSSize(width: 900, height: 600),
-            aspectRatio: 16 / 9,
-            fitting: NSSize(width: 1_440, height: 900)
-        )
-        #expect(abs(landscape.width - 900) < 0.001)
-        #expect(abs(landscape.height - 506.25) < 0.001)
-
-        let portrait = StageWindowSizing.resizedContentSize(
-            preserving: NSSize(width: 900, height: 600),
-            aspectRatio: 0.75,
-            fitting: NSSize(width: 1_440, height: 900)
-        )
-        #expect(abs(portrait.width - 675) < 0.001)
-        #expect(abs(portrait.height - 900) < 0.001)
     }
 
     @Test

@@ -1,13 +1,14 @@
 import AppIntents
 
 struct ShowControllerIntent: AppIntent {
-    static let title: LocalizedStringResource = "Show BetterMeets Controller"
-    static let description = IntentDescription("Brings the BetterMeets controller to the front.")
+    static let title: LocalizedStringResource = "Show BetterMeets Controls"
+    static let description = IntentDescription("Opens the BetterMeets workspace with tools and windows visible.")
     static let openAppWhenRun = true
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        BetterMeetsWindowActions.showController()
+        BetterMeetsWindowState.shared.stageOnly = false
+        BetterMeetsWindowActions.showStage()
         return .result()
     }
 }
@@ -53,7 +54,7 @@ struct BetterMeetsAppShortcuts: AppShortcutsProvider {
         AppShortcut(
             intent: ShowControllerIntent(),
             phrases: ["Show the controller in \(.applicationName)"],
-            shortTitle: "Show Controller",
+            shortTitle: "Show Controls",
             systemImageName: "switch.2"
         )
         AppShortcut(

@@ -13,7 +13,7 @@ struct StageView: View {
 
             if !manager.isLive {
                 ZStack {
-                    IdleStageChrome()
+                    Color(nsColor: .underPageBackgroundColor)
 
                     VStack(spacing: 14) {
                         if manager.state == .switching {
@@ -37,7 +37,6 @@ struct StageView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
                 .allowsHitTesting(false)
             }
 
@@ -61,7 +60,6 @@ struct StageView: View {
                 .accessibilityHidden(true)
             }
         }
-        .ignoresSafeArea()
         .animation(
             reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 1),
             value: manager.keystrokePresentation?.id
@@ -70,28 +68,14 @@ struct StageView: View {
             reduceMotion ? nil : .easeOut(duration: 0.18),
             value: manager.spotlightEnabled
         )
-        .onExitCommand {
-            manager.finishAnnotations()
-        }
-        .background(
-            WindowConfigurator(
-                kind: .stage(aspectRatio: manager.displayedStageAspectRatio)
-            )
-        )
-        .background {
-            StageActionsInstaller(manager: manager)
-        }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(String(localized: "Demo Stage"))
         .accessibilityValue(stageAccessibilityValue)
         .accessibilityHint(
             String(localized: "This is the window to share in your meeting app")
         )
-        .accessibilityAction(named: String(localized: "Show Controller")) {
-            BetterMeetsWindowActions.showController()
-        }
-        .accessibilityAction(named: String(localized: "Show Stage Actions")) {
-            BetterMeetsWindowActions.showStageActions()
+        .accessibilityAction(named: String(localized: "Show Controls")) {
+            BetterMeetsWindowState.shared.stageOnly = false
         }
         .accessibilityAction(named: String(localized: "Minimize Demo Stage")) {
             BetterMeetsWindowActions.minimizeStage()
@@ -116,7 +100,7 @@ struct StageView: View {
         default:
             guidance = String(
                 localized:
-                    "Choose a window in BetterMeets, then share this\nDemo Stage window in Google Meet or Zoom"
+                    "Choose a window from the sidebar, then share\nBetterMeets in your meeting"
             )
         }
 
@@ -180,7 +164,6 @@ private struct LiveStageSurface: View {
                 ZoomableStageContent(
                     manager: manager,
                     autoPresentation: manager.autoPresentation,
-                    demoMode: manager.demoMode,
                     reducesMotion: reducesMotion
                 )
                 .frame(
@@ -231,7 +214,6 @@ private struct LiveStageSurface: View {
             }
         }
         .clipped()
-        .ignoresSafeArea()
         .allowsHitTesting(false)
         .accessibilityHidden(true)
     }
@@ -243,16 +225,14 @@ private struct LiveStageSurface: View {
 private struct ZoomableStageContent: View {
     @ObservedObject var manager: CaptureManager
     @ObservedObject var autoPresentation: AutoPresentationSession
-    @ObservedObject var demoMode: DemoModeSession
     let reducesMotion: Bool
 
     var body: some View {
         GeometryReader { contentGeometry in
-            let allowsZoom = manager.autoPresentationEnabled || manager.demoModeEnabled
+            let allowsZoom = manager.autoPresentationEnabled
             let transform = AutoZoomTransform.resolve(
                 focus: allowsZoom ? autoPresentation.zoomFocus : nil,
-                requestedScale: autoPresentation.zoomScaleOverride
-                    ?? manager.autoZoomSize.autoZoomScale,
+                requestedScale: manager.autoZoomSize.autoZoomScale,
                 viewportSize: contentGeometry.size,
                 reducesMotion: reducesMotion
             )
@@ -289,13 +269,6 @@ private struct ZoomableStageContent: View {
                     )
                 }
 
-                if manager.isLive {
-                    DemoHighlightSurface(
-                        highlights: demoMode.highlights,
-                        reducesMotion: reducesMotion
-                    )
-                }
-
                 if manager.isLive, manager.autoPresentationEnabled {
                     EnlargedSystemCursorLayer(session: autoPresentation.cursor)
                 }
@@ -313,50 +286,6 @@ private struct ZoomableStageContent: View {
                 value: transform
             )
         }
-    }
-}
-
-private struct IdleStageChrome: View {
-    private static let shaderLibrary: ShaderLibrary? = {
-        guard
-            let url = Bundle.main.url(
-                forResource: "IdleStageChrome",
-                withExtension: "metallib"
-            )
-        else { return nil }
-
-        return ShaderLibrary(url: url)
-    }()
-
-    var body: some View {
-        Group {
-            if let shaderLibrary = Self.shaderLibrary {
-                Color.black
-                    .colorEffect(
-                        shaderLibrary.idleStageChrome(
-                            .boundingRect,
-                            .float(20),
-                            .float(34),
-                            .float(1),
-                            .float(1),
-                            .float(0.56),
-                            .float(0.2),
-                            .float(1),
-                            .float2(0.5, 0),
-                            .color(.black),
-                            .color(.white),
-                            .color(Color(red: 214 / 255, green: 226 / 255, blue: 242 / 255)),
-                            .color(Color(red: 196 / 255, green: 212 / 255, blue: 235 / 255)),
-                            .color(Color(red: 120 / 255, green: 136 / 255, blue: 160 / 255)),
-                            .color(.black)
-                        )
-                    )
-            } else {
-                Color.black
-            }
-        }
-        .ignoresSafeArea()
-        .accessibilityHidden(true)
     }
 }
 

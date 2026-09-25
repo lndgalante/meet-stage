@@ -1,265 +1,76 @@
 import AppKit
 
+// Keep the stage identity stable so saved window-sharing choices still resolve.
 enum BetterMeetsWindowID {
-    static let control = NSUserInterfaceItemIdentifier("BetterMeets.control")
     static let stage = NSUserInterfaceItemIdentifier("BetterMeets.stage")
     static let stageActions = NSUserInterfaceItemIdentifier("BetterMeets.stageActions")
 }
 
-/// Observable window state for command titles and validation. SwiftUI does not
-/// otherwise know when AppKit-only actions hide, minimize, or full-screen one
-/// of the app's windows.
 @MainActor
 final class BetterMeetsWindowState: ObservableObject {
     static let shared = BetterMeetsWindowState()
+    @Published var stageOnly = false
+    private init() {}
 
-    @Published private(set) var controllerIsVisible = false
-    @Published private(set) var stageCanMinimize = false
-    @Published private(set) var stageIsFullScreen = false
+    func toggleStageOnly() { stageOnly.toggle() }
 
-    private var notificationTokens: [NSObjectProtocol] = []
-
-    private init(center: NotificationCenter = .default) {
-        let notifications: [Notification.Name] = [
-            NSWindow.didBecomeKeyNotification,
-            NSWindow.didResignKeyNotification,
-            NSWindow.didMiniaturizeNotification,
-            NSWindow.didDeminiaturizeNotification,
-            NSWindow.didEnterFullScreenNotification,
-            NSWindow.didExitFullScreenNotification,
-            NSWindow.willCloseNotification
-        ]
-
-        notificationTokens = notifications.map { name in
-            center.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                Task { @MainActor [weak self] in
-                    self?.refresh()
-                }
-            }
-        }
-    }
-
-    var controllerMenuTitle: String {
-        controllerIsVisible
-            ? String(localized: "Hide Controller")
-            : String(localized: "Show Controller")
-    }
-
-    var stageFullScreenMenuTitle: String {
-        stageIsFullScreen
-            ? String(localized: "Exit Demo Stage Full Screen")
-            : String(localized: "Enter Demo Stage Full Screen")
-    }
-
-    func refresh() {
-        let controller = BetterMeetsWindowActions.controllerWindow
-        let stage = BetterMeetsWindowActions.stageWindow
-        let stageIsFullScreen = stage?.styleMask.contains(.fullScreen) == true
-        update(
-            \.controllerIsVisible,
-            to: controller?.isVisible == true && controller?.isMiniaturized == false
-        )
-        update(
-            \.stageCanMinimize,
-            to: stage?.isVisible == true
-                && stage?.isMiniaturized == false
-                && !stageIsFullScreen
-        )
-        update(\.stageIsFullScreen, to: stageIsFullScreen)
-    }
-
-    private func update(
-        _ property: ReferenceWritableKeyPath<BetterMeetsWindowState, Bool>,
-        to newValue: Bool
-    ) {
-        guard self[keyPath: property] != newValue else { return }
-        self[keyPath: property] = newValue
-    }
 }
 
 @MainActor
 enum BetterMeetsWindowActions {
-    static func showController() {
-        showWindow(identifier: BetterMeetsWindowID.control)
-    }
-
-    static func toggleController() {
-        guard let controllerWindow else {
-            NSSound.beep()
-            return
-        }
-        if controllerWindow.isVisible, !controllerWindow.isMiniaturized {
-            controllerWindow.orderOut(nil)
-        } else {
-            showController()
-        }
-        BetterMeetsWindowState.shared.refresh()
-    }
-
-    static func hideController() {
-        controllerWindow?.orderOut(nil)
-        BetterMeetsWindowState.shared.refresh()
-    }
-
-    static func minimizeController() {
-        controllerWindow?.miniaturize(nil)
-        BetterMeetsWindowState.shared.refresh()
-    }
-
-    static func placeControllerBesideDock() {
-        (controllerWindow as? ControlWindow)?.placeBesideDock()
+    static var stageWindow: NSWindow? {
+        NSApp.windows.first { $0.identifier == BetterMeetsWindowID.stage }
     }
 
     static func showStage() {
-        showWindow(identifier: BetterMeetsWindowID.stage)
+        guard let window = stageWindow else { return }
+        if window.isMiniaturized { window.deminiaturize(nil) }
+        window.makeKeyAndOrderFront(nil)
+        NSApp.activate()
     }
+
+    static func minimizeStage() { stageWindow?.miniaturize(nil) }
+    static func toggleStageFullScreen() { stageWindow?.toggleFullScreen(nil) }
 
     static func showStageActions() {
-        showWindow(identifier: BetterMeetsWindowID.stageActions)
-    }
-
-    static func minimizeStage() {
-        stageWindow?.miniaturize(nil)
-        BetterMeetsWindowState.shared.refresh()
-    }
-
-    static func closeStage() {
-        stageWindow?.performClose(nil)
-        BetterMeetsWindowState.shared.refresh()
-    }
-
-    static func toggleStageFullScreen() {
-        guard let stageWindow else { return }
-        stageWindow.makeKeyAndOrderFront(nil)
-        stageWindow.toggleFullScreen(nil)
-        BetterMeetsWindowState.shared.refresh()
+        guard let panel = NSApp.windows.first(where: { $0.identifier == BetterMeetsWindowID.stageActions }) else {
+            return
+        }
+        NSApp.activate()
+        panel.makeKeyAndOrderFront(nil)
     }
 
     static func openHelp() {
-        guard let url = URL(string: "https://github.com/lndgalante/meet-stage#readme") else {
-            return
-        }
+        guard let url = URL(string: "https://github.com/lndgalante/meet-stage#readme") else { return }
         NSWorkspace.shared.open(url)
-    }
-
-    static var stageWindow: NSWindow? {
-        window(identifier: BetterMeetsWindowID.stage)
-    }
-
-    static var controllerWindow: NSWindow? {
-        window(identifier: BetterMeetsWindowID.control)
-    }
-
-    private static func showWindow(identifier: NSUserInterfaceItemIdentifier) {
-        guard let window = window(identifier: identifier) else {
-            NSSound.beep()
-            return
-        }
-        if window.isMiniaturized {
-            window.deminiaturize(nil)
-        }
-        window.makeKeyAndOrderFront(nil)
-        NSApp.activate()
-        BetterMeetsWindowState.shared.refresh()
-    }
-
-    private static func window(identifier: NSUserInterfaceItemIdentifier) -> NSWindow? {
-        NSApp.windows.first { $0.identifier == identifier }
     }
 }
 
 @MainActor
 final class BetterMeetsAppDelegate: NSObject, NSApplicationDelegate {
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        BetterMeetsWindowActions.showStage()
+        return true
+    }
+
     func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
         let menu = NSMenu()
-        menu.addItem(
-            withTitle: String(localized: "Show Controller"),
-            action: #selector(showController),
-            keyEquivalent: ""
-        )
-        menu.addItem(
-            withTitle: String(localized: "Show Demo Stage"),
-            action: #selector(showStage),
-            keyEquivalent: ""
-        )
+        menu.addItem(withTitle: String(localized: "Show BetterMeets"), action: #selector(showStage), keyEquivalent: "")
+            .target = self
+        menu.addItem(withTitle: String(localized: "Show Controls"), action: #selector(showControls), keyEquivalent: "")
+            .target = self
         menu.addItem(.separator())
-
-        let stopItem = NSMenuItem(
-            title: String(localized: "Stop Capture"),
-            action: #selector(stopCapture),
-            keyEquivalent: ""
-        )
-        stopItem.isEnabled = CaptureManager.shared.isCapturing
-        menu.addItem(stopItem)
+        let stop = menu.addItem(
+            withTitle: String(localized: "Stop Capture"), action: #selector(stopCapture), keyEquivalent: "")
+        stop.target = self
+        stop.isEnabled = CaptureManager.shared.canStopCapture
         return menu
     }
 
-    @objc private func showController() {
-        BetterMeetsWindowActions.showController()
-    }
-
-    @objc private func showStage() {
+    @objc private func showStage() { BetterMeetsWindowActions.showStage() }
+    @objc private func showControls() {
+        BetterMeetsWindowState.shared.stageOnly = false
         BetterMeetsWindowActions.showStage()
     }
-
-    @objc private func stopCapture() {
-        CaptureManager.shared.stopCapture()
-    }
-}
-
-@MainActor
-final class StageWindowActionTarget: NSObject, WindowMenuProviding {
-    weak var window: NSWindow?
-
-    func makeMenu() -> NSMenu {
-        let menu = NSMenu()
-        menu.addItem(
-            withTitle: String(localized: "Show Controller"),
-            action: #selector(showController),
-            keyEquivalent: ""
-        ).target = self
-        menu.addItem(.separator())
-
-        let minimizeItem = menu.addItem(
-            withTitle: String(localized: "Minimize Demo Stage"),
-            action: #selector(minimize),
-            keyEquivalent: ""
-        )
-        minimizeItem.target = self
-
-        let fullScreenTitle =
-            window?.styleMask.contains(.fullScreen) == true
-            ? String(localized: "Exit Full Screen")
-            : String(localized: "Enter Full Screen")
-        let fullScreenItem = menu.addItem(
-            withTitle: fullScreenTitle,
-            action: #selector(toggleFullScreen),
-            keyEquivalent: ""
-        )
-        fullScreenItem.target = self
-
-        let closeItem = menu.addItem(
-            withTitle: String(localized: "Close Demo Stage"),
-            action: #selector(close),
-            keyEquivalent: ""
-        )
-        closeItem.target = self
-        return menu
-    }
-
-    @objc private func showController() {
-        BetterMeetsWindowActions.showController()
-    }
-
-    @objc private func minimize() {
-        window?.miniaturize(nil)
-    }
-
-    @objc private func toggleFullScreen() {
-        window?.toggleFullScreen(nil)
-    }
-
-    @objc private func close() {
-        window?.performClose(nil)
-    }
+    @objc private func stopCapture() { CaptureManager.shared.stopCapture() }
 }

@@ -1,61 +1,40 @@
 # BetterMeets security and distribution model
 
-BetterMeets is a directly distributed, Developer ID-signed macOS utility. The
-shipping target intentionally does not enable App Sandbox because its core job
-combines ScreenCaptureKit window capture, global event observation,
-Accessibility inspection, and user-authorized event synthesis. App Sandbox
-feasibility must be reassessed before pursuing Mac App Store distribution; do
-not add temporary-exception entitlements as a substitute for that review.
+BetterMeets is a directly distributed macOS utility. It does not enable App
+Sandbox because it combines ScreenCaptureKit window capture with global mouse
+and keyboard observation. Reassess sandbox feasibility before App Store distribution.
 
-The hardened runtime is enabled for local packaged builds and Developer ID
-releases. Shipping builds grant only microphone input for Demo Mode and retain
-library validation. Local ad-hoc packages additionally disable library
-validation because ad-hoc code has no Developer Team ID with which macOS can
-validate the embedded Sparkle framework; this development-only exception is not
-used for public releases. Screen Recording, Microphone, and Accessibility remain
-user-controlled macOS privacy grants and are requested only when their features
-need them.
+The hardened runtime is enabled for packaged builds. Certificate-signed releases
+retain library validation. Local ad-hoc packages disable library validation so a
+teamless build can load the embedded Sparkle framework. The shipping entitlement
+file contains no microphone or input-synthesis capabilities.
 
-## Input-synthesis boundary
+## Permissions and capture
 
-Input synthesis remains dormant until the presenter enables Demo Mode. Within
-Demo Mode, the default “Highlight and click” setting permits actuation only when
-the presenter uses an explicit action command and grants Accessibility access.
-`DemoActionExecutor` is the only component allowed to post mouse or keyboard
-events.
-
-- Model-proposed clicks require an explicit, un-negated spoken click/navigation
-  command.
-- Model-proposed typing requires an explicit, un-negated type/write/enter
-  command, and the complete typed payload must appear in the transcript at the
-  command's payload position.
-- The selected CG window must uniquely match the focused Accessibility window;
-  its PID and exact focused editable element are revalidated before every typed
-  character. Ambiguous same-process windows fail closed.
-- Consent, provider, source, and focus generations invalidate stale cloud work.
-
-Treat screenshots, OCR, Accessibility labels, window titles, and model output as
-untrusted data. Prompt instructions are defense in depth, never the final
-authorization boundary.
+- Screen Recording is checked without prompting at launch and requested through
+  the sidebar's Allow Access action.
+- Keystroke highlighting requests Accessibility when the user enables it.
+- VoiceMode and all speech, AI-provider, and synthesized-input code have been
+  removed. The app does not read saved provider credentials or record audio.
+- Only the selected source window is captured. Stream identity and frame
+  generations prevent retired sources from publishing under a new selection.
+- Stage Only hides workspace tools, the source list, status strip, and toolbar.
+  Restoring controls during window sharing makes them visible to the audience.
+  Native window chrome remains subject to the meeting app's capture behavior.
+- The source-following tool widget is an independent panel, not a child of the
+  source or workspace. It is visible when sharing an entire display.
 
 ## Data handling
 
-- Speech transcription is on-device. Audio is not sent to cloud providers.
-- Cloud understanding is off by default and sends a transcript plus a shared
-  window screenshot only after explicit provider-specific consent.
-- API keys are stored in Keychain with this-device, when-unlocked accessibility.
-- Cloud requests use ephemeral URL sessions without persistent cookies or cache.
-- Imported stage logos are dimension-checked, downsampled, normalized as PNG,
-  and atomically stored under Application Support. UserDefaults contains only a
-  storage-version marker; legacy image blobs migrate once.
-- Public updates use an HTTPS Sparkle appcast plus EdDSA signatures. Feed and
-  public-key metadata are injected together at release packaging time; partial,
-  insecure, and unconfigured local builds cannot start the updater.
+Captured content stays in the local rendering pipeline. Presentation effects
+observe the focused source; they do not send screenshots or transcripts to an
+external service. Window titles are treated as display data.
 
-## Cloud model lifecycle
+Imported logos are dimension-checked, downsampled, normalized as PNG, and stored
+atomically in Application Support. UserDefaults contains a storage-version
+marker, with one-time migration of older logo blobs.
 
-Default model identifiers live in `Resources/Info.plist`. Operational builds can
-override them with `BETTERMEETS_ANTHROPIC_MODEL` and
-`BETTERMEETS_OPENAI_MODEL`. Overrides are validated before use. Request-contract
-tests protect required headers and JSON fields, but release owners must still
-review provider deprecation notices before shipping.
+Public updates use an HTTPS Sparkle appcast and EdDSA signatures. Feed and
+public-key metadata must be configured together. Unconfigured local builds
+leave the updater inactive. Release signing and notarization credentials remain
+outside the repository.

@@ -22,10 +22,6 @@
     <string>0.4.0</string>
     <key>CFBundleVersion</key>
     <string>5</string>
-    <key>BetterMeetsAnthropicModel</key>
-    <string>claude-haiku-4-5</string>
-    <key>BetterMeetsOpenAIModel</key>
-    <string>gpt-5.6-luna</string>
     <key>LSMinimumSystemVersion</key>
     <string>26.0</string>
     <key>LSApplicationCategoryType</key>
@@ -34,8 +30,6 @@
     <true/>
     <key>NSScreenCaptureUsageDescription</key>
     <string>BetterMeets needs screen recording access to show the window you choose in the Demo Stage.</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>BetterMeets uses your microphone for Demo Mode voice commands. Speech is transcribed on your Mac. If you turn on Cloud understanding, a screenshot and transcript are sent to your selected AI provider.</string>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
 </dict>

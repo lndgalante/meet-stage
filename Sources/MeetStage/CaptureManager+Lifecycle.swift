@@ -136,7 +136,6 @@ extension CaptureManager {
         deactivateSpotlight()
         deactivateAnnotations(clearStrokes: true)
         clearClickPresentations()
-        deactivateDemoModeSurfaces()
         defer {
             isSwitchingStream = false
             synchronizeDesiredCursorVisibility()

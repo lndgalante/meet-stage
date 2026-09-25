@@ -8,146 +8,61 @@ reopening the share picker or exposing your desktop.
 
 ## How it works
 
-BetterMeets has two windows:
+BetterMeets brings tools, window selection, and the live stage into one resizable
+Mac window. The left sidebar stacks presentation tools above a vertical list of
+window thumbnails. The main area shows the selected source at its original
+aspect ratio. The bottom strip shows status and provides Open App and Stop actions.
 
-- **BetterMeets** is a compact floating controller with four visible previews
-  in a horizontally scrolling window strip, plus global shortcuts.
-- **BetterMeets — Demo Stage** is the clean, high-resolution output window. This
-  is the only window you share in Google Meet or another meeting app.
+Choose a thumbnail to put a window on stage. Click it again to pause, and again
+to resume. The toolbar also offers Pause/Resume (Shift–Command–P). A source is
+marked live only after ScreenCaptureKit delivers its first complete video frame.
+The window keeps the size and position you chose when sources change.
 
-The Demo Stage follows the selected window's aspect ratio and capture dimensions
-to avoid unnecessary black padding. A source appears as **Live** only after
-ScreenCaptureKit delivers a complete video frame. The active source tile is
-marked **Live** in the controller. The pointer appears
-on the Demo Stage only while the selected source application is active, so
-moving through a different app does not leak its cursor position into the demo.
-Idle, paused, permission, and error screens all use the same default stage size.
-The stage keeps standard macOS window semantics beneath its hidden chrome, so it
-can be dragged from its surface and selected by window-capture utilities.
+Share **BetterMeets** in your meeting app. Choose **View → Stage Only**
+(Control–Command–S) to hide the tools, window list, status strip, and toolbar.
+Press the same shortcut or Escape to restore controls. Use the standard green
+traffic light for full screen while controls are visible. Returning
+to controls while sharing makes them visible to your audience.
 
-BetterMeets automatically assigns **Option–1** through
-**Option–9** to the first nine available windows. Choose another global
-modifier—or turn global shortcuts off—in **BetterMeets → Settings → General**.
+The stage is a live presentation surface. Use **Open App** (Shift–Command–O) to
+interact with the original source window. Cursor, ink, and pointer effects follow
+the selected source while its application is frontmost.
 
-The controller contains the window carousel and a short selection/status hint.
-After selecting a source, the vertical action menu follows the original app
-window: beside it when a screen gutter fits, or inset over its right edge when
-it fills the screen. The menu follows moves and resizes and hides when the
-source is offscreen or another app is in front. Settings are also available
-from the controller's context menu and the app menu. The action menu's gear
-opens a settings popover to its left, with section tabs and checkbox rows; it
-closes with Escape or a click outside. Feature context menus open their settings
-in the same popover.
+BetterMeets assigns **Option–1** through **Option–9** to available windows.
+Change the modifier or disable global shortcuts in Settings → General. Right-click
+a thumbnail to pin or unpin a slot. Pins survive launches and reserve their slot
+when the source is unavailable. An ambiguous window identity is never guessed.
+Scroll vertically to browse sources; Up/Down and Return select by keyboard, and
+Space opens a larger preview. Source shortcuts also scroll the selected tile
+into view. New and closed windows update automatically.
 
-The action menu is a separate, independent presenter window. It is never drawn
-into the Demo Stage or attached as its child window. Share **Demo Stage** in
-Google Meet or Zoom to keep these controls out of the shared window; sharing
-the entire display or the BetterMeets application can include presenter UI.
+The six tool rows provide Auto Polish, Spotlight, Annotate, Click Highlights,
+Keystrokes, and Settings. Right-click a tool to open its settings. Settings opens
+as a native popover from the gear and remains available through Command–comma.
 
-Right-click a source to move it to a specific shortcut or unpin it. Manual pins
-remain stable across refreshes and app launches, and an
-explicitly unpinned window stays unassigned until you pin it again. If the exact
-window for a manual pin is unavailable or ambiguous, BetterMeets keeps the
-shortcut reserved instead of silently pointing it somewhere else.
+The same tools also appear in the compact floating widget beside the selected
+source window. It follows moves and resizes, uses the right or left gutter when
+space allows, and stays inside the screen. It remains available in Stage Only
+mode and hides when the source is unavailable or another app is frontmost.
+The widget is a separate window; sharing the BetterMeets workspace excludes it.
+Window → Show Source Tools (Control–Command–T) brings it forward for keyboard use.
 
-Swipe or scroll horizontally over the window strip to browse every available
-source. Newly opened windows appear automatically. Minimized or hidden windows
-temporarily leave the strip and return when restored, while their pinned slots
-stay reserved. Closed windows are removed automatically. The four default
-shortcut slots remain visible even when none currently resolve to a window.
-When you switch with a global shortcut, BetterMeets brings that source into view
-automatically. Click the live source, or press its configured shortcut again, to
-pause sharing. Repeat the same action to resume it.
+- **Auto Polish** adds a styled frame, temporarily zooms around clicks, and
+  mirrors the macOS cursor at 2× without moving the real pointer. Settings → Stage
+  selects the backdrop and optional logo.
+- **Spotlight** follows the source pointer with a focused circle and dims the
+  surrounding content. Settings → Focus adjusts size and outside opacity.
+- **Annotate** draws temporary ink over the original source and mirrors it on
+  stage. Closed strokes can snap to circles or rectangles. Escape finishes drawing;
+  Command–Z undoes strokes. Settings → Draw sets color and fade time.
+- **Click Highlights** shows ripples at source clicks. **Keystrokes** displays
+  shortcut badges on stage and requests Accessibility when first enabled.
 
-The controller measures 336 × 88 points. On first launch it centers beside a
-visible bottom Dock, with the same vertical center, when the gap is wide enough.
-It prefers the right side and falls back to the left, then above the Dock.
-Drag anywhere on the controller to choose a position; that position is restored next launch.
-Use **Window → Place Controller Beside Dock** (Control–Command–D), or right-click
-the status line and choose **Place Beside Dock**, to align it again. Dock placement
-uses its accessible bounds when Accessibility is already allowed, or its window
-bounds when available; otherwise it stays within the visible desktop.
-
-The controller uses native clear Liquid Glass with rounded Dock-style corners.
-Drag from a preview, app label, or the status line without holding any key.
-It follows the pointer freely and snaps to a 12-point gap only when released
-within 24 points of a Dock target. Starting a new drag detaches immediately;
-Option only skips snapping on release. Attached controllers follow Dock size changes
-when space permits and restore their attachment next launch. **Place Beside Dock**
-also attaches the controller when there is room.
-
-Use the attached control bar below the strip to draw temporary annotations,
-highlight mouse clicks, or show keystrokes on the Demo Stage. Annotation mode
-places its drawing surface over the selected app window and mirrors that ink on
-the shared Demo Stage. Drawing is limited to that selected window: its input
-overlay suspends whenever another app, including BetterMeets, becomes active and
-resumes when the selected source app returns. This keeps the Demo Stage draggable
-and lets it move normally in front of or behind other windows. Enabling Draw with
-a live source returns focus to that source app so drawing can begin immediately.
-When a stroke closes into a rough circle or four-sided box, releasing the pointer
-snaps it to a true circle or axis-aligned rectangle; other strokes remain
-freehand. Each stroke fades automatically after the delay selected in Settings.
-The tabbed Settings window also lets you choose the annotation color,
-click-ripple color and size, and the size and light or dark appearance of
-keystroke badges. Press
-Escape, choose Done, or click the pencil again to leave annotation mode. Click
-Keystroke highlighting asks for Accessibility access the first time you enable
-it so BetterMeets can observe keys pressed in the app you are presenting. All
-three presentation controls can be enabled before sharing or while sharing is
-paused; annotations attach automatically when a live source becomes available.
-Draw and click highlighting can remain enabled together, with click ripples
-appearing above the temporary ink.
-
-Turn on **Auto Polish** (the wand control) to produce a presentation-ready Demo
-Stage without changing how you use the source app. A click starts an immediate,
-temporary zoom around that activity. While zoomed, the camera stays still until
-the pointer leaves a generous safe zone, then moves only enough to keep the
-pointer visible. BetterMeets hides ScreenCaptureKit's embedded cursor and
-mirrors the actual macOS system cursor—arrow, I-beam, pointing hand, resize
-cursor, or another active shape—at exactly 2× in the Demo Stage. It preserves
-the native hotspot, moves smoothly, and never controls the real pointer.
-
-Auto Polish can also place the source in a styled frame. Open Settings → Stage
-to choose a built-in backdrop and adjust padding, corners, background blur,
-shadow, and zoom strength. The framing is applied only to the Demo
-Stage, so the source window remains untouched. Auto Polish runs entirely from
-mouse activity — no microphone or network request. (Demo Mode, below, is the one
-feature that listens to the microphone, and only while you turn it on.)
-
-Turn on **Demo Mode** (the waveform control) to drive the UI by voice while you
-narrate. BetterMeets transcribes your narration entirely on device and matches
-the control names you say against the buttons, links, and tabs in the window you
-are presenting. Naming a control highlights it on the Demo Stage and gently
-zooms to it — say "here's the new **Receive** button" and it lights up. Add an
-action verb and BetterMeets performs the click for you — "let's **click**
-**Discover**" glides the pointer to the Discover button and opens it, so the
-navigation you are describing actually happens. The verb is the safety line:
-nothing is clicked unless you say click, press, open, select, or a phrase like
-"take us to". A small caption over your window shows what BetterMeets heard and
-did; meeting viewers never see it.
-
-Demo Mode finds controls through macOS Accessibility, falling back to on-screen
-text recognition for canvas or web-rendered apps whose accessibility is sparse.
-It needs microphone access (for transcription) and, to read controls and click
-them, Accessibility access; BetterMeets requests both the first time you enable
-it. If Accessibility is declined, Demo Mode still highlights controls it can read
-but will not click. All transcription is on device; audio never leaves your Mac.
-The first Voice introduction explains clicking and cloud use before listening
-starts. Conversational understanding is automatic. With an API key, commands
-send the transcript and a screenshot of the shared window to the selected model's
-provider, Anthropic or OpenAI. Without a key, commands stay on device.
-
-Settings → **Voice** contains only the model selector and API key. Remove the key
-to return to on-device understanding. **Focus** contains only spotlight size and
-outside opacity. **General** contains the global
-shortcut switch and modifier selector, with a live key preview; switching shortcuts
-off preserves your modifier choice for next time.
-
-The live pipeline is intentionally bounded for presentation workloads. Smaller
-sources keep their native pixel size, while 4K and 5K windows are scaled to a
-maximum 2560-pixel edge at 30 fps. Pointer-driven effects share one monitor and
-coalesce bursts to display cadence, so styled framing, zoom, ink, spotlight,
-and click highlights do not queue duplicate work when used together.
+The capture pipeline keeps smaller sources at native resolution and caps larger
+sources at a 2560-pixel edge, at 30 fps. Presentation effects share pointer
+monitoring. VoiceMode, speech recognition, AI providers, and input synthesis have
+been removed; BetterMeets neither records microphone audio nor sends captured
+content to an AI service.
 
 ## Requirements
 
@@ -167,13 +82,11 @@ Confirm that Swift is available:
 swift --version
 ```
 
-BetterMeets has no third-party dependencies or package-install step.
+SwiftPM resolves Sparkle, the auto-update dependency, during the first build.
 
-BetterMeets is distributed directly and intentionally runs without App Sandbox
-because window capture, global event observation, Accessibility inspection, and
-opt-in input synthesis are core features. Hardened-runtime builds use a minimal
-microphone entitlement. See [SECURITY.md](SECURITY.md) for the permission,
-cloud-data, input-synthesis, and distribution threat model.
+BetterMeets is distributed directly and runs without App Sandbox for window
+capture and global event observation. Hardened-runtime release builds retain
+library validation and require no microphone entitlement. See [SECURITY.md](SECURITY.md).
 
 ## Local development
 
@@ -217,7 +130,7 @@ identity.
 
 | JavaScript workflow | BetterMeets |
 | --- | --- |
-| `pnpm install` | No equivalent; there are no external dependencies |
+| `pnpm install` | `swift package resolve` (also runs during builds) |
 | `pnpm dev` | `./dev-app.sh` |
 | Compile check | `swift build` |
 | Optimized local build | `./build-app.sh` |
@@ -228,26 +141,27 @@ identity.
 1. Run `./dev-app.sh`.
 2. Allow Screen & System Audio Recording when macOS asks. BetterMeets captures
    video only.
-3. If macOS asks for a restart, select **Restart** in the controller.
+3. If macOS asks for a restart, select **Restart BetterMeets** in the sidebar.
 4. Select a source window.
-5. In your meeting, share **BetterMeets — Demo Stage**.
+5. In your meeting, share **BetterMeets** and enable **Stage Only**.
 6. Switch sources from BetterMeets or your pinned global shortcuts.
 7. Repeat the current source click or global shortcut to pause or resume it.
 8. Optional: turn on Auto Polish and choose its framing and motion in Settings
    → Stage.
 
-The BetterMeets controller is excluded from the source list. Your meeting keeps
-capturing the same Demo Stage window while BetterMeets changes what appears
+BetterMeets windows are excluded from the source list. Your meeting keeps
+capturing the same workspace window while BetterMeets changes what appears
 inside it.
 
 ## Project structure
 
 | Path | Purpose |
 | --- | --- |
-| `Sources/MeetStage/MeetStageApp.swift` | SwiftUI app entry point and windows |
-| `Sources/MeetStageCore/` | Framework-free authorization and cloud configuration policies, compiled as an independent SPM target |
-| `Sources/MeetStage/CaptureServices.swift` | Injected thumbnail and cloud-provider service boundaries |
-| `Sources/MeetStage/ControlView.swift` and `Control*.swift` | Floating controller composition, settings, reusable controls, preview rendering, and source-picker views |
+| `Sources/MeetStage/MeetStageApp.swift` | SwiftUI scenes and menu commands |
+| `Sources/MeetStage/WorkspaceView.swift` | Unified workspace layout and Stage Only mode |
+| `Sources/MeetStageCore/` | Framework-free capture frame validation and bounded concurrency, compiled as an independent SPM target |
+| `Sources/MeetStage/CaptureServices.swift` | Injected thumbnail and Screen Recording authorization services |
+| `Sources/MeetStage/ControlView.swift` and `Control*.swift` | Vertical window selector, settings, reusable controls, and preview rendering |
 | `Sources/MeetStage/CaptureManager.swift` and `CaptureManager+*.swift` | Main-actor state plus responsibility-focused discovery, command, lifecycle, presentation, and callback extensions |
 | `Sources/MeetStage/Diagnostics.swift` | Categorized, privacy-aware unified logging |
 | `Sources/MeetStage/WindowSourceDiscovery.swift` | Source eligibility, ScreenCaptureKit discovery, and thumbnails |
@@ -294,22 +208,14 @@ choose a specific one. Keep that certificate across builds. A signing-identity
 change may require granting access once more.
 
 The app checks permission on launch without opening a system dialog. Use
-**Allow Screen Recording** in the controller to request access explicitly.
+**Allow Access** in the sidebar to request access explicitly.
 If BetterMeets is already enabled in System Settings, quit and reopen the
 packaged app. If the existing grant still does not apply, remove and re-add
 BetterMeets in **Privacy & Security → Screen & System Audio Recording** after
 fixing the signing identity. Do not reset other applications' permissions.
 
-Demo Mode adds two more permissions, keyed to the same stable identity:
-Microphone (for on-device transcription) and Accessibility (to read and click
-controls in the app you are presenting). Grant them under **System Settings →
-Privacy & Security → Microphone** and **→ Accessibility**. If either becomes
-stuck, reset only BetterMeets' decision and re-grant it:
-
-```bash
-tccutil reset Microphone com.lndgalante.bettermeets
-tccutil reset Accessibility com.lndgalante.bettermeets
-```
+Keystroke highlighting requests Accessibility when enabled. Manage it under
+System Settings → Privacy & Security → Accessibility.
 
 Pinned shortcuts use the legacy `MeetStage.shortcutPins.v1` defaults key, and
 explicit unpins use `MeetStage.shortcutExclusions.v1`. Keep both keys stable so
@@ -345,7 +251,7 @@ The automated suite covers window eligibility, deterministic shortcut
 assignment, persisted preference compatibility, corrupt preference recovery,
 auto-zoom and styled-frame geometry, presentation and annotation policies,
 stage sizing, and AppKit stage interaction. For ScreenCaptureKit, global-hotkey,
-or controller changes, also
+or workspace changes, also
 test the complete flow manually in a meeting because those APIs require real
 windows and macOS privacy consent.
 
@@ -401,12 +307,9 @@ notarization are intentionally external to the repository.
 
 ## Known limitations
 
-- Source audio is not captured; the microphone is used only by Demo Mode, and
-  only while it is turned on.
-- Auto Polish starts zooms from clicks and does not read page content or speech;
-  the voice-driven behavior lives in Demo Mode instead.
-- Demo Mode matches spoken control names against visible controls; it cannot
-  target a control that is scrolled off screen or has no readable name.
+- Source audio is not captured.
+- The stage mirrors a source window; interaction happens in the original app.
+- Showing controls while sharing the workspace makes them visible to the audience.
 - Styled frames use built-in gradients and colors; custom image wallpapers are
   not yet supported.
 - macOS may block protected video surfaces, causing them to appear black.

@@ -3,6 +3,35 @@ import AppKit
 extension CaptureManager {
     // MARK: - Capture commands
 
+    var selectedSource: WindowSource? {
+        windows.first { $0.id == selectedWindowID }
+    }
+
+    var canStopCapture: Bool { isCapturing || selectedWindowID != nil || pendingWindowID != nil }
+
+    var canToggleCapturePause: Bool {
+        (isLive || state == .paused && selectedSource != nil) && state != .switching
+    }
+
+    func toggleCapturePause() {
+        guard canToggleCapturePause else { return }
+        if state == .paused, let source = selectedSource {
+            select(source)
+        } else {
+            pauseCapture()
+        }
+    }
+
+    var sourceGuidance: SourceSelectionGuidance {
+        SourceSelectionGuidance(
+            state: state,
+            selectedApplication: selectedSource?.applicationName,
+            pendingApplication: windows.first { $0.id == pendingWindowID }?.applicationName,
+            suggestedApplication: displayedWindows.first?.applicationName,
+            shortcut: nil
+        )
+    }
+
     func select(_ source: WindowSource) {
         guard windows.contains(where: { $0.id == source.id }) else {
             AppLog.capture.warning(
@@ -176,11 +205,6 @@ extension CaptureManager {
 
     func toggleSpotlight() {
         cancelAutoZoomForManualPresentation()
-        // The presenter is taking manual control; relinquish any voice-spotlight
-        // ownership so its auto-dismiss can't turn this off.
-        demoSpotlightGeneration += 1
-        demoSpotlightTask?.cancel()
-        demoSpotlightTask = nil
         spotlightEnabled.toggle()
         if spotlightEnabled {
             focusSelectedSourceIfPossible()

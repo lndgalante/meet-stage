@@ -91,14 +91,13 @@ jobs:
           ./build-app.sh
           test -x dist/release/BetterMeets.app/Contents/MacOS/MeetStage
           test -d dist/release/BetterMeets.app/Contents/Frameworks/Sparkle.framework
-          test -f dist/release/BetterMeets.app/Contents/Resources/IdleStageChrome.metallib
           test -d dist/release/BetterMeets.app/Contents/Resources/Metadata.appintents
           test -f dist/release/BetterMeets.app/Contents/Resources/en.lproj/Localizable.strings
           codesign --verify --strict --verbose=2 dist/release/BetterMeets.app
           codesign --verify --strict --verbose=2 \
             dist/release/BetterMeets.app/Contents/Frameworks/Sparkle.framework
-          codesign -d --entitlements - dist/release/BetterMeets.app 2>&1 \
-            | rg -Uq 'com\.apple\.security\.device\.audio-input\n\s*\[Value\]\n\s*\[Bool\] true'
+          ! codesign -d --entitlements - dist/release/BetterMeets.app 2>&1 | rg -q 'audio-input'
+          ! /usr/libexec/PlistBuddy -c 'Print :NSMicrophoneUsageDescription' dist/release/BetterMeets.app/Contents/Info.plist
           codesign -d --entitlements - dist/release/BetterMeets.app 2>&1 \
             | rg -Uq 'com\.apple\.security\.cs\.disable-library-validation\n\s*\[Value\]\n\s*\[Bool\] true'
           ! rg -q 'disable-library-validation' Resources/BetterMeets.entitlements
