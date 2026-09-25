@@ -93,7 +93,10 @@ window configuration, or permissions, build the packaged debug app with
     The separate feature widget stays available beside the source in Stage Only.
     Move and resize the source, including near screen edges and on another display.
     Check right/left gutter placement, onscreen fallback, source switching, settings,
-    and hiding when the source closes or an unrelated app becomes frontmost.
+    and hiding when the source closes or any other app becomes frontmost.
+    In particular, returning to BetterMeets must hide the widget over its workspace
+    and Stage Only view. Show Source Tools must activate the source app, with the
+    widget reappearing beside it. Its buttons and settings should preserve source focus.
 13. Resize to the minimum and maximize/full-screen the workspace. Switch between
     landscape and portrait sources: content must fit without stretching or
     cropping, and the workspace must not resize. Close/reopen and relaunch to

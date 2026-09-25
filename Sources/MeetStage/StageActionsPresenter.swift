@@ -61,7 +61,12 @@ final class StageActionsPresenter {
         trackingTask = Task { [weak panel] in
             while !Task.isCancelled {
                 guard let panel else { return }
-                Self.position(panel, sourceID: source.id, sourcePID: source.processIdentifier)
+                Self.position(
+                    panel,
+                    sourcePID: source.processIdentifier,
+                    snapshot: WindowFrameResolver.currentSnapshot(for: source.id),
+                    frontmostPID: NSWorkspace.shared.frontmostApplication?.processIdentifier
+                )
                 do {
                     try await Task.sleep(for: .milliseconds(100))
                 } catch {
@@ -79,13 +84,17 @@ final class StageActionsPresenter {
         panel = nil
     }
 
-    private static func position(_ panel: StageActionsPanel, sourceID: CGWindowID, sourcePID: pid_t) {
-        guard let snapshot = WindowFrameResolver.currentSnapshot(for: sourceID),
+    static func position(
+        _ panel: StageActionsPanel,
+        sourcePID: pid_t,
+        snapshot: WindowFrameSnapshot?,
+        frontmostPID: pid_t?
+    ) {
+        guard let snapshot,
             snapshot.ownerPID == sourcePID,
             snapshot.isOnScreen,
-            let primaryScreen = NSScreen.screens.first,
-            let frontmostPID = NSWorkspace.shared.frontmostApplication?.processIdentifier,
-            frontmostPID == sourcePID || frontmostPID == ProcessInfo.processInfo.processIdentifier
+            frontmostPID == sourcePID,
+            let primaryScreen = NSScreen.screens.first
         else {
             panel.orderOut(nil)
             return

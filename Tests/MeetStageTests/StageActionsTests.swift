@@ -71,6 +71,34 @@ struct StageActionsTests {
         #expect(panel.level.rawValue > AnnotationWindowPolicy.sourceOverlayLevel.rawValue)
         #expect(panel.collectionBehavior.contains(.fullScreenAuxiliary))
     }
+
+    @Test("Source tools hide over BetterMeets and return only when the source app is active")
+    @MainActor
+    func sourceFocusVisibility() throws {
+        let screen = try #require(NSScreen.screens.first)
+        let ownPID = ProcessInfo.processInfo.processIdentifier
+        let sourcePID = ownPID + 1
+        let snapshot = WindowFrameSnapshot(
+            frame: CGRect(x: screen.frame.midX - 200, y: screen.frame.height / 2 - 150, width: 400, height: 300),
+            ownerPID: sourcePID,
+            isOnScreen: true
+        )
+        let panel = StageActionsPanel(
+            contentRect: .zero,
+            styleMask: [.borderless, .nonactivatingPanel],
+            backing: .buffered,
+            defer: false
+        )
+        defer { panel.close() }
+
+        for foregroundPID in [sourcePID, ownPID, sourcePID, nil, sourcePID, ownPID + 2] {
+            StageActionsPresenter.position(panel, sourcePID: sourcePID, snapshot: snapshot, frontmostPID: foregroundPID)
+            #expect(panel.isVisible == (foregroundPID == sourcePID))
+        }
+
+        StageActionsPresenter.position(panel, sourcePID: sourcePID, snapshot: nil, frontmostPID: sourcePID)
+        #expect(!panel.isVisible)
+    }
 }
 
 @Suite("Source picker guidance")

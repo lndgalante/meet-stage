@@ -97,7 +97,8 @@ to follow while keeping the parts that do not require macOS services testable.
 `WorkspaceView` also installs `StageActionsPresenter`, which owns an independent
 nonactivating panel beside the selected source. `StageActionsPlacement` fits it
 to the source's screen. The panel tracks moves and resizes, hides for unavailable
-sources or unrelated foreground apps, and shares `StageActionsView` and its
+sources or any foreground app other than the source, including BetterMeets,
+and shares `StageActionsView` and its
 actions with the workspace through a compact layout. Stage Only does not remove
 the installer, so the floating tools stay available while the workspace is shared.
 

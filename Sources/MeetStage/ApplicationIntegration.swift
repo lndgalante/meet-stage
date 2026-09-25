@@ -32,14 +32,6 @@ enum BetterMeetsWindowActions {
     static func minimizeStage() { stageWindow?.miniaturize(nil) }
     static func toggleStageFullScreen() { stageWindow?.toggleFullScreen(nil) }
 
-    static func showStageActions() {
-        guard let panel = NSApp.windows.first(where: { $0.identifier == BetterMeetsWindowID.stageActions }) else {
-            return
-        }
-        NSApp.activate()
-        panel.makeKeyAndOrderFront(nil)
-    }
-
     static func openHelp() {
         guard let url = URL(string: "https://github.com/lndgalante/meet-stage#readme") else { return }
         NSWorkspace.shared.open(url)

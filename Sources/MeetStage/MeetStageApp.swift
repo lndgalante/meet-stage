@@ -156,10 +156,10 @@ struct MeetStageApp: App {
                 .keyboardShortcut("s", modifiers: [.command, .shift])
 
                 Button("Show Source Tools") {
-                    BetterMeetsWindowActions.showStageActions()
+                    captureManager.focusSelectedSourceIfPossible()
                 }
                 .keyboardShortcut("t", modifiers: [.command, .control])
-                .disabled(captureManager.selectedSource == nil)
+                .disabled(!captureManager.isLive)
                 Divider()
             }
 

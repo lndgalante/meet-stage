@@ -43,9 +43,10 @@ as a native popover from the gear and remains available through Command–comma.
 The same tools also appear in the compact floating widget beside the selected
 source window. It follows moves and resizes, uses the right or left gutter when
 space allows, and stays inside the screen. It remains available in Stage Only
-mode and hides when the source is unavailable or another app is frontmost.
+mode while the source app is active. Returning to BetterMeets or another app
+hides it, as does the source becoming unavailable.
 The widget is a separate window; sharing the BetterMeets workspace excludes it.
-Window → Show Source Tools (Control–Command–T) brings it forward for keyboard use.
+Window → Show Source Tools (Control–Command–T) opens the source app and its widget.
 
 - **Auto Polish** adds a styled frame, temporarily zooms around clicks, and
   mirrors the macOS cursor at 2× without moving the real pointer. Settings → Stage
