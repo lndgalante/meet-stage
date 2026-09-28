@@ -1,9 +1,6 @@
 import SwiftUI
 
 enum ControlMetrics {
-    static let sourceTileRadius: CGFloat = 8
-    static let sourceLabelHeight: CGFloat = 18
-    static let sourceApplicationIconSize: CGFloat = 14
     static let controlBarButtonHeight: CGFloat = 30
     static let controlBarActionCornerRadius: CGFloat = 8
     static let controlBarIconSize: CGFloat = 13
@@ -18,38 +15,18 @@ enum ControlPalette {
 
 struct ControlView: View {
     @ObservedObject var manager: CaptureManager
-    var compact = false
     @ObservedObject private var windowState = BetterMeetsWindowState.shared
     @FocusState private var focusedSourceID: CGWindowID?
 
     var body: some View {
         VStack(spacing: 0) {
-            HStack {
-                Text("Windows")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                Text("\(manager.windows.count)")
-                    .font(.caption.monospacedDigit())
-                    .foregroundStyle(.tertiary)
-                Spacer(minLength: 0)
-                Button("Refresh Windows", systemImage: "arrow.clockwise") {
-                    manager.refreshWindows()
-                }
-                .labelStyle(.iconOnly)
-                .buttonStyle(.borderless)
-                .disabled(manager.isRefreshing)
-                .help("Refresh windows (⌘R)")
-            }
-            .padding(.horizontal, 14)
-            .frame(height: 36)
-
             if manager.needsScreenRecordingPermission {
                 permissionNotice
             } else if manager.windows.isEmpty && unavailableSlots.isEmpty {
                 VStack(spacing: 8) {
                     Image(systemName: "macwindow")
                         .font(.title2)
-                    Text(manager.isRefreshing ? "Finding windows…" : "Open an app to get started")
+                    Text(manager.isRefreshing ? "Finding windows…" : "No windows")
                         .font(.caption)
                         .multilineTextAlignment(.center)
                 }
@@ -71,7 +48,7 @@ struct ControlView: View {
     private var sourceScroller: some View {
         ScrollViewReader { proxy in
             ScrollView(.vertical) {
-                LazyVStack(spacing: compact ? 4 : 10) {
+                LazyVStack(spacing: 8) {
                     ForEach(manager.displayedWindows) { source in
                         windowButton(for: source)
                             .id(source.id)
@@ -86,7 +63,7 @@ struct ControlView: View {
                     }
                 }
                 .padding(.horizontal, 8)
-                .padding(.bottom, 12)
+                .padding(.vertical, 12)
             }
             .scrollBounceBehavior(.basedOnSize)
             .onMoveCommand(perform: moveSourceFocus)
@@ -120,7 +97,6 @@ struct ControlView: View {
             isPaused: isSelected && manager.state == .paused,
             isPending: source.id == manager.pendingWindowID,
             isKeyboardFocused: focusedSourceID == source.id,
-            compact: compact,
             shortcutOwner: manager.shortcutOwnerDescription(for:),
             action: { manager.select(source) },
             pin: { manager.pin(source, to: $0) },
@@ -148,12 +124,8 @@ struct ControlView: View {
             Image(systemName: "lock.rectangle")
                 .font(.title2)
                 .foregroundStyle(.orange)
-            Text("Allow screen recording to see your windows")
+            Text("Screen recording required")
                 .font(.caption)
-                .multilineTextAlignment(.center)
-            Text("Use the setup instructions beside this list.")
-                .font(.caption)
-                .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
         }
         .controlSize(.small)

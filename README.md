@@ -9,41 +9,39 @@ reopening the share picker or exposing your desktop.
 ## How it works
 
 BetterMeets brings tools, window selection, and the live stage into one resizable
-Mac window. The left sidebar stacks presentation tools above a vertical list of
-window thumbnails. The main area shows the selected source at its original
-aspect ratio. The bottom strip groups source status, Open Source App, Pause/Resume, and Clear Stage.
+Mac window. The left sidebar is a compact vertical rail of application icons. The main area shows the selected source at its original
+aspect ratio. The edge-to-edge bottom strip groups source status, Pause/Resume, and Clear Stage.
 
-Choose a thumbnail to put a window on stage. Selecting the live source again
+Choose an app icon to put a window on stage. Selecting the live source again
 keeps it live. Use Pause/Resume (Shift–Command–P) to hide or restore the source.
 Clear Stage removes it without stopping your meeting app’s share. A source is
 marked live only after ScreenCaptureKit delivers its first complete video frame.
 The window keeps the size and position you chose when sources change.
 
-Choose **Stage Only** (Control–Command–S) to hide the tools, window list,
+Choose **Stage Only** (Control–Command–S) to hide the window rail,
 status strip, and toolbar. Then share **BetterMeets** in your meeting app.
 Press the same shortcut or Escape to restore controls. Use the standard green
 traffic light for full screen while controls are visible. Returning
 to controls while sharing makes them visible to your audience.
 
-The stage is a live presentation surface. Use **Open Source App** (Shift–Command–O) to
+The stage is a live presentation surface. Use **Open Source App** from the menu (Shift–Command–O) to
 interact with the original source window. Cursor, ink, and pointer effects follow
 the selected source while its application is frontmost.
 
 BetterMeets assigns **Option–1** through **Option–9** to available windows.
 Change the modifier or disable global shortcuts in Settings → General. Right-click
-a thumbnail to pin or unpin a slot. Pins survive launches and reserve their slot
+an app icon to pin or unpin a slot. Pins survive launches and reserve their slot
 when the source is unavailable. An ambiguous window identity is never guessed.
 Scroll vertically to browse sources; Up/Down and Return select by keyboard, and
 Space opens a larger preview. Source shortcuts also scroll the selected tile
 into view. New and closed windows update automatically.
 
-The always-visible tools provide Auto Polish, Spotlight, Annotations, Click Highlights,
-and Keystrokes. The single gear beside Tools and Command–comma open the same native Settings window.
+Presentation tools are available from the menu bar and Settings (Command–comma).
 Each effect’s settings show its On/Off state beside the preview.
 
-Drag the sidebar divider to resize it. Thumbnails become compact rows automatically
-in short windows. Unavailable pinned windows
-have a local Unpin action. Full window titles appear in enlarged previews.
+The window rail stays compact at every window size. Hover over an icon or press
+Space to see the full window title, preview, and shortcut. Unavailable pinned
+windows have a local Unpin action.
 
 The same tools also appear in the floating widget beside the selected source
 window, together with Pause/Resume, Clear Stage, and Show Controls. It follows moves and resizes, uses the right or left gutter when

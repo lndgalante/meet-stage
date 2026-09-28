@@ -7,29 +7,18 @@ struct EmptyShortcutSlot: View {
     let unpin: () -> Void
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
+        Button(action: unpin) {
             Image(systemName: "pin.slash")
+                .font(.title2)
                 .foregroundStyle(.orange)
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Window unavailable")
-                    .font(.callout.weight(.medium))
-                Text(pinnedWindowDescription ?? "Pinned window")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(2)
-                Button("Unpin", action: unpin)
-                    .buttonStyle(.link)
-                    .font(.caption)
-            }
-            Spacer(minLength: 0)
-            Text(shortcutModifier.displayName(for: slot))
-                .font(.caption.monospaced())
-                .foregroundStyle(.secondary)
+                .frame(width: 68, height: 68)
         }
-        .padding(8)
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .buttonStyle(CompactIconButtonStyle())
+        .help(
+            "\(pinnedWindowDescription ?? "Pinned window") is unavailable. Unpin \(shortcutModifier.displayName(for: slot))."
+        )
         .contextMenu { Button("Unpin Window", action: unpin) }
-        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Unpin unavailable window: \(pinnedWindowDescription ?? "Pinned window")")
         .accessibilityAction(named: "Unpin Window", unpin)
     }
 }
@@ -43,7 +32,6 @@ struct CompactWindowButton: View {
     let isPaused: Bool
     let isPending: Bool
     let isKeyboardFocused: Bool
-    var compact = false
     let shortcutOwner: (Int) -> String?
     let action: () -> Void
     let pin: (Int) -> Void
@@ -52,7 +40,7 @@ struct CompactWindowButton: View {
     @State private var showPreview = false
     @State private var hoverTask: Task<Void, Never>?
     @State private var isHovering = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.colorSchemeContrast) private var contrast
 
     var body: some View {
         Button {
@@ -60,34 +48,47 @@ struct CompactWindowButton: View {
             showPreview = false
             action()
         } label: {
-            Group {
-                if compact {
-                    HStack(spacing: 10) {
-                        sourcePreview.frame(width: 64, height: 40)
-                        VStack(alignment: .leading, spacing: 4) {
-                            identityRow
-                            if source.hasDistinctTitle { titleLabel }
-                        }
-                    }
-                } else {
-                    VStack(alignment: .leading, spacing: 6) {
-                        identityRow
-                        sourcePreview.aspectRatio(16 / 9, contentMode: .fit)
-                        if source.hasDistinctTitle { titleLabel }
+            applicationIcon
+                .frame(width: 56, height: 56)
+                .frame(width: 68, height: 68)
+                .background(
+                    (isPaused ? Color.orange : Color.primary)
+                        .opacity(isSelected ? 0.12 : isHovering ? 0.06 : 0),
+                    in: RoundedRectangle(cornerRadius: 16)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: 16)
+                        .strokeBorder(borderColor, lineWidth: 2)
+                }
+                .overlay(alignment: .topTrailing) {
+                    if isPending {
+                        ProgressView().controlSize(.mini)
+                    } else if isPaused {
+                        Image(systemName: "pause.circle.fill")
+                            .foregroundStyle(.orange)
+                            .background(.background, in: Circle())
                     }
                 }
-            }
-            .frame(maxWidth: .infinity)
-            .padding(6)
-            .background(
-                (isPaused ? Color.orange : Color.primary).opacity(isSelected ? 0.07 : 0),
-                in: RoundedRectangle(cornerRadius: 14)
-            )
-            .overlay {
-                RoundedRectangle(cornerRadius: 14)
-                    .strokeBorder(borderColor, lineWidth: 2)
-            }
-            .contentShape(Rectangle())
+                .overlay(alignment: .bottomTrailing) {
+                    if let shortcut {
+                        Text(shortcutModifier.displayName(for: shortcut))
+                            .font(.caption2.weight(.semibold).monospaced())
+                            .foregroundStyle(isShortcutAvailable ? Color.primary : .red)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(Color(nsColor: .controlColor), in: Capsule())
+                            .overlay {
+                                Capsule()
+                                    .strokeBorder(
+                                        .primary.opacity(contrast == .increased ? 0.5 : 0.1),
+                                        lineWidth: 1
+                                    )
+                            }
+                            .padding(3)
+                            .accessibilityHidden(true)
+                    }
+                }
+                .contentShape(Rectangle())
         }
         .buttonStyle(CompactIconButtonStyle())
         .focusable()
@@ -162,85 +163,23 @@ struct CompactWindowButton: View {
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
-    private var sourcePreview: some View {
-        Color.black
-            .overlay {
-                if let thumbnail = source.thumbnail {
-                    Image(nsImage: thumbnail)
-                        .resizable()
-                        .scaledToFit()
-                } else if let icon = source.applicationIcon {
-                    Image(nsImage: icon)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 32, height: 32)
-                } else {
-                    Image(systemName: "macwindow")
-                        .foregroundStyle(.white.opacity(0.65))
-                }
-            }
-            .clipped()
-            .overlay { Color.white.opacity(isHovering ? 0.08 : 0) }
-            .clipShape(RoundedRectangle(cornerRadius: ControlMetrics.sourceTileRadius, style: .continuous))
-            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: isHovering)
-    }
-
-    private var titleLabel: some View {
-        Text(source.title)
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .lineLimit(compact ? 2 : 1)
-            .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var identityRow: some View {
-        HStack(spacing: 4) {
-            if !compact, let icon = source.applicationIcon {
-                Image(nsImage: icon)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(
-                        width: ControlMetrics.sourceApplicationIconSize,
-                        height: ControlMetrics.sourceApplicationIconSize)
-            }
-            Text(source.applicationName)
-                .font(.system(size: 12, weight: .medium))
-                .lineLimit(compact ? 2 : 1)
-            Spacer(minLength: 0)
-            if isPending {
-                ProgressView().controlSize(.mini)
-            } else if isPaused || isSelected {
-                Image(systemName: isPaused ? "pause.fill" : "circle.fill")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(isPaused ? ControlPalette.warning : ControlPalette.accent)
-                    .frame(width: 10)
-            }
-            if let shortcut { shortcutKeycap(shortcut) }
+    @ViewBuilder
+    private var applicationIcon: some View {
+        if let icon = source.applicationIcon {
+            Image(nsImage: icon)
+                .resizable()
+                .scaledToFit()
+        } else {
+            Image(systemName: "macwindow")
+                .font(.largeTitle)
+                .foregroundStyle(.secondary)
         }
-        .frame(minHeight: ControlMetrics.sourceLabelHeight)
-        .accessibilityHidden(true)
-    }
-
-    private func shortcutKeycap(_ slot: Int) -> some View {
-        HStack(spacing: 3) {
-            if !isShortcutAvailable {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 9))
-            }
-            Text(shortcutModifier.displayName(for: slot))
-                .font(.system(size: 11, weight: .semibold).monospaced())
-        }
-        .foregroundStyle(isShortcutAvailable ? Color.secondary : .red)
-        .padding(.horizontal, 4)
-        .padding(.vertical, 2)
-        .background(.quaternary, in: RoundedRectangle(cornerRadius: 4))
-        .fixedSize()
     }
 
     private var borderColor: Color {
         if isPending || isPaused { return ControlPalette.warning }
         if isSelected || isKeyboardFocused { return ControlPalette.accent }
-        return .clear
+        return contrast == .increased ? .secondary : .clear
     }
 
     private var accessibilityLabel: String {

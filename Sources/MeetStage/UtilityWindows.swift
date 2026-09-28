@@ -83,8 +83,7 @@ struct SharingSteps: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Label("Choose a source window in the sidebar.", systemImage: "1.circle")
-            Label("Choose Stage Only to hide the controls.", systemImage: "2.circle")
-            Label("Share BetterMeets in your meeting app.", systemImage: "3.circle")
+            Label("Share BetterMeets in your meeting app.", systemImage: "2.circle")
         }
         .font(.callout)
         .fixedSize(horizontal: false, vertical: true)

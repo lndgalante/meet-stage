@@ -5,54 +5,31 @@ struct WorkspaceView: View {
     @ObservedObject private var windowState = BetterMeetsWindowState.shared
     @Environment(\.colorSchemeContrast) private var contrast
     @FocusState private var stageIsFocused: Bool
-    @AppStorage("BetterMeets.hasUsedStageOnly") private var hasUsedStageOnly = false
 
     var body: some View {
         Group {
             if windowState.stageOnly {
                 stage
             } else {
-                HSplitView {
-                    sidebar
-                        .frame(minWidth: 200, idealWidth: WorkspaceMetrics.sidebarWidth, maxWidth: 320)
-                        .background(SidebarWidthRestorer())
-                    VStack(spacing: 12) {
-                        if manager.isLive && !hasUsedStageOnly {
-                            HStack(spacing: 12) {
-                                Text("Choose Stage Only before sharing BetterMeets in your meeting.")
-                                    .font(.callout)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                Spacer(minLength: 0)
-                                Button("Stage Only") { windowState.stageOnly = true }
-                            }
-                            .padding(12)
+                VStack(spacing: 0) {
+                    HStack(spacing: 12) {
+                        ControlView(manager: manager)
+                            .frame(width: WorkspaceMetrics.sidebarWidth)
                             .workspacePanel()
-                        }
                         stage
-                        StageStatusBar(manager: manager).workspacePanel()
+                            .frame(minWidth: 440)
                     }
-                    .padding(.leading, 12)
-                    .frame(minWidth: 440)
+                    .padding(12)
+                    Divider()
+                    StageStatusBar(manager: manager)
                 }
             }
         }
-        .padding(windowState.stageOnly ? 0 : 12)
         .background(Color(nsColor: .windowBackgroundColor))
         .frame(minWidth: WorkspaceMetrics.minimumSize.width, minHeight: WorkspaceMetrics.minimumSize.height)
         .background(WindowConfigurator())
         .background(StageActionsInstaller(manager: manager))
         .toolbar {
-            ToolbarItem(placement: .navigation) {
-                Button {
-                    windowState.toggleStageOnly()
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "rectangle")
-                        Text("Stage Only")
-                    }
-                }
-                .help(windowState.stageOnly ? "Show tools and windows (⌃⌘S)" : "Hide controls before sharing BetterMeets. Restoring controls shows them in that window share (⌃⌘S)")
-            }
             ToolbarItem(placement: .principal) {
                 HStack(spacing: 6) {
                     Image(systemName: "rectangle.on.rectangle")
@@ -72,19 +49,6 @@ struct WorkspaceView: View {
         .onChange(of: windowState.stageOnly) { _, stageOnly in
             if stageOnly {
                 stageIsFocused = true
-                hasUsedStageOnly = true
-            }
-        }
-    }
-
-    private var sidebar: some View {
-        GeometryReader { geometry in
-            VStack(spacing: 12) {
-                WorkspaceTools(manager: manager)
-                    .workspacePanel()
-                ControlView(manager: manager, compact: geometry.size.height < 680)
-                    .frame(maxHeight: .infinity)
-                    .workspacePanel()
             }
         }
     }
@@ -136,43 +100,8 @@ struct WorkspaceView: View {
     }
 }
 
-private struct WorkspaceTools: View {
-    @ObservedObject var manager: CaptureManager
-    var body: some View {
-        VStack(spacing: 0) {
-            HStack {
-                Text("Tools").font(.callout.weight(.medium))
-                if enabledCount > 0 {
-                    Text("\(enabledCount) on").font(.caption).foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 0)
-                Button("Settings", systemImage: "gearshape") {
-                    UtilityWindows.showSettings(manager: manager)
-                }
-                .labelStyle(.iconOnly)
-                .buttonStyle(.borderless)
-                .help("Settings (⌘,)")
-            }
-            .padding(12)
-            StageActionsView(manager: manager)
-            if enabledCount > 0 && !manager.isLive {
-                Text("Ready for the next source")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 12)
-            }
-        }
-    }
-
-    private var enabledCount: Int {
-        [manager.autoPresentationEnabled, manager.spotlightEnabled, manager.annotationsEnabled,
-         manager.highlightsMouseClicks, manager.highlightsKeystrokes].filter { $0 }.count
-    }
-}
-
 enum WorkspaceMetrics {
-    static let sidebarWidth: CGFloat = 224
+    static let sidebarWidth: CGFloat = 88
     static let minimumSize = CGSize(width: 800, height: 560)
     static let defaultSize = CGSize(width: 1180, height: 780)
 

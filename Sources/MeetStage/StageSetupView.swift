@@ -31,10 +31,6 @@ struct StageSetupView: View {
             actions
             if manager.state == .idle && !manager.windows.isEmpty {
                 SharingSteps().padding(.top, 8)
-                Text("Showing the controls makes them visible in a share of this window.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
             }
         }
         .frame(maxWidth: 410)
@@ -48,8 +44,6 @@ struct StageSetupView: View {
             if manager.canToggleCapturePause {
                 Button("Resume Stage", systemImage: "play.fill", action: manager.toggleCapturePause)
                     .buttonStyle(.borderedProminent)
-            } else {
-                chooseWindowButton
             }
         case .permissionRequired:
             if manager.requestedPermissionThisLaunch {
@@ -75,24 +69,15 @@ struct StageSetupView: View {
                     Button("Refresh Windows", action: manager.refreshWindows)
                         .buttonStyle(.borderedProminent)
                 }
-                chooseWindowButton
             }
         case .idle:
             if manager.windows.isEmpty {
                 Button("Refresh Windows", action: manager.refreshWindows)
-            } else {
-                chooseWindowButton.buttonStyle(.borderedProminent)
             }
         case .switching:
             Button("Cancel", action: manager.stopCapture)
         default:
             EmptyView()
-        }
-    }
-
-    private var chooseWindowButton: some View {
-        Button("Choose a Window", systemImage: "sidebar.left") {
-            BetterMeetsWindowState.shared.focusSources()
         }
     }
 
