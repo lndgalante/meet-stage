@@ -1,1 +1,102 @@
-{"schemaVersion":2,"generatedAt":"2026-09-06T18:11:09.042382+00:00","title":"Design System: BetterMeets","extensions":{"native":{"platform":"macOS SwiftUI/AppKit","colors":{"accent":"Color.accentColor","warning":"Color.orange","conflict":"Color.red","text":"Color.primary","secondary":"Color.secondary","material":".regularMaterial","reduced-transparency":"Color(nsColor: .windowBackgroundColor)"},"fonts":{"hover-title":".callout.weight(.semibold)","settings-label":".callout"},"window":"Borderless NSWindow; exact visible bounds; key/main eligible; hasShadow = true. Native pan covers labels and previews; footer keeps its native drag surface. Movement is free while dragging. A drop near the Dock snaps to a 12pt gap; Option skips snapping. Attachment follows the Dock and persists.","surface":"Native clear Liquid Glass with a 16pt continuous corner radius and system edge. Reduce Transparency uses windowBackgroundColor; accessibility contrast adds a primary inset edge.","settings-actions":"Preserve native segmented settings, two primary controls per tab, and separate vertical action palette. Voice control retains local shadows and static halo."},"previewTranslation":{"status":"Illustrative HTML/CSS only. Browser system colors, fonts, symbols, corners, and shadows approximate native rendering; no CSS value replaces Swift source. Sample content replaces real captured windows.","units":"One CSS px illustrates one macOS logical point. Frontmatter pt is not CSS pt.","tonalRamps":"Omitted because native semantic colors have no fixed authored ramp."},"motion":[{"name":"compact-feedback","value":"SwiftUI easeOut: press 0.10s, hover 0.12s, state 0.15s; press scale 0.96, opacity 0.82; preview delay 450ms.","purpose":"Reduce Motion disables transitions and press scaling."}]},"components":[{"name":"Live source choice","kind":"custom","refersTo":"source-preview","description":"Preview translation of CompactWindowButton","html":"<button class=\"ds-source\" aria-label=\"Pause sharing Sample app\"><span class=\"ds-identity\">Sample app <svg class=\"ds-live\" width=\"12\" height=\"12\" viewBox=\"0 0 12 12\" aria-hidden=\"true\"><path d=\"M3 2L10 6L3 10Z\" fill=\"currentColor\"/></svg></span><span class=\"ds-preview\"><span class=\"ds-key\">⌥2</span></span></button>","css":".ds-source{font:11px system-ui;color:CanvasText;width:70px;background:none;border:0;padding:0;text-align:left}.ds-preview{display:block;height:40px;border-radius:8px;background:#222;box-shadow:inset 0 0 0 2px AccentColor;position:relative}.ds-key{position:absolute;right:5px;bottom:5px;padding:3px 5px;border-radius:5px;background:AccentColor;color:white;font:600 11px monospace}.ds-identity{display:flex;justify-content:space-between;align-items:center;height:18px;margin-bottom:2px}.ds-live{width:12px;flex-shrink:0;color:AccentColor}.ds-source:hover{filter:brightness(1.08)}.ds-source:focus-visible{outline:2px solid AccentColor;outline-offset:-2px}.ds-source:active{opacity:.82}"},{"name":"Empty source slot","kind":"custom","description":"Passive EmptyShortcutSlot preview","html":"<div class=\"ds-empty\"><div class=\"ds-empty-label\">Empty</div><div class=\"ds-empty-preview\"><span class=\"ds-empty-key\">⌥4</span></div></div>","css":".ds-empty{font-family:system-ui;font-size:11px;color:CanvasText;color-scheme:light dark;width:70px;opacity:.7}.ds-empty-preview{height:40px;border:1px dashed currentColor;border-radius:8px;position:relative;display:grid;place-items:center}.ds-empty-key{position:absolute;bottom:6px;right:6px;font:600 11px ui-monospace,monospace}.ds-empty-label{height:18px;margin-bottom:2px}"},{"name":"Controller surface and status","kind":"card","refersTo":"controller-panel","description":"Illustrative native clear Liquid Glass and footer preview. Browser material and shadow only approximate the production surface.","html":"<div class=\"ds-panel\"><div class=\"ds-rail\">App names and source previews</div><div class=\"ds-footer\"><span class=\"ds-dot\" aria-hidden=\"true\"></span><span>Sample app on stage</span><span class=\"ds-hint\">Click again to pause</span></div></div>","css":".ds-panel{font:11px system-ui;color:CanvasText;width:336px;height:88px;border-radius:16px;background:Canvas;box-shadow:0 5px 16px #0004;overflow:hidden}.ds-rail{height:68px;display:grid;place-items:center;opacity:.55}.ds-footer{height:20px;display:flex;align-items:center;gap:7px;padding:0 16px;cursor:grab}.ds-footer:active{cursor:grabbing}.ds-dot{width:7px;height:7px;border-radius:50%;background:AccentColor}.ds-hint{margin-left:auto;font-size:10px;opacity:.65}"},{"name":"Settings controls","kind":"custom","description":"Browser preview equivalents of native segmented navigation and SecureField","html":"<div class=\"ds-settings\"><nav class=\"ds-tabs\" aria-label=\"Settings section\"><button class=\"ds-tab\" aria-current=\"page\">General</button><button class=\"ds-tab\">Stage</button><button class=\"ds-tab\">Voice</button></nav><label class=\"ds-field-row\">API key: <input class=\"ds-field\" type=\"password\" placeholder=\"API key\" /></label></div>","css":".ds-settings{font:11px system-ui;color:CanvasText;padding:20px;background:Canvas;border:1px solid GrayText;border-radius:8px}.ds-tabs{display:flex;gap:2px}.ds-tab{font:inherit;padding:4px 10px;border:0;border-radius:4px;color:ButtonText;background:ButtonFace}.ds-tab[aria-current]{background:Highlight;color:HighlightText}.ds-tab:hover{filter:brightness(.95)}.ds-tab:active{opacity:.82}.ds-tab:focus-visible,.ds-field:focus-visible{outline:2px solid AccentColor}.ds-field-row{display:flex;gap:14px;margin-top:12px}.ds-field{font:inherit;background:Field;color:FieldText}.ds-field:hover{border-color:CanvasText}"},{"name":"Active presentation action","kind":"button","refersTo":"action-button","description":"ControlBarButton preview","html":"<button class=\"ds-action\" aria-label=\"Focus spotlight\" aria-pressed=\"true\"><svg width=\"13\" height=\"13\" viewBox=\"0 0 16 16\" fill=\"none\" aria-hidden=\"true\"><circle cx=\"6.5\" cy=\"6.5\" r=\"4.5\" stroke=\"currentColor\" stroke-width=\"1.5\"/><path d=\"m10 10 4 4\" stroke=\"currentColor\" stroke-width=\"1.5\"/></svg></button>","css":".ds-action{width:28px;height:28px;border:0;border-radius:9.5px;color:AccentColor;background:color-mix(in srgb,AccentColor 14%,transparent);display:grid;place-items:center}.ds-action:hover{background:color-mix(in srgb,AccentColor 20%,transparent)}.ds-action:focus-visible{outline:2px solid AccentColor}.ds-action:active{opacity:.82}"}],"narrative":{"northStar":"The Native Presentation Utility","overview":"BetterMeets uses compact macOS utility surfaces, SF system typography, SF Symbols, native controls, and the user's system accent. Real window previews and app icons provide recognition; labels and state cues explain what the audience is seeing. Density serves quick switching while the presenter watches another app.\n\nThe controller, settings, and vertical presentation palette retain distinct jobs within this native system. Settings preserve restrained surfaces and two primary controls per tab, with supporting guidance or recovery actions where needed. Presentation controls stay in their own vertical palette, separate from the shared Stage.","keyCharacteristics":["Adaptive neutral materials with semantic system text and accent.","App identity above real previews, followed by sharing status and trailing guidance.","Compact native controls with pointer, keyboard, and VoiceOver access.","Brief state feedback that respects accessibility preferences."],"rules":[{"name":"The State Has Two Cues Rule","body":"Pair color with text or an icon: a play symbol for sharing, a pause symbol for paused, progress for switching, and a Return glyph for keyboard focus.","section":"colors"},{"name":"The Recognition Before Decoration Rule","body":"Keep app identity, shortcuts, and sharing state more prominent than decorative effects; preserve native text metrics and meaningful labels.","section":"typography"},{"name":"The Visible Bounds Rule","body":"The controller's native window bounds must equal its visible panel bounds; use no transparent layout padding solely to contain an outer shadow and no titled frame hidden behind a smaller widget.","section":"layout"},{"name":"The Window Owns the Controller Shadow Rule","body":"Keep the controller's outer shadow outside content layout; do not generalize this rule into a ban on the presentation palette's existing control shadows or native gradients.","section":"elevation & depth"}],"dos":["**Do** use native semantic colors and materials, including Reduce Transparency and Increase Contrast variants.","**Do** preserve the separate controller, settings, vertical presentation palette, and shared Stage.","**Do** keep source identity and sharing state readable at native utility scale, with full context in help and accessibility labels.","**Do** maintain distinct live, paused, pending, unavailable, shortcut-conflict, and keyboard-focus cues.","**Do** preserve native keyboard access, source context menus, position restoration, and footer dragging when changing the controller."],"donts":["**Don't** add transparent shadow padding or hide a titled frame behind the controller surface.","**Don't** hard-code a sampled accent or material color as the native palette.","**Don't** make color the only indication of source state or keyboard focus.","**Don't** turn empty source slots into unsupported add buttons.","**Don't** apply controller-specific shadow rules to eliminate the existing voice-control depth or native material gradients."]}}
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-25T21:31:50.800155+00:00",
+  "title": "Design System: BetterMeets",
+  "extensions": {
+    "native": {
+      "platform": "macOS SwiftUI/AppKit",
+      "colors": {
+        "accent": "Color.accentColor",
+        "warning": "Color.orange",
+        "conflict": "Color.red",
+        "text": "Color.primary",
+        "secondary": "Color.secondary",
+        "material": ".regularMaterial",
+        "stage": "Color(nsColor: .underPageBackgroundColor)",
+        "reduced-transparency": "Color(nsColor: .controlBackgroundColor)"
+      },
+      "fonts": {
+        "source-identity": ".system(size: 12, weight: .medium)",
+        "source-detail": ".caption",
+        "settings-label": ".callout",
+        "setup-title": ".title2.weight(.semibold)"
+      },
+      "window": "Native titled, resizable workspace; default 1180 × 780pt, minimum 800 × 560pt. Source changes preserve window geometry. Stage Only hides controls and toolbar; Escape restores them.",
+      "surface": "Regular material panels with 16pt corners and subtle inset edges. System under-page stage well. Reduce Transparency uses a solid control background; Increase Contrast strengthens edges. Unstyled capture has a transparent backdrop so native source corners reveal the stage well.",
+      "settings-actions": "Tools stay open. One gear beside Tools and Command–comma open one native Settings window with a stable sidebar, six consistently named sections, and a governing On/Off switch per effect. The separate source widget includes state, pause/resume, clear, show controls, effects and settings.",
+      "source-layout": "Resizable sidebar: 224pt initial width, 200–320pt range. Automatic compact rows below 680pt sidebar height, with no layout menu. Default thumbnails fit 16:9; compact previews are 64 × 40pt. Full titles appear in previews. Unavailable pins offer Unpin."
+    },
+    "previewTranslation": {
+      "status": "Illustrative HTML/CSS only. Browser system colors, fonts, symbols, corners, and shadows approximate native rendering; no CSS value replaces Swift source. Sample content replaces real captured windows.",
+      "units": "One CSS px illustrates one macOS logical point. Frontmatter pt is not CSS pt.",
+      "tonalRamps": "Omitted because native semantic colors have no fixed authored ramp."
+    },
+    "motion": [
+      {
+        "name": "compact-feedback",
+        "value": "SwiftUI easeOut: press 0.10s, hover 0.12s; press scale 0.96, opacity 0.82; preview dwell 450ms. Keyboard scrolling and source-state changes are immediate.",
+        "purpose": "Reduce Motion disables transitions and press scaling."
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Live source choice",
+      "kind": "custom",
+      "refersTo": "source-preview",
+      "description": "Illustrative CompactWindowButton; native source and system colors remain authoritative.",
+      "html": "<button class=\"ds-source\" aria-label=\"Sample app is on stage\"><span class=\"ds-identity\">Sample app <span class=\"ds-dot\" aria-hidden=\"true\"></span><kbd>⌥2</kbd></span><span class=\"ds-preview\">Window preview</span></button>",
+      "css": ".ds-source{font:13px system-ui;color:CanvasText;color-scheme:light dark;width:212px;background:color-mix(in srgb,CanvasText 7%,transparent);border:0;box-shadow:inset 0 0 0 2px AccentColor;padding:6px;border-radius:14px;text-align:left}.ds-identity{display:flex;align-items:center;gap:8px;font-weight:500;margin-bottom:4px}.ds-identity kbd{margin-left:auto;color:GrayText;font:11px monospace;background:ButtonFace;padding:2px 4px;border-radius:5px}.ds-dot{width:5px;height:5px;border-radius:50%;background:AccentColor}.ds-preview{display:grid;place-items:center;aspect-ratio:16/9;border-radius:8px;background:#111;color:#aaa}.ds-source:hover{background:color-mix(in srgb,CanvasText 10%,transparent)}.ds-source:focus-visible{outline:none;box-shadow:inset 0 0 0 2px AccentColor}.ds-source:active{opacity:.82}"
+    },
+    {
+      "name": "Unavailable pinned source",
+      "kind": "custom",
+      "description": "Unavailable slots retain identity and provide an adjacent recovery action.",
+      "html": "<div class=\"ds-unavailable\"><strong>Sample document</strong><span>Window unavailable · ⌥4</span><button class=\"ds-button\">Unpin</button></div>",
+      "css": ".ds-unavailable{font:13px system-ui;color:CanvasText;color-scheme:light dark;width:200px;display:grid;gap:6px;padding:8px}.ds-unavailable span{font-size:11px;color:GrayText}.ds-unavailable button{justify-self:start}.ds-button{font:inherit;border:0;border-radius:6px;padding:5px 10px;color:ButtonText;background:ButtonFace}.ds-button:hover{filter:brightness(.94)}.ds-button:focus-visible{outline:2px solid AccentColor;outline-offset:2px}.ds-button:active{opacity:.82}"
+    },
+    {
+      "name": "Stage transport",
+      "kind": "custom",
+      "refersTo": "status",
+      "description": "Local status and transport remain together. Clear Stage does not control the meeting share.",
+      "html": "<div class=\"ds-status\"><span><strong>Sample app on stage</strong><small>Document title</small></span><button class=\"ds-button\">Pause</button><button class=\"ds-button\">Clear Stage</button></div>",
+      "css": ".ds-status{font:13px system-ui;color:CanvasText;color-scheme:light dark;display:flex;align-items:center;gap:12px;padding:0 14px;height:60px;background:Canvas;border:1px solid color-mix(in srgb,CanvasText 8%,transparent);border-radius:16px}.ds-status>span{margin-right:auto}.ds-status small{display:block;margin-top:3px;color:GrayText;font-size:11px}.ds-button{font:inherit;border:0;border-radius:6px;padding:5px 10px;color:ButtonText;background:ButtonFace}.ds-button:hover{filter:brightness(.94)}.ds-button:focus-visible{outline:2px solid AccentColor;outline-offset:2px}.ds-button:active{opacity:.82}"
+    },
+    {
+      "name": "Settings navigation and effect state",
+      "kind": "navigation",
+      "description": "Illustrative native sidebar navigation and effect switch; no web implementation is used in the app.",
+      "html": "<div class=\"ds-settings\"><nav aria-label=\"Settings sections\"><button class=\"ds-button\">General</button><button class=\"ds-button\" aria-current=\"page\">Auto Polish</button><button class=\"ds-button\">Spotlight</button><button class=\"ds-button\">Annotations</button><button class=\"ds-button\">Click Highlights</button><button class=\"ds-button\">Keystrokes</button></nav><section><strong>Auto Polish</strong><label><input type=\"checkbox\"/> Enable Auto Polish</label><small>Turn on to apply these settings</small></section></div>",
+      "css": ".ds-settings{font:13px system-ui;color:CanvasText;color-scheme:light dark;display:flex;gap:24px;background:Canvas;padding:12px}.ds-settings nav{display:grid;width:150px;gap:4px}.ds-settings section{display:grid;align-content:start;gap:20px}.ds-settings small{color:GrayText}.ds-settings input:focus-visible{outline:2px solid AccentColor}.ds-button{font:inherit;border:0;border-radius:6px;padding:5px 10px;color:ButtonText;background:ButtonFace}.ds-button:hover{filter:brightness(.94)}.ds-button:focus-visible{outline:2px solid AccentColor;outline-offset:2px}.ds-button:active{opacity:.82}.ds-settings [aria-current]{background:Highlight;color:HighlightText}"
+    },
+    {
+      "name": "Presentation tool",
+      "kind": "button",
+      "refersTo": "action-button",
+      "description": "Always-visible labeled effects share one settings gear in the Tools heading.",
+      "html": "<div class=\"ds-tool\"><button class=\"ds-toggle\" aria-pressed=\"true\">Spotlight <span aria-hidden=\"true\">●</span></button></div>",
+      "css": ".ds-tool{font:13px system-ui;color:CanvasText;color-scheme:light dark;display:flex;gap:2px;width:212px}.ds-toggle{font:inherit;display:flex;align-items:center;justify-content:space-between;flex:1;height:30px;padding:0 8px;border:0;border-radius:8px;color:AccentColor;background:color-mix(in srgb,AccentColor 14%,transparent)}.ds-toggle span{font-size:6px}.ds-toggle:hover{background:color-mix(in srgb,AccentColor 20%,transparent)}.ds-toggle:focus-visible{outline:2px solid AccentColor}.ds-toggle:active{opacity:.82}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Native Presentation Utility",
+    "overview": "One native window contains the presentation workspace. Tools sit above a vertically scrolling window list on the left. The source preview fills the remaining area at its own aspect ratio. A status strip below the stage contains current state, source title, Open Source App, Pause/Resume, and Clear Stage.",
+    "keyCharacteristics": [
+      "Semantic system backgrounds, regular material, and SF system text.",
+      "Resizable source browsing with thumbnail and compact layouts.",
+      "Explicit capture controls and consistent native Settings.",
+      "Immediate keyboard navigation and restrained pointer feedback."
+    ],
+    "rules": [],
+    "dos": [
+      "Teach source selection → Stage Only → share BetterMeets.",
+      "Use “On stage” for local capture; BetterMeets does not know whether a meeting is transmitting the window.",
+      "Presenter controls show specific setup and recovery actions."
+    ],
+    "donts": [
+      "Never imply that visible workspace controls are excluded from window sharing.",
+      "Audience placeholders stay brief and contain no raw error diagnostics or operator instructions."
+    ]
+  }
+}

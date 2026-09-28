@@ -45,10 +45,11 @@ extension CaptureManager {
             for: source.id,
             selectedWindowID: selectedWindowID,
             state: state
-        ) == .pause {
-            pauseCapture()
+        ) == .keepCurrent {
             return
         }
+
+        guard pendingWindowID != source.id || state != .switching else { return }
 
         pendingSelection = source
         cancelFirstFrameTimeout()
@@ -162,6 +163,13 @@ extension CaptureManager {
         reconcileShortcuts(with: windows)
     }
 
+    func unpinSlot(_ slot: Int) {
+        guard shortcutPins.removeValue(forKey: slot) != nil else { return }
+        resolvedPinnedWindowIDs.removeValue(forKey: slot)
+        persistShortcutPins()
+        reconcileShortcuts(with: windows)
+    }
+
     func activateShortcut(_ slot: Int) {
         guard !unavailableShortcutSlots.contains(slot) else {
             AppLog.shortcuts.warning(
@@ -203,11 +211,11 @@ extension CaptureManager {
 
     // MARK: - Presentation commands and preferences
 
-    func toggleSpotlight() {
+    func toggleSpotlight(focusSource: Bool = true) {
         cancelAutoZoomForManualPresentation()
         spotlightEnabled.toggle()
         if spotlightEnabled {
-            focusSelectedSourceIfPossible()
+            if focusSource { focusSelectedSourceIfPossible() }
             activateSpotlightIfPossible()
             updatePresentationPointerMonitoring()
             if let currentPointerLocation = CGEvent(source: nil)?.location {
@@ -228,11 +236,11 @@ extension CaptureManager {
         }
     }
 
-    func toggleAnnotations() {
+    func toggleAnnotations(focusSource: Bool = true) {
         cancelAutoZoomForManualPresentation()
         annotationsEnabled.toggle()
         if annotationsEnabled {
-            focusSelectedSourceIfPossible()
+            if focusSource { focusSelectedSourceIfPossible() }
             activateAnnotationsIfPossible()
         } else {
             deactivateAnnotations(clearStrokes: true)

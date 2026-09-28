@@ -17,11 +17,11 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .general: String(localized: "General")
-        case .stage: String(localized: "Stage")
-        case .spotlight: String(localized: "Focus")
-        case .annotations: String(localized: "Draw")
-        case .clicks: String(localized: "Clicks")
-        case .keystrokes: String(localized: "Keys")
+        case .stage: String(localized: "Auto Polish")
+        case .spotlight: String(localized: "Spotlight")
+        case .annotations: String(localized: "Annotations")
+        case .clicks: String(localized: "Click Highlights")
+        case .keystrokes: String(localized: "Keystrokes")
         }
     }
 }
@@ -29,84 +29,46 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 struct BetterMeetsSettingsView: View {
     @ObservedObject var manager: CaptureManager
     @Environment(\.legibilityWeight) private var legibilityWeight
-    @Environment(\.colorSchemeContrast) private var contrast
     @AppStorage(SettingsTab.storageKey) private var selectedTabRawValue = SettingsTab.general.rawValue
     @State private var isChoosingLogo = false
     @State private var isLogoDropTargeted = false
     @State private var logoImportError: String?
-    private static let tabBarWidth: CGFloat = 500
-    private static let maxTabContentHeight: CGFloat = 480
-    // Start at the cap until the selected pane has reported its natural height.
-    @State private var tabContentHeight: CGFloat = maxTabContentHeight
-
     var body: some View {
-        VStack(spacing: 0) {
-            ScrollView(.vertical, showsIndicators: false) {
-                Group {
-                    switch selectedTab {
-                    case .general:
-                        generalSettings
-                    case .stage:
-                        stageSettings
-                    case .spotlight:
-                        spotlightSettings
-                    case .annotations:
-                        annotationSettings
-                    case .clicks:
-                        clickSettings
-                    case .keystrokes:
-                        keystrokeSettings
-                    }
-                }
-                // Keep the content clear of the scroll edges, and measure its
-                // natural height so the window fits it exactly until the cap.
-                .padding(.horizontal, 2)
-                .padding(.bottom, 2)
-                .onGeometryChange(for: CGFloat.self) {
-                    $0.size.height
-                } action: {
-                    tabContentHeight = $0
-                }
+        HStack(spacing: 0) {
+            List(SettingsTab.allCases, selection: selectedTabBinding) { tab in
+                Text(tab.title)
+                    .padding(.vertical, 5)
+                    .tag(tab)
             }
-            .scrollBounceBehavior(.basedOnSize)
-            .frame(height: min(tabContentHeight, Self.maxTabContentHeight))
-            .padding(.horizontal, 18)
-            .padding(.top, 28)
-            .padding(.bottom, 18)
-            .background(.primary.opacity(0.025), in: RoundedRectangle(cornerRadius: 8))
-            .overlay {
-                RoundedRectangle(cornerRadius: 8)
-                    .strokeBorder(.primary.opacity(contrast == .increased ? 0.45 : 0.14), lineWidth: 1)
-                    // Leave a gap so the border cannot show through the translucent tabs.
-                    .mask {
-                        VStack(spacing: 0) {
-                            HStack(spacing: 0) {
-                                Rectangle()
-                                Color.clear.frame(width: Self.tabBarWidth + 8)
-                                Rectangle()
-                            }
-                            .frame(height: 2)
-                            Rectangle()
+            .listStyle(.sidebar)
+            .frame(width: 165)
+            .accessibilityLabel("Settings sections")
+            Divider()
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    Text(selectedTab.title)
+                        .font(.title2.weight(.semibold))
+                        .accessibilityAddTraits(.isHeader)
+                    if selectedTab != .general {
+                        effectState
+                    }
+                    Group {
+                        switch selectedTab {
+                        case .general: generalSettings
+                        case .stage: stageSettings
+                        case .spotlight: spotlightSettings
+                        case .annotations: annotationSettings
+                        case .clicks: clickSettings
+                        case .keystrokes: keystrokeSettings
                         }
                     }
-            }
-            .overlay(alignment: .top) {
-                Picker("Settings section", selection: selectedTabBinding) {
-                    ForEach(SettingsTab.allCases) { tab in
-                        Text(tab.title).tag(tab)
-                    }
                 }
-                .labelsHidden()
-                .pickerStyle(.segmented)
-                .frame(width: Self.tabBarWidth)
-                .offset(y: -11)
-                .accessibilitySortPriority(1)
+                .padding(24)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .scrollBounceBehavior(.basedOnSize)
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 28)
-        .padding(.bottom, 20)
-        .frame(width: 568)
+        .frame(minWidth: 700, minHeight: 440)
         .fontWeight(legibilityWeight == .bold ? .bold : nil)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Settings")
@@ -136,11 +98,54 @@ struct BetterMeetsSettingsView: View {
         SettingsTab(rawValue: selectedTabRawValue) ?? .general
     }
 
-    private var selectedTabBinding: Binding<SettingsTab> {
+    private var selectedTabBinding: Binding<SettingsTab?> {
         Binding(
             get: { selectedTab },
-            set: { selectedTabRawValue = $0.rawValue }
+            set: { if let tab = $0 { selectedTabRawValue = tab.rawValue } }
         )
+    }
+
+    private var effectState: some View {
+        HStack(alignment: .top, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(effectIsEnabled ? "Enabled" : "Turn on to apply these settings")
+                    .font(.callout.weight(.medium))
+                Text(effectIsEnabled
+                     ? (manager.isLive ? "Enabled for this stage" : "Ready for the next source")
+                     : "The preview below shows how the effect will look")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+            Toggle(selectedTab.title, isOn: Binding(
+                get: { effectIsEnabled },
+                set: { _ in toggleEffect() }
+            ))
+            .labelsHidden()
+            .toggleStyle(.switch)
+        }
+    }
+
+    private var effectIsEnabled: Bool {
+        switch selectedTab {
+        case .general: false
+        case .stage: manager.autoPresentationEnabled
+        case .spotlight: manager.spotlightEnabled
+        case .annotations: manager.annotationsEnabled
+        case .clicks: manager.highlightsMouseClicks
+        case .keystrokes: manager.highlightsKeystrokes
+        }
+    }
+
+    private func toggleEffect() {
+        switch selectedTab {
+        case .general: break
+        case .stage: manager.toggleAutoPresentation(focusSource: false)
+        case .spotlight: manager.toggleSpotlight(focusSource: false)
+        case .annotations: manager.toggleAnnotations(focusSource: false)
+        case .clicks: manager.toggleMouseClickHighlighting()
+        case .keystrokes: manager.toggleKeystrokeHighlighting()
+        }
     }
 
     private var generalSettings: some View {
@@ -154,7 +159,7 @@ struct BetterMeetsSettingsView: View {
                     )
                     Text(
                         manager.globalShortcutsEnabled
-                            ? "Switch between apps with keys 1–9" : "Global shortcuts are off"
+                            ? "Select source windows with keys 1–9" : "Global shortcuts are off"
                     )
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -163,7 +168,7 @@ struct BetterMeetsSettingsView: View {
 
             SettingsFormRow(title: "Global shortcuts") {
                 Toggle(
-                    "Switch apps from anywhere",
+                    "Select windows from anywhere",
                     isOn: Binding(
                         get: { manager.globalShortcutsEnabled },
                         set: { manager.setGlobalShortcutsEnabled($0) }
@@ -467,7 +472,7 @@ private struct SettingsFormRow<Content: View>: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            Text("\(title):")
+            Text(title)
                 .font(.callout)
                 .frame(width: 105, alignment: .trailing)
 

@@ -14,8 +14,8 @@ struct ShowControllerIntent: AppIntent {
 }
 
 struct ShowDemoStageIntent: AppIntent {
-    static let title: LocalizedStringResource = "Show Demo Stage"
-    static let description = IntentDescription("Brings the shareable Demo Stage to the front.")
+    static let title: LocalizedStringResource = "Show BetterMeets"
+    static let description = IntentDescription("Brings the BetterMeets stage to the front.")
     static let openAppWhenRun = true
 
     @MainActor
@@ -59,8 +59,8 @@ struct BetterMeetsAppShortcuts: AppShortcutsProvider {
         )
         AppShortcut(
             intent: ShowDemoStageIntent(),
-            phrases: ["Show the Demo Stage in \(.applicationName)"],
-            shortTitle: "Show Demo Stage",
+            phrases: ["Show the stage in \(.applicationName)"],
+            shortTitle: "Show BetterMeets",
             systemImageName: "rectangle.on.rectangle"
         )
         AppShortcut(

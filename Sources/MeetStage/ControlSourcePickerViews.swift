@@ -4,57 +4,33 @@ struct EmptyShortcutSlot: View {
     let slot: Int
     let pinnedWindowDescription: String?
     let shortcutModifier: GlobalShortcutModifier
-
-    @Environment(\.colorSchemeContrast) private var contrast
-
-    private var isUnavailable: Bool { pinnedWindowDescription != nil }
+    let unpin: () -> Void
 
     var body: some View {
-        VStack(spacing: ControlMetrics.sourceLabelSpacing) {
-            Text(isUnavailable ? "Unavailable" : "Empty")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .frame(height: ControlMetrics.sourceLabelHeight)
-
-            ZStack {
-                RoundedRectangle(cornerRadius: ControlMetrics.sourceTileRadius)
-                    .fill(.primary.opacity(0.035))
-                RoundedRectangle(cornerRadius: ControlMetrics.sourceTileRadius)
-                    .strokeBorder(
-                        isUnavailable ? ControlPalette.warning : .primary.opacity(contrast == .increased ? 0.5 : 0.20),
-                        style: StrokeStyle(lineWidth: 1, dash: [3, 3])
-                    )
-                if isUnavailable {
-                    Image(systemName: "pin.slash")
-                        .font(.system(size: 18, weight: .light))
-                        .foregroundStyle(.secondary)
-                }
-                Text(shortcutModifier.displayName(for: slot))
-                    .font(.system(size: 11, weight: .semibold).monospaced())
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "pin.slash")
+                .foregroundStyle(.orange)
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Window unavailable")
+                    .font(.callout.weight(.medium))
+                Text(pinnedWindowDescription ?? "Pinned window")
+                    .font(.caption)
                     .foregroundStyle(.secondary)
-                    .padding(6)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                    .lineLimit(2)
+                Button("Unpin", action: unpin)
+                    .buttonStyle(.link)
+                    .font(.caption)
             }
-            .frame(height: ControlMetrics.sourcePreviewHeight)
-
+            Spacer(minLength: 0)
+            Text(shortcutModifier.displayName(for: slot))
+                .font(.caption.monospaced())
+                .foregroundStyle(.secondary)
         }
-        .frame(width: ControlMetrics.sourceTileWidth)
-        .help(helpText)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(helpText)
-        .accessibilityHint(
-            isUnavailable
-                ? "The pinned window will return here when it is available"
-                : "A window can be pinned here from its context menu")
-    }
-
-    private var helpText: String {
-        if let pinnedWindowDescription {
-            return "\(shortcutModifier.displayName(for: slot)): \(pinnedWindowDescription) is unavailable"
-        }
-        return "\(shortcutModifier.displayName(for: slot)): Empty shortcut slot"
+        .padding(8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contextMenu { Button("Unpin Window", action: unpin) }
+        .accessibilityElement(children: .combine)
+        .accessibilityAction(named: "Unpin Window", unpin)
     }
 }
 
@@ -67,6 +43,7 @@ struct CompactWindowButton: View {
     let isPaused: Bool
     let isPending: Bool
     let isKeyboardFocused: Bool
+    var compact = false
     let shortcutOwner: (Int) -> String?
     let action: () -> Void
     let pin: (Int) -> Void
@@ -76,7 +53,6 @@ struct CompactWindowButton: View {
     @State private var hoverTask: Task<Void, Never>?
     @State private var isHovering = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
 
     var body: some View {
         Button {
@@ -84,21 +60,33 @@ struct CompactWindowButton: View {
             showPreview = false
             action()
         } label: {
-            VStack(spacing: ControlMetrics.sourceLabelSpacing) {
-                identityRow
-                sourcePreview
-                Text(source.title)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+            Group {
+                if compact {
+                    HStack(spacing: 10) {
+                        sourcePreview.frame(width: 64, height: 40)
+                        VStack(alignment: .leading, spacing: 4) {
+                            identityRow
+                            if source.hasDistinctTitle { titleLabel }
+                        }
+                    }
+                } else {
+                    VStack(alignment: .leading, spacing: 6) {
+                        identityRow
+                        sourcePreview.aspectRatio(16 / 9, contentMode: .fit)
+                        if source.hasDistinctTitle { titleLabel }
+                    }
+                }
             }
-            .frame(width: ControlMetrics.sourceTileWidth)
+            .frame(maxWidth: .infinity)
             .padding(6)
             .background(
-                ControlPalette.accent.opacity(isSelected ? 0.09 : 0),
-                in: RoundedRectangle(cornerRadius: 12)
+                (isPaused ? Color.orange : Color.primary).opacity(isSelected ? 0.07 : 0),
+                in: RoundedRectangle(cornerRadius: 14)
             )
+            .overlay {
+                RoundedRectangle(cornerRadius: 14)
+                    .strokeBorder(borderColor, lineWidth: 2)
+            }
             .contentShape(Rectangle())
         }
         .buttonStyle(CompactIconButtonStyle())
@@ -114,7 +102,8 @@ struct CompactWindowButton: View {
             return .handled
         }
         .contextMenu {
-            Button(isPaused ? "Resume Sharing" : isSelected ? "Pause Sharing" : "Put on Stage", action: action)
+            Button(isPaused ? "Resume Stage" : "Put on Stage", action: action)
+                .disabled(isSelected && !isPaused)
             Button("Preview Window") { showPreview = true }
             Divider()
             Menu(shortcutModifier == .disabled ? "Pin Source Slot" : "Pin Global Shortcut") {
@@ -167,60 +156,46 @@ struct CompactWindowButton: View {
         }
         .accessibilityLabel(accessibilityLabel)
         .accessibilityValue(
-            isPending ? "Switching" : isPaused ? "Paused" : isSelected ? "Live" : "Not live"
+            isPending ? "Preparing" : isPaused ? "Paused" : isSelected ? "On stage" : "Not on stage"
         )
         .accessibilityHint(accessibilityHint)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     private var sourcePreview: some View {
-        ZStack {
-            Color.black.opacity(0.85)
-            if let thumbnail = source.thumbnail {
-                Image(nsImage: thumbnail)
-                    .resizable()
-                    .scaledToFit()
-            } else if let icon = source.applicationIcon {
-                Image(nsImage: icon)
-                    .resizable()
-                    .scaledToFit()
-                    .frame(width: 32, height: 32)
-            } else {
-                Image(systemName: "macwindow")
-                    .foregroundStyle(.white.opacity(0.65))
+        Color.black
+            .overlay {
+                if let thumbnail = source.thumbnail {
+                    Image(nsImage: thumbnail)
+                        .resizable()
+                        .scaledToFit()
+                } else if let icon = source.applicationIcon {
+                    Image(nsImage: icon)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 32, height: 32)
+                } else {
+                    Image(systemName: "macwindow")
+                        .foregroundStyle(.white.opacity(0.65))
+                }
             }
-        }
-        .frame(width: ControlMetrics.sourcePreviewWidth, height: ControlMetrics.sourcePreviewHeight)
-        .clipped()
-        .overlay { Color.white.opacity(isHovering ? 0.08 : 0) }
-        .overlay(alignment: .bottomTrailing) {
-            if let shortcut {
-                shortcutKeycap(shortcut)
-                    .padding(5)
-            }
-        }
-        .overlay(alignment: .bottomLeading) {
-            if isKeyboardFocused {
-                Image(systemName: "return")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .padding(4)
-                    .background(.black.opacity(0.8), in: RoundedRectangle(cornerRadius: 4))
-                    .padding(5)
-            }
-        }
-        .clipShape(RoundedRectangle(cornerRadius: ControlMetrics.sourceTileRadius, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: ControlMetrics.sourceTileRadius, style: .continuous)
-                .strokeBorder(borderColor, lineWidth: isSelected || isPending || isKeyboardFocused ? 2 : 1)
-        }
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: visualState)
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: isHovering)
+            .clipped()
+            .overlay { Color.white.opacity(isHovering ? 0.08 : 0) }
+            .clipShape(RoundedRectangle(cornerRadius: ControlMetrics.sourceTileRadius, style: .continuous))
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.12), value: isHovering)
+    }
+
+    private var titleLabel: some View {
+        Text(source.title)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .lineLimit(compact ? 2 : 1)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var identityRow: some View {
         HStack(spacing: 4) {
-            if let icon = source.applicationIcon {
+            if !compact, let icon = source.applicationIcon {
                 Image(nsImage: icon)
                     .resizable()
                     .scaledToFit()
@@ -229,19 +204,20 @@ struct CompactWindowButton: View {
                         height: ControlMetrics.sourceApplicationIconSize)
             }
             Text(source.applicationName)
-                .font(.system(size: 11, weight: isSelected ? .medium : .regular))
-                .lineLimit(1)
+                .font(.system(size: 12, weight: .medium))
+                .lineLimit(compact ? 2 : 1)
             Spacer(minLength: 0)
             if isPending {
                 ProgressView().controlSize(.mini)
             } else if isPaused || isSelected {
-                Image(systemName: isPaused ? "pause.fill" : "play.fill")
+                Image(systemName: isPaused ? "pause.fill" : "circle.fill")
                     .font(.system(size: 9, weight: .semibold))
                     .foregroundStyle(isPaused ? ControlPalette.warning : ControlPalette.accent)
-                    .frame(width: 12)
+                    .frame(width: 10)
             }
+            if let shortcut { shortcutKeycap(shortcut) }
         }
-        .frame(height: ControlMetrics.sourceLabelHeight)
+        .frame(minHeight: ControlMetrics.sourceLabelHeight)
         .accessibilityHidden(true)
     }
 
@@ -254,38 +230,21 @@ struct CompactWindowButton: View {
             Text(shortcutModifier.displayName(for: slot))
                 .font(.system(size: 11, weight: .semibold).monospaced())
         }
-        .foregroundStyle(.white)
-        .padding(.horizontal, 5)
-        .padding(.vertical, 3)
-        .background(
-            keycapColor,
-            in: RoundedRectangle(cornerRadius: 5, style: .continuous)
-        )
-        .overlay {
-            RoundedRectangle(cornerRadius: 5, style: .continuous)
-                .strokeBorder(.white.opacity(0.2), lineWidth: 0.5)
-        }
-    }
-
-    private var keycapColor: Color {
-        if !isShortcutAvailable { return .red.opacity(0.95) }
-        if isPaused || isPending { return ControlPalette.warning }
-        if isSelected { return ControlPalette.accent }
-        return .black.opacity(0.82)
+        .foregroundStyle(isShortcutAvailable ? Color.secondary : .red)
+        .padding(.horizontal, 4)
+        .padding(.vertical, 2)
+        .background(.quaternary, in: RoundedRectangle(cornerRadius: 4))
+        .fixedSize()
     }
 
     private var borderColor: Color {
         if isPending || isPaused { return ControlPalette.warning }
         if isSelected || isKeyboardFocused { return ControlPalette.accent }
-        return .white.opacity(colorSchemeContrast == .increased ? 0.6 : isHovering ? 0.35 : 0.18)
-    }
-
-    private var visualState: Int {
-        isPending ? 3 : isPaused ? 2 : isSelected ? 1 : 0
+        return .clear
     }
 
     private var accessibilityLabel: String {
-        let action = isPaused ? "Resume sharing" : isSelected ? "Pause sharing" : "Share"
+        let action = isPaused ? "Resume" : "Select"
         let name = "\(action) \(source.applicationName), \(source.title)"
         guard let shortcut else { return name }
         return "\(name), shortcut \(shortcutModifier.spokenName(for: shortcut))"
@@ -293,12 +252,12 @@ struct CompactWindowButton: View {
 
     private var accessibilityHint: String {
         if isPaused {
-            return "Resumes this window. Open the context menu to pin a global shortcut."
+            return "Resumes this window. Press Space to preview, or open the context menu to pin it."
         }
         if isSelected {
-            return "Pauses this window. Open the context menu to pin a global shortcut."
+            return "This window is already on stage. Use Pause Stage to hide it."
         }
-        return "Selects this window. Open the context menu to pin a global shortcut."
+        return "Puts this window on stage. Press Space to preview, or open the context menu to pin it."
     }
 
     @ViewBuilder

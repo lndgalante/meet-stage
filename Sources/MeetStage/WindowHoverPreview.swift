@@ -47,11 +47,12 @@ struct WindowHoverPreview: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(source.title)
                         .font(.callout.weight(.semibold))
-                        .lineLimit(1)
-                    Text(source.applicationName)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if source.hasDistinctTitle {
+                        Text(source.applicationName)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
 
                 Spacer()

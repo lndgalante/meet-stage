@@ -1,12 +1,8 @@
 import SwiftUI
 
 enum ControlMetrics {
-    static let sourceTileWidth: CGFloat = 148
-    static let sourcePreviewWidth = sourceTileWidth
-    static let sourcePreviewHeight: CGFloat = 84
     static let sourceTileRadius: CGFloat = 8
     static let sourceLabelHeight: CGFloat = 18
-    static let sourceLabelSpacing: CGFloat = 4
     static let sourceApplicationIconSize: CGFloat = 14
     static let controlBarButtonHeight: CGFloat = 30
     static let controlBarActionCornerRadius: CGFloat = 8
@@ -22,7 +18,8 @@ enum ControlPalette {
 
 struct ControlView: View {
     @ObservedObject var manager: CaptureManager
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    var compact = false
+    @ObservedObject private var windowState = BetterMeetsWindowState.shared
     @FocusState private var focusedSourceID: CGWindowID?
 
     var body: some View {
@@ -66,12 +63,15 @@ struct ControlView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .accessibilityElement(children: .contain)
         .accessibilityLabel("Window selector")
+        .onChange(of: windowState.sourceFocusRequest) { _, _ in
+            focusedSourceID = manager.selectedWindowID ?? manager.displayedWindows.first?.id
+        }
     }
 
     private var sourceScroller: some View {
         ScrollViewReader { proxy in
             ScrollView(.vertical) {
-                LazyVStack(spacing: 12) {
+                LazyVStack(spacing: compact ? 4 : 10) {
                     ForEach(manager.displayedWindows) { source in
                         windowButton(for: source)
                             .id(source.id)
@@ -80,14 +80,14 @@ struct ControlView: View {
                         EmptyShortcutSlot(
                             slot: slot,
                             pinnedWindowDescription: manager.shortcutOwnerDescription(for: slot),
-                            shortcutModifier: manager.globalShortcutModifier
+                            shortcutModifier: manager.globalShortcutModifier,
+                            unpin: { manager.unpinSlot(slot) }
                         )
                     }
                 }
                 .padding(.horizontal, 8)
                 .padding(.bottom, 12)
             }
-            .scrollIndicators(.hidden)
             .scrollBounceBehavior(.basedOnSize)
             .onMoveCommand(perform: moveSourceFocus)
             .onChange(of: manager.pendingWindowID ?? manager.selectedWindowID) { _, sourceID in
@@ -120,6 +120,7 @@ struct ControlView: View {
             isPaused: isSelected && manager.state == .paused,
             isPending: source.id == manager.pendingWindowID,
             isKeyboardFocused: focusedSourceID == source.id,
+            compact: compact,
             shortcutOwner: manager.shortcutOwnerDescription(for:),
             action: { manager.select(source) },
             pin: { manager.pin(source, to: $0) },
@@ -130,9 +131,7 @@ struct ControlView: View {
 
     private func scrollTo(_ sourceID: CGWindowID?, using proxy: ScrollViewProxy) {
         guard let sourceID else { return }
-        withAnimation(reduceMotion ? nil : .spring(response: 0.3, dampingFraction: 1)) {
-            proxy.scrollTo(sourceID, anchor: .center)
-        }
+        proxy.scrollTo(sourceID)
     }
 
     private func moveSourceFocus(_ direction: MoveCommandDirection) {
@@ -152,10 +151,10 @@ struct ControlView: View {
             Text("Allow screen recording to see your windows")
                 .font(.caption)
                 .multilineTextAlignment(.center)
-            Button("Allow Access") { manager.requestScreenRecordingPermission() }
-            Button("Restart BetterMeets") { manager.restartApplication() }
-                .buttonStyle(.link)
+            Text("Use the setup instructions beside this list.")
                 .font(.caption)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
         }
         .controlSize(.small)
         .padding(14)

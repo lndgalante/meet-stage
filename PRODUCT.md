@@ -29,7 +29,7 @@ available in Stage Only mode.
 ## Capabilities
 
 - Source thumbnails, app icons, window titles, hover previews, and keyboard preview.
-- Select, switch, pause, resume, and stop capture; open the original source app.
+- Select and switch sources; explicitly pause, resume, or clear the stage; open the original source app.
 - Configurable global slots 1–9, persistent pins, unavailable slots, and conflicts.
 - Auto Polish, Spotlight, temporary annotations, click ripples, and keystroke badges.
 - Native settings, window controls, resizing, full screen, and frame restoration.

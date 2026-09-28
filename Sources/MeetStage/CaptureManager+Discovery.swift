@@ -118,7 +118,10 @@ extension CaptureManager {
                 } else if state == .paused, selectedWindowID != nil {
                     state = .paused
                 } else {
-                    state = .idle
+                    switch state {
+                    case .failed where !isManual: break
+                    default: state = .idle
+                    }
                 }
             } else if pendingWindowID == nil, selectedWindowID != nil {
                 state = .capturing

@@ -81,7 +81,7 @@ struct StageFrameBackdrop: View {
     private var backdrop: some View {
         switch style {
         case .none:
-            Color.black
+            Color.clear
         case .midnight:
             LinearGradient(
                 colors: [

@@ -19,7 +19,7 @@ struct SourceSelectionGuidance {
         switch state {
         case .permissionRequired:
             title = String(localized: "Screen access needed")
-            hint = String(localized: "Already allowed? Restart")
+            hint = String(localized: "Allow screen recording to choose a source")
             status = .warning
         case .loading:
             title = String(localized: "Looking for app windows…")
@@ -35,17 +35,17 @@ struct SourceSelectionGuidance {
             title =
                 selectedApplication.map { String(localized: "\($0) paused") }
                 ?? String(localized: "Stage paused")
-            hint = String(localized: "Click again to resume")
+            hint = String(localized: "Resume to show this source again")
             status = .paused
         case .capturing:
             title =
                 selectedApplication.map { String(localized: "\($0) on stage") }
                 ?? String(localized: "Showing on stage")
-            hint = String(localized: "Click again to pause")
+            hint = String(localized: "Pause hides this source")
             status = .live
         case .failed:
             title = String(localized: "Window unavailable")
-            hint = String(localized: "Choose an app to try again")
+            hint = String(localized: "Choose another window or refresh the list")
             status = .warning
         case .idle:
             title =
@@ -54,7 +54,7 @@ struct SourceSelectionGuidance {
             if let suggestedApplication, let shortcut {
                 hint = String(localized: "Try \(suggestedApplication) · \(shortcut)")
             } else if suggestedApplication != nil {
-                hint = String(localized: "Click a preview to start")
+                hint = String(localized: "Select a window to put it on stage")
             } else {
                 hint = String(localized: "Open an app to get started")
             }

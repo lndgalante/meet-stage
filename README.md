@@ -3,7 +3,7 @@
 **Stay in flow. Look polished.**
 
 BetterMeets is a lightweight macOS app for smoother live software demos. Share
-one stable Demo Stage in your meeting, then switch between app windows without
+one stable BetterMeets window in your meeting, then switch between app windows without
 reopening the share picker or exposing your desktop.
 
 ## How it works
@@ -11,20 +11,21 @@ reopening the share picker or exposing your desktop.
 BetterMeets brings tools, window selection, and the live stage into one resizable
 Mac window. The left sidebar stacks presentation tools above a vertical list of
 window thumbnails. The main area shows the selected source at its original
-aspect ratio. The bottom strip shows status and provides Open App and Stop actions.
+aspect ratio. The bottom strip groups source status, Open Source App, Pause/Resume, and Clear Stage.
 
-Choose a thumbnail to put a window on stage. Click it again to pause, and again
-to resume. The toolbar also offers Pause/Resume (Shift–Command–P). A source is
+Choose a thumbnail to put a window on stage. Selecting the live source again
+keeps it live. Use Pause/Resume (Shift–Command–P) to hide or restore the source.
+Clear Stage removes it without stopping your meeting app’s share. A source is
 marked live only after ScreenCaptureKit delivers its first complete video frame.
 The window keeps the size and position you chose when sources change.
 
-Share **BetterMeets** in your meeting app. Choose **View → Stage Only**
-(Control–Command–S) to hide the tools, window list, status strip, and toolbar.
+Choose **Stage Only** (Control–Command–S) to hide the tools, window list,
+status strip, and toolbar. Then share **BetterMeets** in your meeting app.
 Press the same shortcut or Escape to restore controls. Use the standard green
 traffic light for full screen while controls are visible. Returning
 to controls while sharing makes them visible to your audience.
 
-The stage is a live presentation surface. Use **Open App** (Shift–Command–O) to
+The stage is a live presentation surface. Use **Open Source App** (Shift–Command–O) to
 interact with the original source window. Cursor, ink, and pointer effects follow
 the selected source while its application is frontmost.
 
@@ -36,12 +37,16 @@ Scroll vertically to browse sources; Up/Down and Return select by keyboard, and
 Space opens a larger preview. Source shortcuts also scroll the selected tile
 into view. New and closed windows update automatically.
 
-The six tool rows provide Auto Polish, Spotlight, Annotate, Click Highlights,
-Keystrokes, and Settings. Right-click a tool to open its settings. Settings opens
-as a native popover from the gear and remains available through Command–comma.
+The always-visible tools provide Auto Polish, Spotlight, Annotations, Click Highlights,
+and Keystrokes. The single gear beside Tools and Command–comma open the same native Settings window.
+Each effect’s settings show its On/Off state beside the preview.
 
-The same tools also appear in the compact floating widget beside the selected
-source window. It follows moves and resizes, uses the right or left gutter when
+Drag the sidebar divider to resize it. Thumbnails become compact rows automatically
+in short windows. Unavailable pinned windows
+have a local Unpin action. Full window titles appear in enlarged previews.
+
+The same tools also appear in the floating widget beside the selected source
+window, together with Pause/Resume, Clear Stage, and Show Controls. It follows moves and resizes, uses the right or left gutter when
 space allows, and stays inside the screen. It remains available in Stage Only
 mode while the source app is active. Returning to BetterMeets or another app
 hides it, as does the source becoming unavailable.
@@ -49,13 +54,13 @@ The widget is a separate window; sharing the BetterMeets workspace excludes it.
 Window → Show Source Tools (Control–Command–T) opens the source app and its widget.
 
 - **Auto Polish** adds a styled frame, temporarily zooms around clicks, and
-  mirrors the macOS cursor at 2× without moving the real pointer. Settings → Stage
+  mirrors the macOS cursor at 2× without moving the real pointer. Settings → Auto Polish
   selects the backdrop and optional logo.
 - **Spotlight** follows the source pointer with a focused circle and dims the
-  surrounding content. Settings → Focus adjusts size and outside opacity.
-- **Annotate** draws temporary ink over the original source and mirrors it on
+  surrounding content. Settings → Spotlight adjusts size and outside opacity.
+- **Annotations** draws temporary ink over the original source and mirrors it on
   stage. Closed strokes can snap to circles or rectangles. Escape finishes drawing;
-  Command–Z undoes strokes. Settings → Draw sets color and fade time.
+  Command–Z undoes strokes. Settings → Annotations sets color and fade time.
 - **Click Highlights** shows ripples at source clicks. **Keystrokes** displays
   shortcut badges on stage and requests Accessibility when first enabled.
 
@@ -142,13 +147,13 @@ identity.
 1. Run `./dev-app.sh`.
 2. Allow Screen & System Audio Recording when macOS asks. BetterMeets captures
    video only.
-3. If macOS asks for a restart, select **Restart BetterMeets** in the sidebar.
+3. If macOS asks for a restart, use **Restart BetterMeets** in the access setup.
 4. Select a source window.
-5. In your meeting, share **BetterMeets** and enable **Stage Only**.
+5. Enable **Stage Only**, then share **BetterMeets** in your meeting.
 6. Switch sources from BetterMeets or your pinned global shortcuts.
-7. Repeat the current source click or global shortcut to pause or resume it.
+7. Use **Pause/Resume** in the status strip or floating source tools.
 8. Optional: turn on Auto Polish and choose its framing and motion in Settings
-   → Stage.
+   → Auto Polish.
 
 BetterMeets windows are excluded from the source list. Your meeting keeps
 capturing the same workspace window while BetterMeets changes what appears
@@ -171,7 +176,7 @@ inside it.
 | `Sources/MeetStage/ShortcutAssignments.swift` | Deterministic shortcut-assignment policy |
 | `Sources/MeetStage/ShortcutPreferencesStore.swift` | Backward-compatible shortcut persistence |
 | `Sources/MeetStage/SampleBufferRenderer.swift` | High-resolution frame rendering |
-| `Sources/MeetStage/StageWindowSizing.swift` | Demo Stage geometry and aspect-ratio handling |
+| `Sources/MeetStage/StageWindowSizing.swift` | Stage geometry and aspect-ratio handling |
 | `Sources/MeetStage/AutoPresentation.swift` and `CaptureManager+AutoPresentation.swift` | Click-driven zoom camera, read-only pointer tracking, and 2× native system-cursor mirroring |
 | `Sources/MeetStage/StageFramePresentation.swift` | Styled-frame layout, built-in backdrops, blur, corners, and shadows |
 | `Sources/MeetStage/WindowConfiguration.swift` | AppKit window behavior used by SwiftUI scenes |
@@ -314,6 +319,6 @@ notarization are intentionally external to the repository.
 - Styled frames use built-in gradients and colors; custom image wallpapers are
   not yet supported.
 - macOS may block protected video surfaces, causing them to appear black.
-- Keep the Demo Stage open while it is being shared.
+- Keep BetterMeets open while it is being shared.
 - If an app restores two windows with the same title, its pinned shortcut stays
   unavailable instead of guessing.

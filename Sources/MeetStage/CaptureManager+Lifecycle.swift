@@ -266,7 +266,7 @@ extension CaptureManager {
         configuration.capturesAudio = false
         configuration.ignoreShadowsSingleWindow = true
         configuration.ignoreGlobalClipSingleWindow = true
-        configuration.streamName = "BetterMeets — Demo Stage"
+        configuration.streamName = "BetterMeets — Stage"
         return configuration
     }
 }

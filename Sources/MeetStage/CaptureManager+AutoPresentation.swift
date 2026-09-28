@@ -1,11 +1,11 @@
 import AppKit
 
 extension CaptureManager {
-    func toggleAutoPresentation() {
+    func toggleAutoPresentation(focusSource: Bool = true) {
         autoPresentationEnabled.toggle()
         if autoPresentationEnabled {
             updateMouseClickMonitoring()
-            focusSelectedSourceIfPossible()
+            if focusSource { focusSelectedSourceIfPossible() }
             activateAutoPresentationIfPossible()
         } else {
             autoPresentation.clear()

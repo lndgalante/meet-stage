@@ -3,29 +3,36 @@ import SwiftUI
 struct WorkspaceView: View {
     @ObservedObject var manager: CaptureManager
     @ObservedObject private var windowState = BetterMeetsWindowState.shared
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorSchemeContrast) private var contrast
     @FocusState private var stageIsFocused: Bool
+    @AppStorage("BetterMeets.hasUsedStageOnly") private var hasUsedStageOnly = false
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            if !windowState.stageOnly {
-                VStack(spacing: 12) {
-                    StageActionsView(manager: manager)
-                        .workspacePanel()
-                    ControlView(manager: manager)
-                        .frame(maxHeight: .infinity)
-                        .workspacePanel()
-                }
-                .frame(width: WorkspaceMetrics.sidebarWidth)
-                .transition(.opacity)
-            }
-
-            VStack(spacing: 12) {
+        Group {
+            if windowState.stageOnly {
                 stage
-                if !windowState.stageOnly {
-                    StageStatusBar(manager: manager)
-                        .workspacePanel()
+            } else {
+                HSplitView {
+                    sidebar
+                        .frame(minWidth: 200, idealWidth: WorkspaceMetrics.sidebarWidth, maxWidth: 320)
+                        .background(SidebarWidthRestorer())
+                    VStack(spacing: 12) {
+                        if manager.isLive && !hasUsedStageOnly {
+                            HStack(spacing: 12) {
+                                Text("Choose Stage Only before sharing BetterMeets in your meeting.")
+                                    .font(.callout)
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Spacer(minLength: 0)
+                                Button("Stage Only") { windowState.stageOnly = true }
+                            }
+                            .padding(12)
+                            .workspacePanel()
+                        }
+                        stage
+                        StageStatusBar(manager: manager).workspacePanel()
+                    }
+                    .padding(.leading, 12)
+                    .frame(minWidth: 440)
                 }
             }
         }
@@ -39,12 +46,12 @@ struct WorkspaceView: View {
                 Button {
                     windowState.toggleStageOnly()
                 } label: {
-                    Label(
-                        windowState.stageOnly ? "Show Controls" : "Stage Only",
-                        systemImage: windowState.stageOnly ? "sidebar.left" : "rectangle"
-                    )
+                    HStack(spacing: 6) {
+                        Image(systemName: "rectangle")
+                        Text("Stage Only")
+                    }
                 }
-                .help(windowState.stageOnly ? "Show tools and windows (⌃⌘S)" : "Hide controls for sharing (⌃⌘S)")
+                .help(windowState.stageOnly ? "Show tools and windows (⌃⌘S)" : "Hide controls before sharing BetterMeets. Restoring controls shows them in that window share (⌃⌘S)")
             }
             ToolbarItem(placement: .principal) {
                 HStack(spacing: 6) {
@@ -54,50 +61,57 @@ struct WorkspaceView: View {
                         .font(.headline)
                 }
             }
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    manager.toggleCapturePause()
-                } label: {
-                    Label(
-                        manager.state == .paused ? "Resume" : "Pause",
-                        systemImage: manager.state == .paused ? "play.fill" : "pause.fill"
-                    )
-                }
-                .disabled(!manager.canToggleCapturePause)
-                .help(manager.state == .paused ? "Resume sharing (⇧⌘P)" : "Pause sharing (⇧⌘P)")
-            }
         }
         .toolbar(removing: .title)
         .ignoresSafeArea(.container, edges: windowState.stageOnly ? .top : [])
         .toolbar(windowState.stageOnly ? .hidden : .visible, for: .windowToolbar)
-        .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: windowState.stageOnly)
         .task {
             manager.startWindowMonitoring()
             manager.refreshWindows()
         }
         .onChange(of: windowState.stageOnly) { _, stageOnly in
-            if stageOnly { stageIsFocused = true }
+            if stageOnly {
+                stageIsFocused = true
+                hasUsedStageOnly = true
+            }
+        }
+    }
+
+    private var sidebar: some View {
+        GeometryReader { geometry in
+            VStack(spacing: 12) {
+                WorkspaceTools(manager: manager)
+                    .workspacePanel()
+                ControlView(manager: manager, compact: geometry.size.height < 680)
+                    .frame(maxHeight: .infinity)
+                    .workspacePanel()
+            }
         }
     }
 
     private var stage: some View {
-        GeometryReader { geometry in
-            let size = WorkspaceMetrics.stageSize(
-                fitting: geometry.size,
-                aspectRatio: manager.displayedStageAspectRatio
-            )
-            StageView(manager: manager)
-                .frame(width: size.width, height: size.height)
-                .clipShape(RoundedRectangle(cornerRadius: windowState.stageOnly ? 0 : 12))
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .focusable()
-                .focusEffectDisabled()
-                .focused($stageIsFocused)
-                .onKeyPress(.escape) {
-                    guard windowState.stageOnly else { return .ignored }
-                    windowState.stageOnly = false
-                    return .handled
+        Group {
+            if !manager.isLive && !windowState.stageOnly {
+                StageSetupView(manager: manager)
+            } else {
+                GeometryReader { geometry in
+                    let size = WorkspaceMetrics.stageSize(
+                        fitting: geometry.size,
+                        aspectRatio: manager.displayedStageAspectRatio
+                    )
+                    StageView(manager: manager)
+                        .frame(width: size.width, height: size.height)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .focusable()
+                        .focusEffectDisabled()
+                        .focused($stageIsFocused)
+                        .onKeyPress(.escape) {
+                            guard windowState.stageOnly else { return .ignored }
+                            windowState.stageOnly = false
+                            return .handled
+                        }
                 }
+            }
         }
         .background(Color(nsColor: .underPageBackgroundColor))
         .clipShape(RoundedRectangle(cornerRadius: windowState.stageOnly ? 0 : 16))
@@ -112,7 +126,7 @@ struct WorkspaceView: View {
             Button(windowState.stageOnly ? "Show Controls" : "Stage Only") {
                 windowState.toggleStageOnly()
             }
-            Button(manager.state == .paused ? "Resume Sharing" : "Pause Sharing") {
+            Button(manager.state == .paused ? "Resume Stage" : "Pause Stage") {
                 manager.toggleCapturePause()
             }
             .disabled(!manager.canToggleCapturePause)
@@ -122,8 +136,43 @@ struct WorkspaceView: View {
     }
 }
 
+private struct WorkspaceTools: View {
+    @ObservedObject var manager: CaptureManager
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("Tools").font(.callout.weight(.medium))
+                if enabledCount > 0 {
+                    Text("\(enabledCount) on").font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+                Button("Settings", systemImage: "gearshape") {
+                    UtilityWindows.showSettings(manager: manager)
+                }
+                .labelStyle(.iconOnly)
+                .buttonStyle(.borderless)
+                .help("Settings (⌘,)")
+            }
+            .padding(12)
+            StageActionsView(manager: manager)
+            if enabledCount > 0 && !manager.isLive {
+                Text("Ready for the next source")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 12)
+            }
+        }
+    }
+
+    private var enabledCount: Int {
+        [manager.autoPresentationEnabled, manager.spotlightEnabled, manager.annotationsEnabled,
+         manager.highlightsMouseClicks, manager.highlightsKeystrokes].filter { $0 }.count
+    }
+}
+
 enum WorkspaceMetrics {
-    static let sidebarWidth: CGFloat = 176
+    static let sidebarWidth: CGFloat = 224
     static let minimumSize = CGSize(width: 800, height: 560)
     static let defaultSize = CGSize(width: 1180, height: 780)
 

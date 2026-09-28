@@ -12,7 +12,7 @@ struct ClickPresentation: Equatable, Identifiable, Sendable {
 }
 
 /// Captures the same mouse event in Quartz and AppKit coordinates so a ripple
-/// can be aligned on both the Demo Stage and a source-window overlay.
+/// can be aligned on both the stage and a source-window overlay.
 struct GlobalClickLocation: Equatable, Sendable {
     let quartzX: CGFloat
     let quartzY: CGFloat

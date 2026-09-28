@@ -1,5 +1,5 @@
 enum CaptureSelectionAction: Equatable {
-    case pause
+    case keepCurrent
     case start
 }
 
@@ -15,7 +15,7 @@ enum CaptureSelectionPolicy {
         selectedWindowID: ID?,
         state: CaptureState
     ) -> CaptureSelectionAction {
-        sourceID == selectedWindowID && state == .capturing ? .pause : .start
+        sourceID == selectedWindowID && state == .capturing ? .keepCurrent : .start
     }
 }
 

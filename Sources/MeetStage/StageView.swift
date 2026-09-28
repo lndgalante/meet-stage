@@ -30,10 +30,12 @@ struct StageView: View {
                         }
                         Text(stageTitle)
                             .font(.title2.weight(.medium))
-                        Text(stageGuidance)
-                            .foregroundStyle(.secondary)
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal, 24)
+                        if !stageGuidance.isEmpty {
+                            Text(stageGuidance)
+                                .foregroundStyle(.secondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 24)
+                        }
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -69,7 +71,7 @@ struct StageView: View {
             value: manager.spotlightEnabled
         )
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(String(localized: "Demo Stage"))
+        .accessibilityLabel(String(localized: "Stage preview"))
         .accessibilityValue(stageAccessibilityValue)
         .accessibilityHint(
             String(localized: "This is the window to share in your meeting app")
@@ -77,40 +79,22 @@ struct StageView: View {
         .accessibilityAction(named: String(localized: "Show Controls")) {
             BetterMeetsWindowState.shared.stageOnly = false
         }
-        .accessibilityAction(named: String(localized: "Minimize Demo Stage")) {
+        .accessibilityAction(named: String(localized: "Minimize BetterMeets")) {
             BetterMeetsWindowActions.minimizeStage()
         }
-        .accessibilityAction(named: String(localized: "Toggle Demo Stage Full Screen")) {
+        .accessibilityAction(named: String(localized: "Toggle BetterMeets Full Screen")) {
             BetterMeetsWindowActions.toggleStageFullScreen()
         }
     }
 
     private var stageGuidance: String {
-        let guidance: String
-
-        switch manager.state {
-        case .switching:
-            guidance = String(localized: "Waiting for the first video frame")
-        case .paused:
-            guidance = String(localized: "Select this window again in BetterMeets to resume")
-        case .permissionRequired:
-            guidance = String(localized: "Allow screen recording in BetterMeets")
-        case let .failed(message):
-            guidance = message
-        default:
-            guidance = String(
-                localized:
-                    "Choose a window from the sidebar, then share\nBetterMeets in your meeting"
-            )
-        }
-
-        return guidance.hasSuffix(".") ? String(guidance.dropLast()) : guidance
+        manager.state == .paused ? String(localized: "The presentation will resume shortly") : ""
     }
 
     private var stageAccessibilityValue: String {
         if manager.isLive, let source = manager.activeCaptureSource {
             return String(
-                localized: "Live. Sharing \(source.applicationName), \(source.title)"
+                localized: "On stage. \(source.applicationName), \(source.title)"
             )
         }
         return "\(stageTitle). \(stageGuidance)"
@@ -119,11 +103,13 @@ struct StageView: View {
     private var stageTitle: String {
         switch manager.state {
         case .switching:
-            return String(localized: "Preparing the stage")
+            return String(localized: "Preparing presentation")
         case .paused:
-            return String(localized: "Sharing is paused")
+            return String(localized: "Presentation paused")
+        case .failed:
+            return String(localized: "Presentation unavailable")
         default:
-            return String(localized: "Nothing is on stage")
+            return String(localized: "Presentation ready")
         }
     }
 }

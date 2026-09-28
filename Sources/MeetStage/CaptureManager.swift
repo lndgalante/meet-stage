@@ -121,7 +121,7 @@ final class CaptureManager: ObservableObject {
     var pendingSelection: WindowSource?
     var selectionTask: Task<Void, Never>?
     var selectionGeneration = 0
-    var requestedPermissionThisLaunch = false
+    @Published var requestedPermissionThisLaunch = false
     var resolvedPinnedWindowIDs: [Int: CGWindowID] = [:]
 
     // MARK: - Initialization

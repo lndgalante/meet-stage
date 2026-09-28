@@ -12,6 +12,12 @@ struct WindowSource: Identifiable {
     var thumbnail: NSImage?
     let applicationIcon: NSImage?
 
+    var hasDistinctTitle: Bool {
+        let windowName = title.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        let appName = applicationName.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+        return !windowName.isEmpty && windowName.localizedCaseInsensitiveCompare(appName) != .orderedSame
+    }
+
     init(window: SCWindow, reusing presentation: WindowSource? = nil) {
         id = window.windowID
         self.window = window

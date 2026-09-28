@@ -14,6 +14,43 @@ struct StageInteractionTests {
         #expect(WorkspaceMetrics.stageSize(fitting: viewport, aspectRatio: .nan) == CGSize(width: 960, height: 600))
     }
 
+    @Test("A SwiftUI-managed split restores the sidebar without changing its delegate")
+    @MainActor
+    func restoreSidebarWidth() async throws {
+        let suite = "SidebarWidthTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(256, forKey: "BetterMeets.sidebarWidth")
+        let window = NSWindow(
+            contentRect: CGRect(x: 0, y: 0, width: 1000, height: 650),
+            styleMask: [.titled, .closable, .resizable], backing: .buffered, defer: false
+        )
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        let host = NSHostingView(
+            rootView: HSplitView {
+                Color.clear.frame(minWidth: 200, idealWidth: 224, maxWidth: 320)
+                    .background(SidebarWidthRestorer(defaults: defaults))
+                Color.clear.frame(minWidth: 440)
+            })
+        window.contentView = host
+        host.layoutSubtreeIfNeeded()
+        try await Task.sleep(for: .milliseconds(50))
+
+        func findSplit(in view: NSView) -> NSSplitView? {
+            if let split = view as? NSSplitView { return split }
+            return view.subviews.lazy.compactMap { findSplit(in: $0) }.first
+        }
+        let split = try #require(findSplit(in: host))
+        #expect(split.delegate is NSSplitViewController)
+        #expect(abs(try #require(split.arrangedSubviews.first).frame.width - 256) < 1)
+        split.setPosition(280, ofDividerAt: 0)
+        host.layoutSubtreeIfNeeded()
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(abs(try #require(split.arrangedSubviews.first).frame.width - 280) < 1)
+        #expect(abs(defaults.double(forKey: "BetterMeets.sidebarWidth") - 280) < 1)
+    }
+
     @Test("Window configuration preserves native controls and the user's chosen size")
     @MainActor
     func nativeWindowBehavior() throws {

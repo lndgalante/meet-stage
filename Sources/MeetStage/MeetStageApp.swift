@@ -23,6 +23,10 @@ struct MeetStageApp: App {
         .defaultPosition(.center)
         .windowToolbarStyle(.unifiedCompact)
         .commands {
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings…") { UtilityWindows.showSettings(manager: captureManager) }
+                    .keyboardShortcut(",", modifiers: [.command])
+            }
             CommandGroup(after: .appInfo) {
                 Button("Check for Updates…") {
                     updateController.checkForUpdates()
@@ -45,7 +49,7 @@ struct MeetStageApp: App {
             }
 
             CommandMenu("Capture") {
-                Button(captureManager.state == .paused ? "Resume Sharing" : "Pause Sharing") {
+                Button(captureManager.state == .paused ? "Resume Stage" : "Pause Stage") {
                     captureManager.toggleCapturePause()
                 }
                 .keyboardShortcut("p", modifiers: [.command, .shift])
@@ -64,7 +68,7 @@ struct MeetStageApp: App {
                 .keyboardShortcut("r", modifiers: [.command])
                 .disabled(captureManager.isRefreshing)
 
-                Button("Stop Capture") {
+                Button("Clear Stage") {
                     captureManager.stopCapture()
                 }
                 .keyboardShortcut(".", modifiers: [.command])
@@ -109,8 +113,8 @@ struct MeetStageApp: App {
 
                 Button(
                     captureManager.highlightsMouseClicks
-                        ? "Turn Off Click Highlighting"
-                        : "Turn On Click Highlighting"
+                        ? "Turn Off Click Highlights"
+                        : "Turn On Click Highlights"
                 ) {
                     captureManager.toggleMouseClickHighlighting()
                 }
@@ -118,8 +122,8 @@ struct MeetStageApp: App {
 
                 Button(
                     captureManager.highlightsKeystrokes
-                        ? "Turn Off Keystroke Highlighting"
-                        : "Turn On Keystroke Highlighting"
+                        ? "Turn Off Keystrokes"
+                        : "Turn On Keystrokes"
                 ) {
                     captureManager.toggleKeystrokeHighlighting()
                 }
@@ -171,9 +175,6 @@ struct MeetStageApp: App {
             }
         }
 
-        Settings {
-            BetterMeetsSettingsView(manager: captureManager)
-        }
     }
 
     private func sourceSlotButton(_ slot: Int) -> some View {
@@ -196,9 +197,9 @@ struct MeetStageApp: App {
 
         let prefix: String
         if source.id == captureManager.selectedWindowID {
-            prefix = captureManager.state == .paused ? "Resume" : "Pause"
+            prefix = captureManager.state == .paused ? "Resume" : "On stage:"
         } else {
-            prefix = "Share"
+            prefix = "Select"
         }
         return "\(prefix) \(source.applicationName) — \(source.title)"
     }

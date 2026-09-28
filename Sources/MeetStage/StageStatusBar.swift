@@ -4,44 +4,66 @@ struct StageStatusBar: View {
     @ObservedObject var manager: CaptureManager
 
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: symbol)
-                .foregroundStyle(statusColor)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(manager.sourceGuidance.title)
-                    .font(.callout.weight(.medium))
-                    .lineLimit(1)
-                Text(detail)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            if manager.isLive {
-                Button("Open App", systemImage: "arrow.up.forward.app") {
-                    manager.focusSelectedSourceIfPossible()
+        GeometryReader { geometry in
+            HStack(spacing: 12) {
+                Image(systemName: symbol)
+                    .foregroundStyle(statusColor)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(manager.sourceGuidance.title)
+                        .font(.callout.weight(.medium))
+                        .lineLimit(1)
+                    Text(detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
                 }
-                .help("Bring the source app forward to interact with it (⇧⌘O)")
+                .help("\(manager.sourceGuidance.title). \(detail)")
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                if manager.isLive {
+                    Button {
+                        manager.focusSelectedSourceIfPossible()
+                    } label: {
+                        if geometry.size.width > 700 {
+                            Label("Open Source App", systemImage: "arrow.up.forward.app")
+                        } else {
+                            Image(systemName: "arrow.up.forward.app")
+                        }
+                    }
+                    .accessibilityLabel("Open Source App")
+                    .help("Open the source app to interact with it (⇧⌘O)")
+                }
+                if manager.canStopCapture {
+                    Button(
+                        manager.state == .paused ? "Resume" : "Pause",
+                        systemImage: manager.state == .paused ? "play.fill" : "pause.fill",
+                        action: manager.toggleCapturePause
+                    )
+                    .disabled(!manager.canToggleCapturePause)
+                    .help(manager.state == .paused ? "Resume stage (⇧⌘P)" : "Hide the source and pause the stage (⇧⌘P)")
+                    Button("Clear Stage", systemImage: "stop.fill", action: manager.stopCapture)
+                        .help("Remove the source without stopping a share in your meeting app (⌘.)")
+                } else {
+                    Button("How to Present", systemImage: "questionmark.circle") {
+                        UtilityWindows.showGuide()
+                    }
+                }
             }
-            Button("Stop", systemImage: "stop.fill") { manager.stopCapture() }
-                .disabled(!manager.canStopCapture)
-                .help("Clear the stage (⌘.)")
+            .controlSize(.regular)
+            .padding(.horizontal, 14)
+            .frame(maxHeight: .infinity)
         }
-        .controlSize(.small)
-        .padding(.horizontal, 14)
-        .frame(height: 52)
+        .frame(height: 60)
     }
 
     private var detail: String {
         switch manager.state {
         case .capturing:
-            manager.selectedSource?.title ?? "Share this BetterMeets window in your meeting"
-        case .paused:
-            "Your audience sees a paused stage"
-        default:
-            manager.sourceGuidance.hint
+            manager.selectedSource.flatMap { $0.hasDistinctTitle ? $0.title : nil }
+                ?? "Use Open Source App to interact"
+        case .paused: "Source hidden until you resume"
+        default: manager.sourceGuidance.hint
         }
     }
 

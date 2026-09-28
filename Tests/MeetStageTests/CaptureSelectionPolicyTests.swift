@@ -3,14 +3,14 @@ import Testing
 
 @Suite("Capture selection policy")
 struct CaptureSelectionPolicyTests {
-    @Test("Repeating the live source pauses sharing")
-    func repeatLiveSourcePauses() {
+    @Test("Repeating the live source keeps the stage running")
+    func repeatLiveSourceKeepsCurrent() {
         #expect(
             CaptureSelectionPolicy.action(
                 for: 4,
                 selectedWindowID: 4,
                 state: .capturing
-            ) == .pause
+            ) == .keepCurrent
         )
     }
 

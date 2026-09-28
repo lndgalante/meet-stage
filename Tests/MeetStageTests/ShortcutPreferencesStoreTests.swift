@@ -18,6 +18,28 @@ struct ShortcutPreferencesStoreTests {
         #expect(fixture.store.loadExclusions() == [browser])
     }
 
+    @Test("An unavailable pin can be removed without reopening its window")
+    @MainActor
+    func unpinUnavailableWindow() throws {
+        let fixture = try makeFixture()
+        defer { fixture.clear() }
+        let editor = identity(application: "Editor", title: "Document")
+        let browser = identity(application: "Browser", title: "Dashboard")
+        fixture.store.savePins([2: editor, 7: browser])
+        let manager = CaptureManager(defaults: fixture.defaults)
+        manager.reconcileShortcuts(with: [])
+        #expect(manager.shortcutPins[7] == browser)
+        #expect(manager.shortcutWindowIDs[7] == nil)
+
+        manager.unpinSlot(7)
+
+        #expect(manager.shortcutWindowIDs[7] == nil)
+        #expect(manager.shortcutPins == [2: editor])
+        #expect(fixture.store.loadPins() == [2: editor])
+        let restored = CaptureManager(defaults: fixture.defaults)
+        #expect(restored.shortcutPins == [2: editor])
+    }
+
     @Test
     func testLoadingPinsRejectsInvalidSlotsAndKeepsNewestDuplicate() throws {
         let fixture = try makeFixture()

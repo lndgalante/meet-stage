@@ -5,12 +5,10 @@ struct ControlBarButton: View {
     let title: String
     let help: String
     var isOn: Bool?
-    var isPresented: Bool?
     var glyphOffset = CGSize.zero
     var isEnabled = true
     var showsPermissionWarning = false
     let action: () -> Void
-    var settingsAction: (() -> Void)? = nil
 
     @State private var isHovering = false
     @FocusState private var isFocused: Bool
@@ -67,11 +65,6 @@ struct ControlBarButton: View {
         .frame(height: ControlMetrics.controlBarButtonHeight)
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }
-        .contextMenu {
-            if let settingsAction {
-                Button("\(title) Settings…", action: settingsAction)
-            }
-        }
         .overlay {
             RoundedRectangle(
                 cornerRadius: ControlMetrics.controlBarActionCornerRadius,
@@ -88,10 +81,6 @@ struct ControlBarButton: View {
             reduceMotion ? nil : .easeOut(duration: 0.12),
             value: isOn
         )
-        .animation(
-            reduceMotion ? nil : .easeOut(duration: 0.12),
-            value: isPresented
-        )
     }
 
     private var buttonBackground: Color {
@@ -103,14 +92,11 @@ struct ControlBarButton: View {
     }
 
     private var isActive: Bool {
-        isOn == true || isPresented == true
+        isOn == true
     }
 
     private var accessibilityValue: String {
         guard isEnabled else { return String(localized: "Unavailable") }
-        if let isPresented {
-            return isPresented ? String(localized: "Open") : String(localized: "Closed")
-        }
         guard let isOn else { return String(localized: "Available") }
         if showsPermissionWarning { return String(localized: "Permission required") }
         return isOn ? String(localized: "On") : String(localized: "Off")

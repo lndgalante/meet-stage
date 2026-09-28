@@ -10,9 +10,15 @@ enum BetterMeetsWindowID {
 final class BetterMeetsWindowState: ObservableObject {
     static let shared = BetterMeetsWindowState()
     @Published var stageOnly = false
+    @Published var sourceFocusRequest = 0
     private init() {}
 
     func toggleStageOnly() { stageOnly.toggle() }
+
+    func focusSources() {
+        stageOnly = false
+        sourceFocusRequest += 1
+    }
 
 }
 
@@ -33,8 +39,7 @@ enum BetterMeetsWindowActions {
     static func toggleStageFullScreen() { stageWindow?.toggleFullScreen(nil) }
 
     static func openHelp() {
-        guard let url = URL(string: "https://github.com/lndgalante/meet-stage#readme") else { return }
-        NSWorkspace.shared.open(url)
+        UtilityWindows.showGuide()
     }
 }
 
@@ -53,7 +58,7 @@ final class BetterMeetsAppDelegate: NSObject, NSApplicationDelegate {
             .target = self
         menu.addItem(.separator())
         let stop = menu.addItem(
-            withTitle: String(localized: "Stop Capture"), action: #selector(stopCapture), keyEquivalent: "")
+            withTitle: String(localized: "Clear Stage"), action: #selector(stopCapture), keyEquivalent: "")
         stop.target = self
         stop.isEnabled = CaptureManager.shared.canStopCapture
         return menu

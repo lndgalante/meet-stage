@@ -11,18 +11,13 @@ extension EnvironmentValues {
 struct StageActionsView: View {
     @ObservedObject var manager: CaptureManager
     var layout: StageActionLayout = .sidebar
-    @State private var isShowingSettings = false
     @Environment(\.legibilityWeight) private var legibilityWeight
 
     var body: some View {
         VStack(spacing: controlSpacing) {
-            if layout == .sidebar {
-                Text("Tools")
-                    .font(.caption.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 6)
-                    .padding(.bottom, 4)
+            if layout == .floating {
+                floatingCaptureControls
+                Divider().padding(.horizontal, 12)
             }
             upperControls
             lowerControls
@@ -48,8 +43,7 @@ struct StageActionsView: View {
                 title: "Auto Polish",
                 help: autoPresentationControlHelp,
                 isOn: manager.autoPresentationEnabled,
-                action: manager.toggleAutoPresentation,
-                settingsAction: { showSettings(.stage) }
+                action: { manager.toggleAutoPresentation() }
             )
 
             ControlBarButton(
@@ -57,17 +51,15 @@ struct StageActionsView: View {
                 title: "Spotlight",
                 help: spotlightControlHelp,
                 isOn: manager.spotlightEnabled,
-                action: manager.toggleSpotlight,
-                settingsAction: { showSettings(.spotlight) }
+                action: { manager.toggleSpotlight() }
             )
 
             ControlBarButton(
                 systemImage: "pencil.and.outline",
-                title: "Annotate",
+                title: "Annotations",
                 help: annotationControlHelp,
                 isOn: manager.annotationsEnabled,
-                action: manager.toggleAnnotations,
-                settingsAction: { showSettings(.annotations) }
+                action: { manager.toggleAnnotations() }
             )
         }
     }
@@ -77,11 +69,10 @@ struct StageActionsView: View {
             ControlBarButton(
                 systemImage: "cursorarrow.rays",
                 title: "Click Highlights",
-                help: "Show click ripples on the selected window and Demo Stage",
+                help: "Show click ripples on the source window and stage",
                 isOn: manager.highlightsMouseClicks,
                 glyphOffset: ControlMetrics.clickHighlightGlyphOffset,
-                action: manager.toggleMouseClickHighlighting,
-                settingsAction: { showSettings(.clicks) }
+                action: manager.toggleMouseClickHighlighting
             )
 
             ControlBarButton(
@@ -89,31 +80,58 @@ struct StageActionsView: View {
                 title: "Keystrokes",
                 help: manager.needsKeystrokeAccessibilityPermission
                     ? "Allow Accessibility access, then turn on keystroke highlighting"
-                    : "Highlight keystrokes on the Demo Stage",
+                    : "Highlight keystrokes on the stage",
                 isOn: manager.highlightsKeystrokes,
                 glyphOffset: ControlMetrics.keystrokeHighlightGlyphOffset,
                 showsPermissionWarning: manager.needsKeystrokeAccessibilityPermission,
-                action: manager.toggleKeystrokeHighlighting,
-                settingsAction: { showSettings(.keystrokes) }
+                action: manager.toggleKeystrokeHighlighting
             )
 
-            ControlBarButton(
-                systemImage: "gearshape",
-                title: "Settings",
-                help: "Open Settings",
-                isPresented: isShowingSettings,
-                action: { isShowingSettings.toggle() }
-            )
-            .popover(isPresented: $isShowingSettings, arrowEdge: .trailing) {
-                BetterMeetsSettingsView(manager: manager)
-                    .fixedSize()
+            if layout == .floating {
+                ControlBarButton(
+                    systemImage: "gearshape",
+                    title: "Settings",
+                    help: "Open Settings",
+                    action: { UtilityWindows.showSettings(manager: manager) }
+                )
             }
         }
     }
 
-    private func showSettings(_ tab: SettingsTab) {
-        UserDefaults.standard.set(tab.rawValue, forKey: SettingsTab.storageKey)
-        isShowingSettings = true
+    private var floatingCaptureControls: some View {
+        VStack(spacing: StageActionsMetrics.spacing) {
+            Group {
+                if manager.sourceGuidance.status == .busy {
+                    ProgressView().controlSize(.mini)
+                } else {
+                    Image(systemName: manager.state == .paused ? "pause.circle.fill" : "circle.fill")
+                        .foregroundStyle(manager.state == .paused ? Color.orange : .accentColor)
+                }
+            }
+            .frame(height: 18)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(manager.sourceGuidance.title)
+            ControlBarButton(
+                systemImage: manager.state == .paused ? "play.fill" : "pause.fill",
+                title: manager.state == .paused ? "Resume Stage" : "Pause Stage",
+                help: manager.state == .paused ? "Resume the selected source" : "Hide the source and pause the stage",
+                isEnabled: manager.canToggleCapturePause,
+                action: manager.toggleCapturePause
+            )
+            ControlBarButton(
+                systemImage: "stop.fill", title: "Clear Stage",
+                help: "Remove the source from the stage",
+                isEnabled: manager.canStopCapture, action: manager.stopCapture
+            )
+            ControlBarButton(
+                systemImage: "sidebar.left", title: "Show Controls",
+                help: "Show BetterMeets controls. They will be visible if this window is shared.",
+                action: {
+                    BetterMeetsWindowState.shared.stageOnly = false
+                    BetterMeetsWindowActions.showStage()
+                }
+            )
+        }
     }
 
     private var controlSpacing: CGFloat {
@@ -153,7 +171,7 @@ struct StageActionsView: View {
             )
             : String(
                 localized:
-                    "Polish the Demo Stage with activity zooms, a 2× system pointer, and a styled frame"
+                    "Polish the stage with activity zooms, a 2× system pointer, and a styled frame"
             )
     }
 
