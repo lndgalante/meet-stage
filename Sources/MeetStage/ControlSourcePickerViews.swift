@@ -76,7 +76,10 @@ struct CompactWindowButton: View {
                             .foregroundStyle(isShortcutAvailable ? Color.primary : .red)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 3)
-                            .background(Color(nsColor: .controlColor), in: Capsule())
+                            .background(
+                                Color(nsColor: .windowBackgroundColor.withAlphaComponent(1)),
+                                in: Capsule()
+                            )
                             .overlay {
                                 Capsule()
                                     .strokeBorder(
