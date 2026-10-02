@@ -100,17 +100,6 @@ struct StageActionsView: View {
 
     private var floatingCaptureControls: some View {
         VStack(spacing: StageActionsMetrics.spacing) {
-            Group {
-                if manager.sourceGuidance.status == .busy {
-                    ProgressView().controlSize(.mini)
-                } else {
-                    Image(systemName: manager.state == .paused ? "pause.circle.fill" : "circle.fill")
-                        .foregroundStyle(manager.state == .paused ? Color.orange : .accentColor)
-                }
-            }
-            .frame(height: 18)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(manager.sourceGuidance.title)
             ControlBarButton(
                 systemImage: manager.state == .paused ? "play.fill" : "pause.fill",
                 title: manager.state == .paused ? "Resume Stage" : "Pause Stage",

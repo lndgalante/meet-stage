@@ -8,7 +8,7 @@ enum StageActionsMetrics {
     static let spacing: CGFloat = 6
     static let panelHeight =
         ControlMetrics.controlBarButtonHeight * 9
-        + spacing * 10 + 18 + 1 + inset * 2
+        + spacing * 9 + 1 + inset * 2
     static let edgeGap: CGFloat = 12
     static let panelSize = CGSize(width: panelWidth, height: panelHeight)
 }
