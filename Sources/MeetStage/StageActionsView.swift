@@ -100,6 +100,7 @@ struct StageActionsView: View {
 
     private var floatingCaptureControls: some View {
         VStack(spacing: StageActionsMetrics.spacing) {
+            FloatingDemoButton(demo: manager.demo)
             ControlBarButton(
                 systemImage: manager.state == .paused ? "play.fill" : "pause.fill",
                 title: manager.state == .paused ? "Resume Stage" : "Pause Stage",
@@ -164,4 +165,51 @@ struct StageActionsView: View {
             )
     }
 
+}
+
+private struct FloatingDemoButton: View {
+    @ObservedObject var demo: DemoSession
+
+    var body: some View {
+        let isActive = demo.phase.isActuating
+        ControlBarButton(
+            systemImage: isActive ? "pause.rectangle.fill" : "play.rectangle",
+            title: title,
+            help: isActive ? "Pause and keep the current view" : "Play or continue the real-time demo",
+            isOn: isActive,
+            isEnabled: isActive || canContinue,
+            action: {
+                if isActive {
+                    demo.pause()
+                } else if case .needsStart = demo.phase {
+                    demo.returnToStart()
+                } else {
+                    demo.play()
+                }
+            }
+        )
+    }
+
+    private var title: String {
+        switch demo.phase {
+        case .scouting: "Stop Building"
+        case .running(.verify, _, _): "Pause Check"
+        case .running, .returning: "Pause Demo"
+        case .paused, .offTrack: "Continue"
+        case .scoutPaused: "Keep Building"
+        case .needsStart: "Return to Start"
+        default: "Play Demo"
+        }
+    }
+
+    private var canContinue: Bool {
+        guard demo.isLiveSourceSelected else { return false }
+        switch demo.phase {
+        case .ready, .finished: return demo.canPlay
+        case .paused, .offTrack: return true
+        case .needsStart(let mismatch, _): return mismatch != .noAutomaticReturn && mismatch != .webContentUnavailable
+        case .scoutPaused(let stop): return stop.canKeepBuilding
+        default: return false
+        }
+    }
 }

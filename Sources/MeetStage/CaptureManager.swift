@@ -18,9 +18,13 @@ final class CaptureManager: ObservableObject {
     // MARK: - Observable state
 
     @Published var windows: [WindowSource] = []
-    @Published var selectedWindowID: CGWindowID?
+    @Published var selectedWindowID: CGWindowID? {
+        didSet { demo.sourceDidChange() }
+    }
     @Published var pendingWindowID: CGWindowID?
-    @Published var state: CaptureState = .idle
+    @Published var state: CaptureState = .idle {
+        didSet { demo.sourceDidChange() }
+    }
     @Published var isRefreshing = false
     @Published var shortcutWindowIDs: [Int: CGWindowID] = [:]
     @Published var unavailableShortcutSlots: Set<Int> = []
@@ -31,6 +35,16 @@ final class CaptureManager: ObservableObject {
     @Published var keystrokePresentation: KeystrokePresentation?
     @Published var clickPresentations: [ClickPresentation] = []
     @Published var annotationsEnabled = false
+    @Published var demoCue: DemoCue? {
+        didSet {
+            synchronizeSourceDemoEffect()
+            activateSpotlightIfPossible()
+        }
+    }
+    /// The stage's virtual cursor while a demo drives the source in the background.
+    @Published var demoPointer: DemoPointer?
+    lazy var demo = DemoSession(driver: DemoDriver(manager: self), defaults: demoDefaults)
+    private let demoDefaults: UserDefaults
     @Published var isAnnotating = false
     @Published var spotlightEnabled = false
     @Published var spotlightSize: PresentationSize
@@ -108,7 +122,8 @@ final class CaptureManager: ObservableObject {
     var mouseClickMonitor: GlobalMouseClickMonitor?
     var presentationPointerMonitor: GlobalPointerMonitor?
     let sourceClickRipplePresenter = SourceClickRipplePresenter()
-    let sourceSpotlightPresenter = SourceSpotlightPresenter()
+    let sourceSpotlightPresenter = SourceEffectPresenter()
+    let sourceDemoPresenter = SourceEffectPresenter()
     lazy var sourceAnnotationPresenter = SourceAnnotationPresenter()
     var workspaceMonitor: WorkspaceMonitor?
     var windowMonitoringTask: Task<Void, Never>?
@@ -136,6 +151,7 @@ final class CaptureManager: ObservableObject {
         let presentationStore = PresentationPreferencesStore(defaults: defaults)
         let inactiveStageAspectRatio = StageWindowSizing.currentScreenAspectRatio()
         self.shortcutStore = shortcutStore
+        demoDefaults = defaults
         self.presentationStore = presentationStore
         self.stageLogoStore = stageLogoStore
         self.thumbnailLoader = thumbnailLoader
@@ -229,7 +245,7 @@ final class CaptureManager: ObservableObject {
 
     var isSpotlightVisible: Bool {
         SpotlightVisibilityPolicy.shouldShow(
-            isEnabled: spotlightEnabled,
+            isEnabled: spotlightEnabled && demoCue?.effect != .spotlight,
             captureState: state,
             hasActiveCapture: stream != nil,
             hasSelectedWindow: selectedWindowID != nil

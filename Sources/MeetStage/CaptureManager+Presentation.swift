@@ -44,10 +44,12 @@ extension CaptureManager {
     func updatePresentationFocus(_ selectedSourceIsFocused: Bool) {
         desiredCursorVisibility = selectedSourceIsFocused && !autoPresentationEnabled
         if selectedSourceIsFocused {
+            synchronizeSourceDemoEffect()
             activateSpotlightIfPossible()
             activateAnnotationsIfPossible()
             activateAutoPresentationIfPossible()
         } else {
+            sourceDemoPresenter.dismiss()
             presentationPointerMonitor?.stop()
             clearKeystrokePresentation()
             clearClickPresentations()
@@ -111,6 +113,9 @@ extension CaptureManager {
     }
 
     func resetCursorTracking() {
+        demo.pause()
+        demoCue = nil
+        demoPointer = nil
         handleAutoPresentationSourceChange()
         cancelFirstFrameTimeout()
         captureConfigurationUpdateTask?.cancel()
@@ -166,6 +171,24 @@ extension CaptureManager {
         }
     }
 
+    /// A click ripple on the stage only. Demos click in the background, so a
+    /// ripple panel over the source window would land on BetterMeets itself.
+    func showStageClick(at normalizedLocation: NormalizedWindowPoint) {
+        let presentation = ClickPresentation(
+            location: normalizedLocation, color: clickHighlightColor, size: clickHighlightSize)
+        clickPresentations.append(presentation)
+        clickDismissTasks[presentation.id]?.cancel()
+        clickDismissTasks[presentation.id] = Task { [weak self] in
+            do {
+                try await Task.sleep(for: ClickPresentation.duration)
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            self?.dismissClickPresentation(presentation.id)
+        }
+    }
+
     func dismissClickPresentation(_ id: UUID) {
         clickDismissTasks[id]?.cancel()
         clickDismissTasks[id] = nil
@@ -183,14 +206,31 @@ extension CaptureManager {
         guard isSpotlightVisible,
             let source = activeCaptureSource,
             isSelectedSourceFocused
-        else { return }
+        else {
+            sourceSpotlightPresenter.dismiss()
+            return
+        }
 
         sourceSpotlightPresenter.show(
-            session: spotlight,
+            content: SpotlightSurface(session: spotlight),
             sourceWindowID: source.id,
             fallbackSourceFrame: source.window.frame
         )
         updatePresentationPointerMonitoring()
+    }
+
+    func synchronizeSourceDemoEffect() {
+        guard isLive, isSelectedSourceFocused, let source = activeCaptureSource,
+            let cue = demoCue, cue.hasSourceOverlay
+        else {
+            sourceDemoPresenter.dismiss()
+            return
+        }
+        sourceDemoPresenter.show(
+            content: DemoSourceEffectSurface(
+                cue: cue, keySize: keystrokeHighlightSize, keyAppearance: keystrokeAppearance),
+            sourceWindowID: source.id,
+            fallbackSourceFrame: source.window.frame)
     }
 
     func focusSelectedSourceIfPossible() {

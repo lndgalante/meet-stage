@@ -181,7 +181,8 @@ struct CompactWindowButton: View {
 
     private var borderColor: Color {
         if isPending || isPaused { return ControlPalette.warning }
-        if isSelected || isKeyboardFocused { return ControlPalette.accent }
+        if isSelected { return ControlPalette.accent }
+        if isKeyboardFocused { return .secondary }
         return contrast == .increased ? .secondary : .clear
     }
 

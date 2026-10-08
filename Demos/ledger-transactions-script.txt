@@ -1,0 +1,58 @@
+Ledger Wallet — Transactions demo
+
+Start on Home with discreet mode off and no transaction details panel open.
+Use Pause Demo whenever you want to explain something in more detail.
+
+1. Start at Home
+“Let's start on Home. This gives us a quick view of the wallet and its assets.”
+
+2. Open Transactions
+“Now let's open Transactions to see the wallet's activity.”
+
+3. Show the table header
+“The history is grouped by date. These columns show the type, address, amount, and value.”
+
+4. Examine the first row
+“Here's the first entry. We can scan its type, address, token amount, and currency value in one row.”
+
+5. Open the first row
+“Let's open this row. The details appear in a panel beside the history.”
+
+6. Highlight Amount and Fee
+“Here are the amount and fee. This entry is a fee, so we're looking at its network cost.”
+
+7. Highlight Type and Status
+“The type tells us what this entry represents. The status shows that it's confirmed.”
+
+8. Highlight Token operations
+“This section shows the related token movement, including the token, time, amount, and value.”
+
+9. Highlight Account and Date
+“Here we can see which account the transaction belongs to and when it happened.”
+
+10. Highlight Transaction ID
+“This is the transaction's ID. It gives us a reference we can use to look it up.”
+
+11. Highlight From and To
+“These are the sender and destination addresses recorded for this transaction.”
+
+12. Circle View in explorer
+“The explorer link is here if we want to inspect the transaction outside the app.”
+
+13. Close the details
+“Let's close the panel and return to the full history.”
+
+14. Turn discreet mode on
+“Now I'll use the eye button to turn on discreet mode.”
+
+15. Show the masked row
+“The amounts and values are hidden. The transaction types and addresses are still visible.”
+
+16. Turn discreet mode off
+“I'll turn discreet mode off so we can see the values again.”
+
+17. Show the restored row
+“The values are back, and the history stays in the same place.”
+
+18. Return to Home
+“That's the flow: scan the history, open the details, and control whether amounts are visible.”

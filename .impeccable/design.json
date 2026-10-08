@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-09-25T21:31:50.800155+00:00",
+  "generatedAt": "2026-10-02T04:56:21.935366+00:00",
   "title": "Design System: BetterMeets",
   "extensions": {
     "native": {
@@ -24,7 +24,10 @@
       "window": "Native titled, resizable workspace; default 1180 × 780pt, minimum 800 × 560pt. Source changes preserve window geometry. Stage Only hides controls and toolbar; Escape restores them.",
       "surface": "Regular material panels with 16pt corners and subtle inset edges. System under-page stage well. Reduce Transparency uses a solid control background; Increase Contrast strengthens edges. Unstyled capture has a transparent backdrop so native source corners reveal the stage well.",
       "settings-actions": "Tools stay open. One gear beside Tools and Command–comma open one native Settings window with a stable sidebar, six consistently named sections, and a governing On/Off switch per effect. The separate source widget includes state, pause/resume, clear, show controls, effects and settings.",
-      "source-layout": "Resizable sidebar: 224pt initial width, 200–320pt range. Automatic compact rows below 680pt sidebar height, with no layout menu. Default thumbnails fit 16:9; compact previews are 64 × 40pt. Full titles appear in previews. Unavailable pins offer Unpin."
+      "source-layout": "Resizable sidebar: 224pt initial width, 200–320pt range. Automatic compact rows below 680pt sidebar height, with no layout menu. Default thumbnails fit 16:9; compact previews are 64 × 40pt. Full titles appear in previews. Unavailable pins offer Unpin.",
+      "demo-layout": "Current source state, title, Pause Stage/Resume Stage, and Clear Stage sit above the preview. The bottom strip contains the prompt composer or a plan header, horizontal ordered steps, presenter detail, and Pause after each step. Native setup popover and editor sheet inherit semantic colors and SF text.",
+      "source-widget": "Ten buttons in a 56 × 381pt floating rail, with 18pt corners, 28pt button glyph areas, and 6pt spacing. Demo playback precedes Pause Stage/Resume Stage, Clear Stage, Show Controls, and effects.",
+      "demo-pause": "Pause Demo preserves the live app and current cue; Pause Stage hides the source image. Playback advances automatically unless Pause after each step is enabled."
     },
     "previewTranslation": {
       "status": "Illustrative HTML/CSS only. Browser system colors, fonts, symbols, corners, and shadows approximate native rendering; no CSS value replaces Swift source. Sample content replaces real captured windows.",
@@ -59,9 +62,9 @@
       "name": "Stage transport",
       "kind": "custom",
       "refersTo": "status",
-      "description": "Local status and transport remain together. Clear Stage does not control the meeting share.",
-      "html": "<div class=\"ds-status\"><span><strong>Sample app on stage</strong><small>Document title</small></span><button class=\"ds-button\">Pause</button><button class=\"ds-button\">Clear Stage</button></div>",
-      "css": ".ds-status{font:13px system-ui;color:CanvasText;color-scheme:light dark;display:flex;align-items:center;gap:12px;padding:0 14px;height:60px;background:Canvas;border:1px solid color-mix(in srgb,CanvasText 8%,transparent);border-radius:16px}.ds-status>span{margin-right:auto}.ds-status small{display:block;margin-top:3px;color:GrayText;font-size:11px}.ds-button{font:inherit;border:0;border-radius:6px;padding:5px 10px;color:ButtonText;background:ButtonFace}.ds-button:hover{filter:brightness(.94)}.ds-button:focus-visible{outline:2px solid AccentColor;outline-offset:2px}.ds-button:active{opacity:.82}"
+      "description": "Source status and capture controls sit above the preview. Pause Stage hides the source; Clear Stage does not control the meeting share.",
+      "html": "<div class=\"ds-status\"><span><strong>Sample app on stage</strong><small>Document title</small></span><button class=\"ds-button\">Pause Stage</button><button class=\"ds-button\">Clear Stage</button></div>",
+      "css": ".ds-status{font:13px system-ui;color:CanvasText;color-scheme:light dark;display:flex;align-items:center;gap:12px;padding:0 4px;height:40px;background:Canvas}.ds-status>span{margin-right:auto}.ds-status small{display:block;margin-top:3px;color:GrayText;font-size:11px}.ds-button{font:inherit;border:0;border-radius:6px;padding:5px 10px;color:ButtonText;background:ButtonFace}.ds-button:hover{filter:brightness(.94)}.ds-button:focus-visible{outline:2px solid AccentColor;outline-offset:2px}.ds-button:active{opacity:.82}"
     },
     {
       "name": "Settings navigation and effect state",
@@ -77,18 +80,38 @@
       "description": "Always-visible labeled effects share one settings gear in the Tools heading.",
       "html": "<div class=\"ds-tool\"><button class=\"ds-toggle\" aria-pressed=\"true\">Spotlight <span aria-hidden=\"true\">●</span></button></div>",
       "css": ".ds-tool{font:13px system-ui;color:CanvasText;color-scheme:light dark;display:flex;gap:2px;width:212px}.ds-toggle{font:inherit;display:flex;align-items:center;justify-content:space-between;flex:1;height:30px;padding:0 8px;border:0;border-radius:8px;color:AccentColor;background:color-mix(in srgb,AccentColor 14%,transparent)}.ds-toggle span{font-size:6px}.ds-toggle:hover{background:color-mix(in srgb,AccentColor 20%,transparent)}.ds-toggle:focus-visible{outline:2px solid AccentColor}.ds-toggle:active{opacity:.82}"
+    },
+    {
+      "name": "Demo composer",
+      "kind": "custom",
+      "description": "Bottom-strip prompt and prominent Build Demo action; native source remains authoritative.",
+      "html": "<div class=\"ds-composer\"><span><strong>Real-time demos</strong><small>Your app. A live walkthrough.</small></span><textarea aria-label=\"Demo prompt\" rows=\"1\" placeholder=\"What would you like to demo?\"></textarea><button>Build Demo</button></div>",
+      "css": ".ds-composer{display:flex;align-items:center;gap:16px;padding:12px 16px;font:13px system-ui;color:CanvasText;color-scheme:light dark;background:Canvas}.ds-composer strong{font-weight:600;white-space:nowrap}.ds-composer small{display:block;margin-top:4px;font-size:11px;color:GrayText}.ds-composer textarea{flex:1;min-width:0;font:inherit;color:CanvasText;background:color-mix(in srgb,CanvasText 5%,Canvas);border:1px solid color-mix(in srgb,CanvasText 12%,transparent);border-radius:8px;padding:10px;resize:vertical}.ds-composer button{font:inherit;white-space:nowrap;color:HighlightText;background:Highlight;border:0;border-radius:6px;padding:8px 12px}.ds-composer button:hover{filter:brightness(.94)}.ds-composer button:active{opacity:.82}.ds-composer button:focus-visible,.ds-composer textarea:focus-visible{outline:2px solid AccentColor;outline-offset:2px}"
+    },
+    {
+      "name": "Ordered demo steps",
+      "kind": "custom",
+      "description": "Horizontal ordered sequence with accent current-step fill and completed-step underline. Steps announce their state without behaving like navigation buttons.",
+      "html": "<ol class=\"ds-steps\" aria-label=\"Demo steps\"><li class=\"ds-completed\" aria-label=\"Step 1: Open Transactions, completed\"><small>1</small>Open Transactions</li><li class=\"ds-current\" aria-current=\"step\" aria-label=\"Step 2: Show details, current step paused\"><small>2</small>Show details</li><li aria-label=\"Step 3: Highlight amount, upcoming\"><small>3</small>Highlight amount</li></ol>",
+      "css": ".ds-steps{display:flex;gap:4px;overflow-x:auto;list-style:none;margin:0;padding:0;font:13px system-ui;color:CanvasText;color-scheme:light dark;background:Canvas}.ds-steps li{position:relative;display:flex;align-items:center;gap:7px;flex-shrink:0;height:34px;padding:0 10px;border-radius:7px}.ds-steps small{font-size:11px;font-variant-numeric:tabular-nums;color:GrayText}.ds-steps .ds-current{background:color-mix(in srgb,AccentColor 14%,transparent)}.ds-steps .ds-completed:after{content:\"\";position:absolute;bottom:0;left:0;right:0;height:2px;border-radius:1px;background:AccentColor}"
     }
   ],
   "narrative": {
     "northStar": "The Native Presentation Utility",
-    "overview": "One native window contains the presentation workspace. Tools sit above a vertically scrolling window list on the left. The source preview fills the remaining area at its own aspect ratio. A status strip below the stage contains current state, source title, Open Source App, Pause/Resume, and Clear Stage.",
+    "overview": "One native window contains the presentation workspace. A compact, vertically scrolling app-icon rail sits on the left. The source preview fills the remaining area at its own aspect ratio. Current state, source title, Pause Stage/Resume Stage, and Clear Stage sit above the preview. An edge-to-edge demo strip below the rail and stage holds the prompt composer, then the editable sequence and playback controls. Keep the preview dominant as the demo changes between planning and playback.",
     "keyCharacteristics": [
       "Semantic system backgrounds, regular material, and SF system text.",
       "Resizable source browsing with thumbnail and compact layouts.",
       "Explicit capture controls and consistent native Settings.",
       "Immediate keyboard navigation and restrained pointer feedback."
     ],
-    "rules": [],
+    "rules": [
+      {
+        "name": "The Separate Pauses Rule",
+        "body": "Pause Demo stops the sequence while preserving the live app and current visual cue. Pause Stage hides the source image. Name both actions explicitly wherever they appear together, including the floating widget.",
+        "section": "components"
+      }
+    ],
     "dos": [
       "Teach source selection → Stage Only → share BetterMeets.",
       "Use “On stage” for local capture; BetterMeets does not know whether a meeting is transmitting the window.",

@@ -22,7 +22,7 @@ struct StageStatusBar: View {
 
             if manager.canStopCapture {
                 Button(
-                    manager.state == .paused ? "Resume" : "Pause",
+                    manager.state == .paused ? "Resume Stage" : "Pause Stage",
                     systemImage: manager.state == .paused ? "play.fill" : "pause.fill",
                     action: manager.toggleCapturePause
                 )
@@ -33,8 +33,8 @@ struct StageStatusBar: View {
             }
         }
         .controlSize(.regular)
-        .padding(.horizontal, 14)
-        .frame(height: 60)
+        .padding(.horizontal, 4)
+        .frame(height: 40)
     }
 
     private var detail: String {

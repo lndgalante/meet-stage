@@ -16,12 +16,15 @@ struct WorkspaceView: View {
                         ControlView(manager: manager)
                             .frame(width: WorkspaceMetrics.sidebarWidth)
                             .workspacePanel()
-                        stage
-                            .frame(minWidth: 440)
+                        VStack(spacing: 8) {
+                            StageStatusBar(manager: manager)
+                            stage
+                        }
+                        .frame(minWidth: 440)
                     }
                     .padding(12)
                     Divider()
-                    StageStatusBar(manager: manager)
+                    DemoBarView(manager: manager, demo: manager.demo)
                 }
             }
         }

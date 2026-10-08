@@ -6,10 +6,11 @@ to follow while keeping the parts that do not require macOS services testable.
 
 ## Ownership boundaries
 
-- `MeetStageCore` is a framework-free SwiftPM target for capture-frame validation
-  and bounded asynchronous work.
+- `MeetStageCore` is a framework-free SwiftPM target for capture-frame validation,
+  exact-window focus checks, the real-time demo action policy, and bounded
+  asynchronous work.
 - `MeetStageApp` owns scenes and commands. `WorkspaceView` composes the tools,
-  vertical `ControlView`, `StageView`, and `StageStatusBar` in one native window.
+  vertical `ControlView`, `StageView`, `StageStatusBar`, and `DemoBarView` in one native window.
   `BetterMeetsWindowState` shares Stage Only state with menus, Dock actions, and
   App Intents. `WindowConfigurator` applies AppKit-only window behavior once the
   hosting view joins a window; it never changes geometry on source updates.
@@ -81,7 +82,9 @@ to follow while keeping the parts that do not require macOS services testable.
   source-coordinate mapping, capture-cursor visibility, and preference updates.
   It must never synthesize source pointer, click, or keyboard input; its
   monitors are strictly observational. Manual spotlight and annotation tools
-  cancel any automatic zoom. No subsystem synthesizes mouse or keyboard events.
+  cancel any automatic zoom. Only `DemoDriver` acts on another app, through
+  Accessibility actions and, as a fallback, `DemoInputSynthesizer`'s pointer,
+  scroll, and keyboard events; manual presentation effects remain observational.
 - `StageFrameLayout` preserves the source aspect ratio inside configurable
   padding. `StageFrameBackdrop` and `StageView` own the visual composition:
   backdrop, blur, rounded source surface, layered shadow, auto-zoom transform,
@@ -141,8 +144,9 @@ same commit. Do not spread shortcut branches through `CaptureManager` or views.
 
 `swift test` exercises source eligibility, shortcut reconciliation, preference
 compatibility, presentation and annotation policies, auto-zoom and frame
-geometry, capture-frame generation acceptance,
-and AppKit window interaction. ScreenCaptureKit streams, mouse event monitoring,
+geometry, capture-frame generation acceptance, AppKit window interaction, and,
+against fakes, real-time demo logic and script following. ScreenCaptureKit
+streams, mouse event monitoring, speech recognition,
 Carbon hotkeys, permission prompts, and end-to-end window-server behavior
 require the packaged app and are verified manually with the checklist in
 `README.md`.
@@ -154,7 +158,9 @@ and the manual verification matrix for platform-only behavior.
 and shell syntax, runs the complete test suite with warnings as errors and
 coverage reporting with dedicated floors for capture-safety policy and the app
 target, compiles an optimized build, then packages and verifies the signed app
-bundle, embedded Sparkle framework, and resources on every push and pull request.
+bundle, embedded Sparkle framework, and resources, including the audio-input
+entitlement and `NSMicrophoneUsageDescription` that Follow my voice needs, on
+every push and pull request.
 
 The `build-app.sh` and `dev-app.sh` entry points share
 `scripts/build-and-package.sh`. The helper derives the signing identifier from
@@ -166,3 +172,316 @@ validation, enable the hardened runtime and trusted timestamp, then
 `scripts/notarize-app.sh` performs submission, records the notarization log,
 staples, and runs Gatekeeper checks. Public builds inject the HTTPS Sparkle feed
 and EdDSA public key at packaging time; local builds leave updating inert.
+
+## Real-time demos
+
+`DemoSession` owns one app's `RealTimeDemo` and every `DemoPhase` transition:
+`composing`, `scouting`, `scoutPaused` (stop, presenter input, focus loss during
+a foreground fallback, relaunch, leaving scope, needs approval, blocked with the
+closest alternative, limits, and errors), `returning`, `needsStart`, `ready`,
+`running` and `paused` in `verify` or `present` mode, `offTrack` (wrong screen, target not found, or
+blocked), and `finished`. A run ID, task cancellation, and the bound source
+reject late work after a pause, source change, or new run. `DemoLibrary` stores
+one demo per app under `demo.library.v2`, keyed by bundle ID or app name, and
+encodes each entry separately so one unreadable demo never drops the others.
+Prompt drafts live in `demo.prompts.v2`. v1 outlines can't replay, so a one-time
+migration copies their prompts into drafts and leaves the v1 key untouched for
+older builds. Capture selection and state changes update the session even in
+Stage Only mode. The selected app decides which demo appears; live capture
+separately gates building and playback. App switches cancel work, clear cues,
+close sheets, and restore the destination app's demo at its first step; a saved
+draft reopens as an interrupted build.
+
+`DemoDriving` is the seam between demo logic and the app. `DemoDriver`
+implements it; tests drive the scout, replay engine, and session through
+`FakeApp` and `ScriptedModel`, without network access or synthesized input.
+
+### Accessibility and matching
+
+`AccessibilityService` is an actor on its own serial queue and the only owner of
+live `AXUIElement`s. It returns Sendable `AXSnapshot`s and generation-scoped
+`ElementHandle`s, so an element from an older snapshot can't be acted on, and
+performs the background actions: `AXPress`, focusing and setting a field's
+value, `AXScrollToVisible`, and app-level and system-wide hit tests.
+`AXSnapshotBuilder` walks the window chrome under a capped budget, then web
+areas largest first, within a 2.5-second deadline. It synthesizes labels for
+rows, cells, headings, and unlabelled links from descendant text, and records a
+field's text length but never its value. `AppEngine.detect` classifies native,
+Electron, Chromium, Gecko, and WebKit apps from the bundle. Electron and
+Chromium get `AXManualAccessibility`, and Chromium falls back to
+`AXEnhancedUserInterface`; `readySnapshot` waits up to four seconds for loaded
+web content before reporting that the page isn't exposed. `DemoSceneEncoder`
+lists up to 200 visible elements as `id role "label" x,y,w,h [flags]
+in:container` lines with 0–999 coordinates.
+
+`DemoMatching` holds the deterministic replay rules. `LabelStability` separates
+labels that name UI from data such as amounts, dates, and names in rows. Its
+match key drops a trailing count badge, so “Inbox 3” and “Inbox (12)” name the
+same control, and it discards generated identifiers (React's `:r…:`, `«r…»`,
+and `_r_` forms, Radix, Headless UI, MUI, React Aria, Ember, Angular Material
+and CDK, and long hex or numeric runs).
+`DemoLocatorFactory` turns a node into a `DemoElementLocator` (role, stable
+identifier, stable label or visual index within its container) and keeps it only
+when `DemoLocatorMatcher` finds the same node again. A locator that resolves by
+position alone is also refused when another element of the same role in its
+container sits within 30 points, so replay never has to guess. The matcher
+applies ordered rules without weights: identifier, stable label scoped to its
+container, visual order inside real lists and tables (`AXTable`, `AXList`,
+`AXOutline`, `AXGrid`, `AXBrowser`), then position. A data element found by
+visual index must lie within 0.35 of the window diagonal of its recorded
+position. Position-only matches (unlabelled icons, text values) stay inside the
+recorded container, must sit within 18 points (controls) or 14 points (text) of
+the recorded center, and must be less than half as far as the next candidate.
+A text caption whose words changed may be matched only by data-like text in
+that spot, never by another caption. Reading order groups elements into visual
+rows (vertical centers within half the smaller height), top to bottom, each row
+left to right. The matcher returns a result only when exactly one element
+qualifies; for labelled elements the recorded rectangle is only a tiebreaker.
+`ScreenSignatures` capture the URL host and path, selected items, headings, and
+dialog state; only the URL is enforced until a check confirms the rest. Step
+gates ignore headings, which can sit below the fold; headings still count when
+recognizing another step's screen or the start.
+`ScoutCompaction` drops rejected, undispatched, and unobserved records,
+ineffective attempts that were retried, and toggles switched back with nothing
+shown between, then turns scrolls into reveal hints for the next step.
+
+### Building
+
+`DemoScout` builds a demo by operating the app. Each turn takes a ready snapshot
+and a window screenshot, asks the model for exactly one tool call, and requires
+the chosen element ID to be listed and to yield a reproducible locator. A click
+on text or an icon inside a link or button resolves to that control. It then
+evaluates `DemoActionPolicy`, records a pending step, performs it through the
+driver, waits until two consecutive snapshots agree, and records a
+code-generated fact such as `#3 clicked tab “Transactions” → screen changed`.
+The model sees the request, its turn-1 outline, these facts, and the current
+window; it never sees its own earlier prose. A record becomes `unobserved` at
+the commit boundary and then `changed`, `noEffect`, or `contaminated`, so an
+interrupted build keeps dispatched actions and drops undispatched ones.
+Repeating an action that just had no effect is rejected, and so is finishing
+while a privacy, theme, or similar switch is left flipped. A build stops after 24
+turns, 40 compacted steps, 240 seconds, $2 of estimated spend (including failed
+calls), or three turns without change; a new window stops it as leaving scope.
+Policy questions stop it with a `PendingApproval` that the presenter allows or
+skips. The start point records the screen signature, the full start URL for
+browsers, a selected start anchor for other apps, and visible toggles.
+
+`DemoModelClient` calls the Messages API over raw HTTPS. Scout turns use
+`claude-opus-5-5` with automatic tool choice and parallel tool use disabled,
+strict tool schemas, server-side fallbacks (`fallbacks: default` behind the
+`server-side-fallback-2026-07-01` beta header), and prompt caching on the system
+prompt and request block. Effort starts at medium and retries at low after a
+`max_tokens` stop. The scout gives prose without a tool call one corrective
+retry, then treats it as `blocked`. Relocation uses `claude-haiku-4-5` with a
+forced strict tool. Window content is wrapped in `<untrusted_window_content>`.
+Timeouts, lost connections, and 408, 429, 500, 502–504, and 529 responses retry
+up to twice, honoring `retry-after` up to 20 seconds. Requests share an
+ephemeral URLSession with cookies and caching disabled and redirects rejected.
+Spend is computed from reported token usage, billing each server-side fallback
+attempt at its own model's rates; a failed scout call throws `DemoModelFailure`
+with what it cost, so the scout still counts it. Script writing, described
+below, uses the same transport.
+
+### Input
+
+`DemoDriver` drives the source app in the background, so BetterMeets stays
+active and the presenter watches the stage. It binds every input to the
+captured window and reports scope violations. A click aims at the target's
+visible center, hit-tests within the app, stops when another interactive
+control of the app sits on top, re-checks the policy's denials against the
+element actually hit, glides the stage's `DemoPointer` there, commits, and
+performs `AXPress`; `CaptureManager.showStageClick` draws a stage-only ripple. Typing
+skips a field that already holds the text, focuses it, and sets its value
+through Accessibility: all at once while building and checking, and character
+by character while presenting so it reads as typing on the stage. It accepts the
+settled value when it equals the text or only appends a completion, then
+commits before an optional Return. Scrolling performs `AXScrollToVisible` on the
+target or, for a recorded scroll, on the next element past the fold.
+
+Input that macOS delivers only to the frontmost app runs in a foreground
+fallback: key steps, Return after typing, ⌘L navigation, wheel scrolling, and
+clicks or typing that a control refuses through Accessibility. The driver
+yields activation to the source app, raises its window, waits until
+`SourceWindowFocusValidator` reports exact focus, checks that the app is still
+frontmost before each event, and reactivates BetterMeets afterwards if it was
+active. Fallback clicks move the real pointer and must hit the source process
+in a system-wide hit test. `DemoInputSynthesizer` posts these events from a
+private event source with explicit modifier flags and an event tag, so
+presenter-held keys never mix in and the presenter-input monitor ignores
+BetterMeets' own events. Keyboard events go to the source process with
+`postToPid`. Fallback typing switches to an ASCII-capable input source when
+needed, selects the field's text, types it while the field keeps focus, and
+verifies the value. Return goes only to the field the step typed into. Browser
+navigation presses a layout-aware ⌘L, waits until a text field outside the web
+area has focus, types the URL, confirms the host is in the field, and presses
+Return in the same tab. Text with line breaks, tabs, or control characters is
+never typed.
+
+### Replay and verification
+
+`DemoReplayEngine` replays steps in `verify` or `present` mode. Each step waits
+for its recorded screen, loaded web content, and unique, visible targets; after
+an action it also waits for two consecutive snapshots to agree, so a screen
+still redrawing isn't matched. A step's recorded scroll replays first, up to
+once per scroll turn the scout took, whenever a target is missing or matched by
+position, since such targets were recorded after that scroll. An off-screen
+target is revealed with `AXScrollToVisible`, then the scroll wheel, and recorded
+scrolls replay the same way. The gate allows 10 seconds after navigation or a
+submitted search, 4 for actions, and 3 for highlights. The policy is evaluated
+again against the live element. A step's approval applies only to the exact
+question the presenter approved (`approvedReason`); steps approved before
+questions were stored keep their approval. A checkbox already in its recorded
+post-click state is not clicked again. When a target is missing on the right screen, `relocate` may heal it, and
+the healed locator must find the element again on a fresh snapshot. Present mode
+never heals actions and skips missing highlights. If the live screen matches
+another step's confirmed signature, the run reports `wrongScreen` so the
+presenter can continue from that step. Verify holds are capped at 0.3 seconds
+after actions and 0.6 for highlights; present holds divide by playback speed,
+which defaults to 2×, is saved in UserDefaults, and matters only when the hold
+is timed (voice following off or unavailable), but a step with a line never
+holds for less than its `DemoStep.speakingTime` plus 0.4 seconds, so speed
+shortens pauses and silent steps, never the time a line takes to say.
+
+`returnToStart` never calls a model: browsers press their Back button, in the
+background, until the start URL shows, and open it in the same tab only if that
+fails; other apps close unexpected dialogs with their Close or Cancel button or
+Escape, click the recorded start anchor, and restore start toggles, each anchor
+and toggle click subject to the policy. `readiness` then compares the start
+signature, toggles, and the first action's target. While in `needsStart`, the
+session polls for up to two minutes so a presenter can reach the start by hand.
+A verify run from the first step records the start screen as it finds it.
+Continuing a paused check reuses the same engine, which keeps the steps that
+already passed. Only a pass in which every step passed folds heals into the
+steps, confirms the start and step signatures (keeping only evidence that held
+in both runs), and saves the check; otherwise the demo stays unchecked.
+`DemoFingerprint` hashes the start, every app-changing action and reveal hint,
+the app version, the window size class, and the window size in 100-point steps
+(`DemoAppInfo.windowBucket`, width and height each rounded to the nearest 100
+points). Scripts, titles,
+holds, and highlights are excluded, so word and timing edits and script
+rewrites keep `DemoStatus.checked` valid while app updates, resizing into
+another step, or action changes invalidate it. A passing check is saved only
+while the live demo has the same steps; `finishVerification` merges what the
+check learned (confirmed screen signatures, healed targets, and the start
+signature) onto the live demo, keeping any script written meanwhile.
+
+The cursor advances at each action's commit boundary (the press or mouse-down,
+completed typing, the key press, or the URL's Return) before yielding, so
+pausing or cancelling never repeats a dispatched action. While BetterMeets
+drives the app, `DemoSession` watches mouse-down, key-down, and scroll events,
+ignores events delivered to BetterMeets' own windows and tagged synthetic
+events, and pauses only for clicks or scrolls whose window under the pointer is
+the source window (or, without one, that land in the source frame while the
+source app is frontmost) and for keys while the source app is frontmost. Focus
+changes never pause a demo, and input to other apps, including the meeting,
+is ignored.
+
+Each step's `script` is its read-aloud presenter line; navigation steps usually
+have none. Generated holds allow speaking at about 150 words per minute
+(`DemoStep.wordsPerSecond`, 2.5) plus 0.8 seconds, bounded to 1.5–20 seconds;
+a step without a line holds 0.4 seconds after an action and 1.6 for a
+highlight. Manual timing edits remain authoritative until a script rewrite
+recomputes holds from the new lines.
+`DemoEditorView` edits titles, scripts, holds, the start description, and the
+closing line; the opening line comes only from script writing. It saves through
+`updateDemo(_:base:)`, which applies only the fields that differ from the copy
+the sheet opened with, so a rewrite that lands meanwhile survives on untouched
+lines. Targets and actions can't be retyped, and removing an action removes
+every later step.
+`DemoScriptView` displays and copies the opening line, step scripts in order,
+and the closing line, and offers the tone, audience notes, and Rewrite Script.
+
+### Script and presenter notes
+
+`DemoSession.writeScript` runs when a build finishes or **Use N Steps** is
+chosen, alongside the automatic return and check, and again on **Rewrite
+Script**. Its `ScriptRequest` carries the request, app name, start description,
+outline, each step's kind, target display name, title, current line, and
+whether it navigates, plus the tone and audience notes. `DemoModelClient`
+sends it to `claude-opus-5-5` as text only, with low effort, a strict
+`write_script` tool under automatic tool choice with parallel tool use
+disabled, and server-side fallbacks. `decodeScript` accepts only an answer with
+one entry per step, collapses whitespace, and caps titles at 48 characters and
+lines at 300. `applyScript` merges the draft onto the live demo by step ID, so
+steps removed meanwhile stay removed, and replaces only steps whose title,
+line, and hold are unchanged since the request, so lines edited meanwhile keep
+their edits. It sets `openingScript` and `closingScript`, recomputes holds for
+the replaced lines, and saves a new revision. A failure is logged, published
+as `scriptError` for the Script sheet, and leaves the existing lines. Only
+words change, so the check's fingerprint is unaffected.
+
+`PresenterPrompter` holds the line being presented (opening, step, or closing),
+its `ScriptFollower`, the heading, the next step's title, the position, and
+timed-hold progress, and persists `demo.followsVoice` (on by default) and
+`demo.notesFontSize` (16–48 points, 26 by default). The replay engine's
+`opening` hook shows and holds the opening line before step 1 only when Play
+starts from the top (`startsFromTop`), never on a resume, `onStep` shows each
+step's line, and finishing shows the closing line or clears the prompter when
+there is none. The `hold` hook routes present-mode holds through
+`PresenterPrompter.hold`, which re-checks every 100 ms whether it is following
+the voice (`isFollowingVoice`: `followsVoice` and `SpeechListener.wantsToListen`,
+which stays true while the listener starts, listens, or reconnects). Following
+the voice, a hold has no timer: it ends 0.35 seconds after `ScriptFollower`
+reports a non-empty line said, or once “next” was heard and 0.6 seconds pass
+with no new words; a step without a line waits for “next”. `heard()` records
+the command only when the newest word normalizes to one of `nextWords` (next,
+siguiente, suivant, weiter, avanti, proximo, seguinte) and the follower didn't
+advance on it, so “next” read as a word of the line doesn't count, and any
+later word cancels it. Otherwise the hold waits for its timed `seconds`.
+`skipLine` (Skip in the panel, or ⌃⌘→ while presenting) marks the line said and
+ends either kind of hold.
+`PresenterNotesController` owns one titled, nonactivating, floating `NSPanel`
+that joins all Spaces and full-screen apps, sets `sharingType = .none`, and
+autosaves its frame as `BetterMeetsPresenterNotes`. Entering present mode opens
+it when `demo.opensNotes` is on, which is the default.
+
+When a demo becomes ready with voice following on, `SpeechListener.prepare`
+asks for the microphone and installs the on-device model through
+`AssetInventory` without listening. The listener runs only while
+`DemoSession.updateListening` sees a present-mode run, playing or paused, with
+voice following on, in a session that opens windows (test sessions pass
+`opensWindows: false` and never use the microphone), and stops when the demo
+finishes. `requestStart` sets `wantsToListen` at once and starts asynchronously
+under a request token that `stop()` bumps, so a start overtaken by a stop never
+turns the microphone on. It requests microphone
+access, then uses `SpeechTranscriber` with volatile and fast results in the
+script's dominant language (`NLLanguageRecognizer`, for scripts of at least six
+words), falling back to the supported equivalent of the current locale and then
+en-US, and biases `SpeechAnalyzer` toward up to 100 words from the script. An
+`AVAudioEngine` input tap converts buffers to the analyzer's format off the
+main actor and reports a level for the panel's meter. An
+`AVAudioEngineConfigurationChange` (a new input device, or another app
+reconfiguring the microphone) restarts listening, at most once every 2 seconds,
+without clearing `wantsToListen`, so a hold keeps waiting for the voice. Denied
+microphone access, unavailable recognition, a start that throws, or a results
+stream that ends clears it and marks the listener unavailable, so holds fall
+back to timers. Recognized words stay in memory (the last 400 finalized words
+plus the current partial result) and are never written or sent. A DEBUG-only
+`simulateHearing` sets `wantsToListen` and feeds words through the same path,
+for tests. `PresenterPrompter`
+feeds the follower only words heard since the line appeared, and words a
+recognizer re-sends are ignored. `ScriptFollower` normalizes words, drops
+fillers, and aligns the last six heard words against the next 14 words of the
+line, looking a few words back for repeats. It only moves forward; a jump of
+more than two words needs newly heard words matching the words it skips, and
+longer jumps need more of them. Words of four letters or fewer must match
+exactly, longer words may be partial or slightly misheard, and numbers are
+skipped. A line counts as said when nothing is left, or when at least three
+quarters are said and only its last word, or two short ones, remain.
+
+### Cues
+
+`DemoCue` is transient rendering state, separate from persisted manual tool
+preferences. `DemoEffectLayer` and the existing camera/click/keystroke
+primitives render it on the stage. `DemoPointerLayer` draws the system arrow
+gliding to each target (without animation under Reduce Motion) while the real
+cursor stays with the presenter. Pausing demo playback retains the cue;
+resetting or changing capture clears it and the pointer. Stage Only hides the
+composer, while the floating source widget keeps playback controls available.
+
+`SourceEffectPresenter` hosts both manual spotlights and demo overlays in
+click-through, nonactivating panels. Demo spotlights, circles, and keystroke
+labels use the same cue over the source window while the source app is in
+front. Focus loss hides the source overlay without discarding the cue. Demo
+magnification remains a stage camera effect; clicks act on the source's
+original layout.

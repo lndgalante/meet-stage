@@ -1,5 +1,14 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
-<dict/>
+<dict>
+    <!--
+      The presenter-notes teleprompter follows the presenter's voice through an
+      AVAudioEngine microphone tap. The hardened runtime denies microphone access
+      without this entitlement. Keep it in sync with BetterMeetsDevelopment.entitlements
+      and NSMicrophoneUsageDescription in Info.plist.
+    -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+</dict>
 </plist>

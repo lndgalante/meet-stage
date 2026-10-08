@@ -1,3 +1,5 @@
 "CFBundleDisplayName" = "BetterMeets";
 "CFBundleName" = "BetterMeets";
 "NSScreenCaptureUsageDescription" = "BetterMeets needs screen recording access to show the window you choose in the Demo Stage.";
+"NSMicrophoneUsageDescription" = "BetterMeets listens while you present so the teleprompter can follow your voice. Speech is recognized on your Mac and never saved or sent.";
+"NSSpeechRecognitionUsageDescription" = "BetterMeets recognizes your speech on this Mac to follow your script while you present. Nothing is saved or sent.";

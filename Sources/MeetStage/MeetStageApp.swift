@@ -23,6 +23,7 @@ struct MeetStageApp: App {
         .defaultPosition(.center)
         .windowToolbarStyle(.unifiedCompact)
         .commands {
+            DemoCommands(demo: captureManager.demo)
             CommandGroup(replacing: .appSettings) {
                 Button("Settings…") { UtilityWindows.showSettings(manager: captureManager) }
                     .keyboardShortcut(",", modifiers: [.command])

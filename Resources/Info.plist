@@ -32,5 +32,9 @@
     <string>BetterMeets needs screen recording access to show the window you choose in the Demo Stage.</string>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>BetterMeets listens while you present so the teleprompter can follow your voice. Speech is recognized on your Mac and never saved or sent.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>BetterMeets recognizes your speech on this Mac to follow your script while you present. Nothing is saved or sent.</string>
 </dict>
 </plist>

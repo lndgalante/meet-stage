@@ -68,6 +68,9 @@ struct ControlView: View {
             .scrollBounceBehavior(.basedOnSize)
             .onMoveCommand(perform: moveSourceFocus)
             .onChange(of: manager.pendingWindowID ?? manager.selectedWindowID) { _, sourceID in
+                if focusedSourceID != nil {
+                    focusedSourceID = sourceID
+                }
                 scrollTo(sourceID, using: proxy)
             }
             .onChange(of: focusedSourceID) { _, sourceID in
@@ -98,7 +101,10 @@ struct ControlView: View {
             isPending: source.id == manager.pendingWindowID,
             isKeyboardFocused: focusedSourceID == source.id,
             shortcutOwner: manager.shortcutOwnerDescription(for:),
-            action: { manager.select(source) },
+            action: {
+                focusedSourceID = source.id
+                manager.select(source)
+            },
             pin: { manager.pin(source, to: $0) },
             unpin: { manager.unpin(source) }
         )

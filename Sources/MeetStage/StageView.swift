@@ -61,6 +61,15 @@ struct StageView: View {
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
             }
+
+            if manager.isLive, let key = manager.demoCue?.key, !key.isEmpty {
+                KeystrokeBadge(
+                    label: key, size: manager.keystrokeHighlightSize, appearance: manager.keystrokeAppearance
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                .padding(.bottom, 28)
+                .allowsHitTesting(false)
+            }
         }
         .animation(
             reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 1),
@@ -217,8 +226,9 @@ private struct ZoomableStageContent: View {
         GeometryReader { contentGeometry in
             let allowsZoom = manager.autoPresentationEnabled
             let transform = AutoZoomTransform.resolve(
-                focus: allowsZoom ? autoPresentation.zoomFocus : nil,
-                requestedScale: manager.autoZoomSize.autoZoomScale,
+                focus: manager.demoCue?.zoomFocus ?? (allowsZoom ? autoPresentation.zoomFocus : nil),
+                requestedScale: manager.demoCue?.zoomFocus != nil
+                    ? manager.demoCue?.zoomScale ?? 1.7 : manager.autoZoomSize.autoZoomScale,
                 viewportSize: contentGeometry.size,
                 reducesMotion: reducesMotion
             )
@@ -242,6 +252,16 @@ private struct ZoomableStageContent: View {
                     )
                     .allowsHitTesting(false)
                     .accessibilityHidden(true)
+                }
+
+                if manager.isLive, let cue = manager.demoCue {
+                    DemoEffectLayer(cue: cue)
+                        .id(cue)
+                }
+
+                if manager.isLive, let pointer = manager.demoPointer {
+                    DemoPointerLayer(pointer: pointer)
+                        .transition(.opacity)
                 }
 
                 ForEach(manager.clickPresentations) { presentation in

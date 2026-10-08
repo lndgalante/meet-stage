@@ -96,8 +96,9 @@ jobs:
           codesign --verify --strict --verbose=2 dist/release/BetterMeets.app
           codesign --verify --strict --verbose=2 \
             dist/release/BetterMeets.app/Contents/Frameworks/Sparkle.framework
-          ! codesign -d --entitlements - dist/release/BetterMeets.app 2>&1 | rg -q 'audio-input'
-          ! /usr/libexec/PlistBuddy -c 'Print :NSMicrophoneUsageDescription' dist/release/BetterMeets.app/Contents/Info.plist
+          # Follow my voice needs the microphone; both the entitlement and its purpose string must ship.
+          codesign -d --entitlements - dist/release/BetterMeets.app 2>&1 | rg -q 'audio-input'
+          /usr/libexec/PlistBuddy -c 'Print :NSMicrophoneUsageDescription' dist/release/BetterMeets.app/Contents/Info.plist
           codesign -d --entitlements - dist/release/BetterMeets.app 2>&1 \
             | rg -Uq 'com\.apple\.security\.cs\.disable-library-validation\n\s*\[Value\]\n\s*\[Bool\] true'
           ! rg -q 'disable-library-validation' Resources/BetterMeets.entitlements

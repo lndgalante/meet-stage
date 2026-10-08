@@ -193,24 +193,52 @@ struct SpotlightEffectTests {
     @Test("The source spotlight is click-through and below source ink")
     @MainActor
     func configuresSourceSpotlightWindow() {
-        let panel = SpotlightPanel(
+        let panel = SourceEffectPanel(
             contentRect: CGRect(x: 0, y: 0, width: 640, height: 360),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
         )
 
-        SpotlightWindowPolicy.configure(panel)
+        SourceEffectWindowPolicy.configure(panel)
         panel.orderFrontRegardless()
         defer { panel.close() }
 
         #expect(panel.ignoresMouseEvents)
         #expect(!panel.canBecomeKey)
         #expect(!panel.canBecomeMain)
-        #expect(SpotlightWindowPolicy.sourceOverlayLevel.rawValue > NSWindow.Level.normal.rawValue)
+        #expect(SourceEffectWindowPolicy.sourceOverlayLevel.rawValue > NSWindow.Level.normal.rawValue)
         #expect(
-            SpotlightWindowPolicy.sourceOverlayLevel.rawValue
+            SourceEffectWindowPolicy.sourceOverlayLevel.rawValue
                 < AnnotationWindowPolicy.sourceOverlayLevel.rawValue
         )
+    }
+
+    @Test("Demo cues reuse a click-through source panel and dismiss it cleanly")
+    @MainActor
+    func demoSourceOverlayLifecycle() throws {
+        let presenter = SourceEffectPresenter()
+        defer { presenter.dismiss() }
+        let frame = CGRect(x: 0, y: 0, width: 640, height: 360)
+        let target = NormRect(x: 0.2, y: 0.3, w: 0.6, h: 0.1)
+        let cue = DemoCue(effect: .spotlight, rect: target)
+        presenter.show(
+            content: DemoEffectLayer(cue: cue), sourceWindowID: 0,
+            fallbackSourceFrame: frame)
+        let panel = try #require(presenter.panel)
+        #expect(panel.isVisible)
+        #expect(panel.ignoresMouseEvents)
+        #expect(!panel.canBecomeKey)
+        let contentView = try #require(panel.contentView)
+
+        presenter.show(
+            content: DemoEffectLayer(cue: DemoCue(effect: .draw, rect: target)),
+            sourceWindowID: 0, fallbackSourceFrame: frame)
+        #expect(presenter.panel === panel)
+        #expect(panel.contentView === contentView)
+
+        presenter.dismiss()
+        #expect(presenter.panel == nil)
+        #expect(!panel.isVisible)
     }
 }
