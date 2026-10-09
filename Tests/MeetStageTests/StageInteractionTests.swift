@@ -25,14 +25,11 @@ struct StageInteractionTests {
         )
         window.isReleasedWhenClosed = false
         defer { window.close() }
-        let toolbar = NSToolbar(identifier: "WorkspaceTest")
-        window.toolbar = toolbar
         WindowConfigurator.configure(window)
         let size = window.frame.size
         WindowConfigurator.configure(window)
 
         #expect(window.frame.size == size)
-        #expect(window.toolbar === toolbar)
         #expect(window.styleMask.contains(.resizable))
         #expect(window.collectionBehavior.contains(.fullScreenPrimary))
         #expect(!window.isMovableByWindowBackground)
@@ -42,6 +39,55 @@ struct StageInteractionTests {
             #expect(!button.isHidden)
         }
         window.setFrameAutosaveName("")
+    }
+
+    @Test("The window's buttons sit in the rail, level with the header, and stay there through a resize")
+    @MainActor
+    func windowButtonsInRail() throws {
+        let window = NSWindow(
+            contentRect: CGRect(x: 100, y: 100, width: 1000, height: 650),
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = false
+        defer { window.close() }
+        WindowConfigurator.configure(window)
+        defer { window.setFrameAutosaveName("") }
+        let placement = WindowButtonsPlacement()
+        placement.attach(to: window)
+        defer { placement.detach() }
+
+        func buttonsCenter() throws -> CGPoint {
+            let rects = try [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton].map { type in
+                let button = try #require(window.standardWindowButton(type))
+                return button.convert(button.bounds, to: nil)
+            }
+            let union = rects.dropFirst().reduce(rects[0]) { $0.union($1) }
+            return CGPoint(x: union.midX, y: window.frame.height - union.midY)
+        }
+        let center = WorkspaceMetrics.windowButtonsCenter
+        #expect(try buttonsCenter() == center)
+        let container = try #require(window.standardWindowButton(.closeButton)?.superview?.superview)
+        // Narrowed to the buttons, so it never covers the header beside the rail.
+        #expect(container.frame.maxX <= WorkspaceMetrics.gutter + WorkspaceMetrics.sidebarWidth)
+
+        window.setFrame(CGRect(x: 120, y: 120, width: 820, height: 600), display: true)
+        #expect(try buttonsCenter() == center)
+
+        placement.isHidden = true
+        #expect(container.isHidden)
+        placement.isHidden = false
+        #expect(!container.isHidden)
+    }
+
+    @Test("A double-click on the drag areas does what System Settings asks of a title bar")
+    func titleBarDoubleClick() {
+        #expect(TitleBarDoubleClick(setting: nil) == .zoom)
+        #expect(TitleBarDoubleClick(setting: "Maximize") == .zoom)
+        #expect(TitleBarDoubleClick(setting: "Fill") == .fill)
+        #expect(TitleBarDoubleClick(setting: "Minimize") == .minimize)
+        #expect(TitleBarDoubleClick(setting: "None") == .nothing)
     }
 
     @Test("Stage rendering never installs a separate control or action window")

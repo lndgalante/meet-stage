@@ -68,7 +68,7 @@ entitlement and `NSMicrophoneUsageDescription`.
   demo panel's inline key row.
 - Only the selected source window is captured. Stream identity and frame
   generations prevent retired sources from publishing under a new selection.
-- Stage Only hides the source list, demo panel, and window toolbar.
+- Stage Only hides the source list, header card, demo panel, and window buttons.
   Restoring controls during window sharing makes them visible to the audience.
   Native window chrome remains subject to the meeting app's capture behavior.
 - The source-following tool widget is an independent panel, not a child of the
@@ -86,7 +86,7 @@ Ordinary capture and manual effects stay local. Building a demo, finding demo
 ideas, and relocating moved targets all require Claude access (**See and operate
 the selected window while building** in Settings › Demos,
 `demo.allowsAIControl.v2`), one setting for every app. The demo panel asks for it
-once, the first time BetterMeets opens, explaining what is sent; **Not Now**
+once, the first time a window is chosen, explaining what is sent; **Not Now**
 records the answer (`demo.consentAnswered`), and Build asks again with **Allow
 and Build** only while access is off.
 Each build turn then sends Anthropic the request, the app's name and engine, a

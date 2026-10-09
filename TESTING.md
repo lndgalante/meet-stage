@@ -82,29 +82,41 @@ window configuration, or permissions, build the packaged debug app with
 10. Turn on Reduce Motion and confirm zoom is restrained, cursor travel does not
     animate, and all controls remain usable. Spotlight and Draw cancel the
     current auto zoom and continue to take input precedence.
-11. The main window contains a full-height vertical source selector and, beside
-    it, the stage above a rounded demo panel. The window toolbar shows the app
-    icon, name, state badge, and window title on the leading edge, and on the
-    trailing edge the five effect toggles in one capsule and Pause Stage and
-    Clear Stage sharing a second capsule, with nothing between the toolbar
-    and the stage. The compact feature widget follows the selected source with
-    the demo button (once the app has a demo), Pause Stage, Auto Polish,
-    Spotlight, Annotations, Click Highlights, Keystrokes (with a permission
-    badge while Accessibility is missing), and More with Clear Stage, Show
-    BetterMeets, and Settings; it is shorter while the app has no demo. Check source selection,
-    thumbnails, unavailable pins, hover/Space previews, context menus,
-    Up/Down/Return, and Option–number shortcuts.
-12. Toggle Stage Only from View or Control–Command–S. Confirm the sidebar, demo
-    panel, and toolbar disappear while capture continues. Escape and the same
-    shortcut restore controls. Share BetterMeets in a meeting app and confirm
-    that visible workspace controls appear only when the workspace is shown.
+11. The main window has no title bar. It contains a full-height vertical source
+    selector with the window's close, minimize, and zoom buttons centered in its top
+    row and, beside it, a column with the header card, the stage, and a rounded demo
+    panel. With no window chosen, the demo panel is hidden and the setup guidance
+    fills the column below the header; choosing a window brings it back, and Clear
+    Stage hides it again. The header card shows the app icon, name, state badge, and
+    window title on the leading edge, and on the trailing edge the five effect
+    toggles, Pause Stage, and Clear Stage; at narrow widths Pause and Clear drop
+    their labels first. Drag the window by the source title, the header card's empty
+    space, the rail's top row, and the gutters, and double-click each to confirm it
+    follows System Settings › Desktop & Dock, including Fill. Hover the window
+    buttons to see their glyphs, and confirm they stay in the rail without jumping
+    while you drag a window edge, and keep working after resizing, full screen, and
+    Stage Only. With the controls visible, share BetterMeets on its own in a meeting
+    app and check that any sharing indicator macOS adds beside the buttons shows
+    whole.
+    The compact feature widget follows the selected source with the demo button
+    (once the app has a demo), Pause Stage, Auto Polish, Spotlight, Annotations,
+    Click Highlights, Keystrokes (with a permission badge while Accessibility is
+    missing), and More with Clear Stage, Show BetterMeets, and Settings; it is
+    shorter while the app has no demo. Check source selection, thumbnails,
+    unavailable pins, hover/Space previews, context menus, Up/Down/Return, and
+    Option–number shortcuts.
+12. Toggle Stage Only from View or Control–Command–S. Confirm the sidebar, header
+    card, demo panel, and window buttons disappear while capture continues. Escape
+    and the same shortcut restore controls. Share BetterMeets in a meeting app and
+    confirm that visible workspace controls appear only when the workspace is shown.
     The separate feature widget stays available beside the source in Stage Only.
     Move and resize the source, including near screen edges and on another display.
-    Check right/left gutter placement, onscreen fallback, source switching, settings,
-    and hiding when the source closes or any other app becomes frontmost.
+    Check right/left gutter placement, onscreen fallback, source switching,
+    settings, and hiding when the source closes or any other app becomes frontmost.
     In particular, returning to BetterMeets must hide the widget over its workspace
     and Stage Only view. Show Source Tools must activate the source app, with the
-    widget reappearing beside it. Its buttons and settings should preserve source focus.
+    widget reappearing beside it. Its buttons and settings should preserve source
+    focus.
 13. Resize to the minimum and maximize/full-screen the workspace. Switch between
     landscape and portrait sources: content must fit without stretching or
     cropping, and the workspace must not resize. Close/reopen and relaunch to
@@ -116,8 +128,8 @@ window configuration, or permissions, build the packaged debug app with
     demo panel's **Pacing** menu opens it. Existing settings
     saved to the removed tab should fall back to General.
 15. Check Light and Dark appearances, Reduce Transparency, Increase Contrast,
-    Reduce Motion, keyboard focus, and VoiceOver labels. The toolbar items and
-    source list must remain readable and reachable at minimum window size.
+    Reduce Motion, keyboard focus, and VoiceOver labels. The header card's controls
+    and source list must remain readable and reachable at minimum window size.
 
 Record the macOS version and meeting app when a manual result depends on
 window-server or capture-framework behavior.
@@ -163,7 +175,7 @@ between several demos of one app (the library list, New Demo, renaming, and
 deleting), the demo panel's composer, status band, and step grid, ideas from the app's own features, the
 one-time Claude access question, closing a stray window during a build, Previous
 Step and Start Over, the stage glow, the eight-slot floating widget, and the
-window toolbar have not yet been validated live, and results from the previous
+header card have not yet been validated live, and results from the previous
 planner do not carry over. Until the checklist
 below passes, treat real-time demos as not fully verified in real apps. Use a
 demo account and an API key, and record the macOS version and each app's
@@ -295,8 +307,9 @@ version.
     asks again. At the minimum window width, Claude's ideas drop from the end
     and **More Ideas** stays; the row never scrolls. With Claude access off, only the two fixed ideas show.
 14. **One-time Claude access.** Reset `demo.consentAnswered` and
-    `demo.allowsAIControl.v2`, then open BetterMeets: the demo panel asks once,
-    before any app is touched. **Not Now** hides it for good; **Build Demo**
+    `demo.allowsAIControl.v2`, then open BetterMeets and choose a window of an app
+    with no saved demos (or choose New Demo): the demo panel asks once, before
+    Claude touches any app. **Not Now** hides it for good; **Build Demo**
     then asks again with **Allow and Build**. **Allow** turns on the Settings ›
     Demos checkbox and applies to every app, with no further question in a
     second app.

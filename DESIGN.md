@@ -16,7 +16,7 @@ components:
     rounded: "{rounded.source}"
   action-button:
     height: "30pt"
-  toolbar-source-icon:
+  header-source-icon:
     size: "24pt"
   stage-actions:
     width: "56pt"
@@ -48,25 +48,32 @@ components:
 
 ## Overview
 
-One native window contains the presentation workspace. A compact, vertically scrolling
-app-icon rail runs the full height on the left. Beside it, a column stacks the stage
-above the demo panel, 12 points apart. The source preview fills the stage at its own
-aspect ratio. The window toolbar names the app on stage, its state, and its window
-title on the leading edge, and holds the effect toggles, Pause Stage/Resume Stage, and
-Clear Stage on the trailing edge. The demo panel holds a list of the app's demos
-beside the open demo's status, steps, and playback controls. Keep the preview dominant
-as the demo moves between building, testing, and playback.
+One native window contains the presentation workspace, with no title bar. A compact,
+vertically scrolling app-icon rail runs the full height on the left, with the window's
+close, minimize, and zoom buttons centered in its top row. Beside it, a column stacks
+the header card, the stage, and the demo panel, 12 points apart; until a window is
+chosen, the demo panel is hidden and the stage's setup guidance fills the column below
+the header. The source preview fills the stage at its own aspect ratio. The header
+card names the app on stage, its state, and its window title on the leading edge, and
+holds the effect toggles, Pause Stage/Resume Stage, and Clear Stage on the trailing
+edge. The demo panel holds a list of the app's demos beside the open demo's status,
+steps, and playback controls. Keep the preview dominant as the demo moves between
+building, testing, and playback.
 
 ## Window behavior
 
-Keep the standard traffic lights, title-bar dragging, native resizing, and full
-screen. The initial content size is 1180 × 780 points, with an 800 × 560 minimum.
-Remember size and position. Switching sources never resizes the workspace.
+The window has no title bar, but keeps the standard window buttons, title-bar
+dragging, native resizing, and full screen. The buttons sit centered in the rail's top
+row, level with the header card, and move to the menu bar in full screen as usual. The
+source title, the header card's empty space, the rail's top row, and the gutters
+between the cards move the window, and a double-click there does what System Settings
+asks of a title bar. The initial content size is 1180 × 780 points, with an 800 × 560
+minimum. Remember size and position. Switching sources never resizes the workspace.
 
-Stage Only hides the source rail, demo panel, and toolbar. Control–Command–S toggles
-it; Escape restores controls when annotation mode is inactive. Restore controls
-to access the traffic lights. Never imply that visible workspace controls are
-excluded from window sharing.
+Stage Only hides the source rail, header card, demo panel, and window buttons.
+Control–Command–S toggles it; Escape restores controls when annotation mode is
+inactive. Restore controls to access the window buttons. Never imply that visible
+workspace controls are excluded from window sharing.
 
 ## Materials and typography
 
@@ -83,24 +90,25 @@ Bold Text. Source details also appear in previews and accessibility labels.
 
 ## Tools and sources
 
-Presentation tools remain available in the window toolbar, menu bar, Settings, and
+Presentation tools remain available in the header card, menu bar, Settings, and
 floating source widget. Command–comma opens the native Settings window. Keep its
 sidebar and size stable across panes, and show each effect’s governing On/Off state
 beside its preview; the General and Demos panes have none.
 
-The window toolbar leads with the app on stage: its 24-point icon, its name in
+The header card shares the workspace panel treatment, 56 points tall with 16 points of
+horizontal padding. It leads with the app on stage: its 24-point icon, its name in
 headline text, a state capsule (On stage in the accent color, Paused or Needs
 attention in orange, or a mini spinner while busy), and the window title below in
-secondary caption text, or the guidance title and hint when nothing is on stage.
-That title sits outside the toolbar's glass background. A flexible space separates
-it from the trailing items. First, a plain toolbar item group of icon-only toggles,
-with standard spacing in one glass capsule: Auto Polish (Option–Command–P), Spotlight
+secondary caption text, or the guidance title and hint when nothing is on stage. A
+flexible space separates it from the trailing controls, set in callout text like the
+demo panel's action bar. First, five icon-only accessory-bar toggles, 2 points apart
+and in the accent color while on: Auto Polish (Option–Command–P), Spotlight
 (Option–Command–F), Annotations (Option–Command–A), Click Highlights
-(Option–Command–C), and Keystrokes (Option–Command–K). Then, after a fixed space,
-one group shares a second capsule between the labeled Pause Stage/Resume Stage
-(Shift–Command–P) and Clear Stage (Command–period) buttons, each with 6 points of
-extra horizontal padding so the text breathes like the icons. The stage starts directly below the toolbar,
-with no status row between them. The toolbar hides in Stage Only.
+(Option–Command–C), and Keystrokes (Option–Command–K). Then, 12 points on, the labeled
+Pause Stage/Resume Stage (Shift–Command–P) and Clear Stage (Command–period) buttons, 4
+points apart, in the same bordered accessory-bar style as the demo panel's Edit Demo…
+and Test Again. When the card is narrow, Pause and Clear drop their labels first. The
+stage starts 12 points below the header card. The header card hides in Stage Only.
 
 The floating source widget is an icon-only vertical rail, 56 points wide with
 18-point corners, 28-point buttons in 30-point rows, 6-point spacing, and 10-point
@@ -142,15 +150,15 @@ available during every transition.
 
 ### Real-time demos
 
-The demo panel sits below the stage in the same workspace panel treatment as the
-rail: regular material, 16-point corners, a subtle inset edge, and 16-point padding.
-It shares the workspace's semantic colors and SF text. It has two regions. On the
-left, the library says which demo is open and is the only place to create, switch,
-rename, and delete demos. On the right, the detail reads top to bottom: a status band
-with the state, its reason, and the one primary action; a step grid; and an action
-bar. The panel is 168 points tall in every state except composing, which grows with a
-longer request up to 200 points, so playing, pausing, or finishing a demo never moves
-the stage.
+The demo panel sits below the stage, once a window is chosen, in the same workspace
+panel treatment as the rail: regular material, 16-point corners, a subtle inset edge,
+and 16-point padding. It shares the workspace's semantic colors and SF text. It has
+two regions. On the left, the library says which demo is open and is the only place to
+create, switch, rename, and delete demos. On the right, the detail reads top to
+bottom: a status band with the state, its reason, and the one primary action; a step
+grid; and an action bar. The panel is 168 points tall in every state except composing,
+which grows with a longer request up to 200 points, so playing, pausing, or finishing
+a demo never moves the stage.
 
 The library takes 20% of the content width, 160 to 240 points, followed by 12 points,
 a full-height divider, and 12 points. Its header, “App Demos” in semibold subheadline
@@ -282,7 +290,7 @@ the two fixed ideas show. Sparkles mark only the request field and Claude's idea
 
 The Try row can become a setup row, which hides the band's subline, holds the field
 to one line, and turns Build Demo bordered so only one control is prominent. The
-first time BetterMeets opens, until the presenter answers, it is a consent row:
+first time a window is chosen, until the presenter answers, it is a consent row:
 “Claude operates the window you choose, in the background while you watch. Building
 sends your request, screenshots and control labels to Anthropic.” Learn More opens a
 Claude Access popover that adds that playing or testing later sends a screenshot only

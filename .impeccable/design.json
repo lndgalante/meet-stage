@@ -21,7 +21,7 @@
         "settings-label": ".callout",
         "setup-title": ".title2.weight(.semibold)"
       },
-      "window": "Native titled, resizable workspace; default 1180 × 780pt, minimum 800 × 560pt. Source changes preserve window geometry. Stage Only hides controls and toolbar; Escape restores them.",
+      "window": "Resizable workspace with no title bar; the window buttons sit in the rail's top row; default 1180 × 780pt, minimum 800 × 560pt. Source changes preserve window geometry. Stage Only hides the controls, header card, and window buttons; Escape restores them.",
       "surface": "Regular material panels with 16pt corners and subtle inset edges. System under-page stage well. Reduce Transparency uses a solid control background; Increase Contrast strengthens edges. Unstyled capture has a transparent backdrop so native source corners reveal the stage well.",
       "settings-actions": "Tools stay open. One gear beside Tools and Command–comma open one native Settings window with a stable sidebar, six consistently named sections, and a governing On/Off switch per effect. The separate source widget includes state, pause/resume, clear, show controls, effects and settings.",
       "source-layout": "Resizable sidebar: 224pt initial width, 200–320pt range. Automatic compact rows below 680pt sidebar height, with no layout menu. Default thumbnails fit 16:9; compact previews are 64 × 40pt. Full titles appear in previews. Unavailable pins offer Unpin.",

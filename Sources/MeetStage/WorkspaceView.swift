@@ -11,28 +11,33 @@ struct WorkspaceView: View {
             if windowState.stageOnly {
                 stage
             } else {
-                HStack(spacing: 12) {
-                    ControlView(manager: manager)
-                        .frame(width: WorkspaceMetrics.sidebarWidth)
-                        .workspacePanel()
-                    VStack(spacing: 12) {
+                HStack(spacing: WorkspaceMetrics.gutter) {
+                    VStack(spacing: 0) {
+                        // The window's close, minimize and zoom buttons sit here, level with the header.
+                        WindowDragArea()
+                            .frame(height: WorkspaceMetrics.headerHeight)
+                        ControlView(manager: manager)
+                    }
+                    .frame(width: WorkspaceMetrics.sidebarWidth)
+                    .workspacePanel()
+                    VStack(spacing: WorkspaceMetrics.gutter) {
+                        StageHeader(manager: manager)
                         stage
                             .overlay { DemoDrivingGlow(demo: manager.demo, cornerRadius: 16) }
-                        DemoBarView(manager: manager, demo: manager.demo)
+                        DemoPanelSlot(manager: manager, demo: manager.demo)
                     }
                     .frame(minWidth: 440)
                 }
-                .padding(12)
+                .padding(WorkspaceMetrics.gutter)
+                // The gutters around the cards move the window too, as a title bar would.
+                .background { WindowDragArea() }
             }
         }
         .background(Color(nsColor: .windowBackgroundColor))
         .frame(minWidth: WorkspaceMetrics.minimumSize.width, minHeight: WorkspaceMetrics.minimumSize.height)
-        .background(WindowConfigurator())
+        .background(WindowConfigurator(hidesWindowButtons: windowState.stageOnly))
         .background(StageActionsInstaller(manager: manager))
-        .toolbar { StageToolbar(manager: manager) }
-        .toolbar(removing: .title)
-        .ignoresSafeArea(.container, edges: windowState.stageOnly ? .top : [])
-        .toolbar(windowState.stageOnly ? .hidden : .visible, for: .windowToolbar)
+        .ignoresSafeArea(.container, edges: .top)
         .task {
             manager.startWindowMonitoring()
             manager.refreshWindows()
@@ -91,8 +96,26 @@ struct WorkspaceView: View {
     }
 }
 
+/// The demo panel, once a window is chosen. Until then the stage's setup
+/// guidance has the whole column.
+private struct DemoPanelSlot: View {
+    let manager: CaptureManager
+    @ObservedObject var demo: DemoSession
+
+    var body: some View {
+        if demo.selectedSource != nil {
+            DemoBarView(manager: manager, demo: demo)
+        }
+    }
+}
+
 enum WorkspaceMetrics {
+    /// Around and between the rail, the header, the stage and the demo panel.
+    static let gutter: CGFloat = 12
     static let sidebarWidth: CGFloat = 88
+    static let headerHeight: CGFloat = 56
+    /// The window's buttons sit in the rail, level with the header.
+    static let windowButtonsCenter = CGPoint(x: gutter + sidebarWidth / 2, y: gutter + headerHeight / 2)
     static let minimumSize = CGSize(width: 800, height: 560)
     static let defaultSize = CGSize(width: 1180, height: 780)
 

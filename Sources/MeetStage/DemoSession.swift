@@ -355,7 +355,7 @@ final class DemoSession: ObservableObject {
         return key
     }
 
-    /// Asked once, the first time BetterMeets opens, or when Build needs it after "Not Now".
+    /// Asked once, the first time a window is chosen, or when Build needs it after "Not Now".
     var asksForConsent: Bool {
         !allowsAI && (buildSetup == .consent || !consentAnswered)
     }

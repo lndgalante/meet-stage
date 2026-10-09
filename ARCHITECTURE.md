@@ -9,20 +9,30 @@ to follow while keeping the parts that do not require macOS services testable.
 - `MeetStageCore` is a framework-free SwiftPM target for capture-frame validation,
   exact-window focus checks, the real-time demo action policy, and bounded
   asynchronous work.
-- `MeetStageApp` owns scenes and commands. `WorkspaceView` composes one native
-  window: the full-height vertical `ControlView` rail, then a column with
-  `StageView` above the `DemoBarView` panel; the rail and the demo panel share
-  the `workspacePanel()` treatment. `StageToolbar` fills its window toolbar: the app
+- `MeetStageApp` owns scenes and commands; the workspace window has a hidden
+  title bar. `WorkspaceView` composes it: the full-height vertical `ControlView`
+  rail, topped by a header-height row for the window buttons, then a column with
+  the `StageHeader` card, `StageView`, and the `DemoBarView` panel, which shows
+  only while `DemoSession.selectedSource` is set; the rail, the header, and the
+  demo panel share the `workspacePanel()` treatment. `StageHeader` holds the app
   on stage, its state, and its window title on the leading edge, then the five
-  effect toggles in one toolbar item group, and Pause Stage and Clear Stage each
-  in their own group, separated by fixed spacers.
-  `BetterMeetsWindowState` shares Stage Only state with menus, Dock actions, and
-  App Intents. `WindowConfigurator` applies AppKit-only window behavior once the
-  hosting view joins a window; it never changes geometry on source updates.
+  effect toggles, Pause Stage, and Clear Stage. `BetterMeetsWindowState` shares
+  Stage Only state with menus, Dock actions, and App Intents.
+  `WindowConfigurator` applies AppKit-only window behavior once the hosting view
+  joins a window; it never changes geometry on source updates. Its
+  `WindowButtonsPlacement` moves AppKit's title bar view, narrowed to the close,
+  minimize, and zoom buttons, into the rail's top row, and puts it back whenever
+  AppKit lays the title bar out again (on resize, after full screen): right
+  away, before the window draws, and again on the next run-loop turn, because
+  AppKit ignores a move made during its own layout pass. It hides the buttons
+  while full screen animates them. `WindowDragArea` stands in for the title bar
+  behind the gutters, the header card, and the rail's top row, and over the
+  source title: dragging moves the window, and a double-click zooms, fills,
+  minimizes, or does nothing, as System Settings asks.
 - `StageView` renders content without owning or creating windows. The workspace
   fits it into available space without cropping. Stage Only removes control
-  surfaces and the toolbar; Escape restores them. Native traffic lights,
-  window resizing, full screen, and frame restoration remain available.
+  surfaces and the window buttons; Escape restores them. Window resizing, full
+  screen, and frame restoration remain available.
 - `CaptureManager` is the main-actor coordinator. Its root file owns observable
   state and dependencies; responsibility-focused extensions own discovery,
   commands, lifecycle, presentation integration, and stream callbacks. The

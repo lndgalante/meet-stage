@@ -21,7 +21,7 @@ struct MeetStageApp: App {
         }
         .defaultSize(width: WorkspaceMetrics.defaultSize.width, height: WorkspaceMetrics.defaultSize.height)
         .defaultPosition(.center)
-        .windowToolbarStyle(.unifiedCompact)
+        .windowStyle(.hiddenTitleBar)
         .commands {
             DemoCommands(demo: captureManager.demo)
             CommandGroup(replacing: .appSettings) {

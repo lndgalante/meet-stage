@@ -14,21 +14,23 @@ Unify window selection, presentation tools, and preview in one workspace.
 
 ## Operating context
 
-A resizable window places a full-height vertical window selector on the left.
-The selected source occupies the main area, with a demo panel below it. The
-window toolbar names the app on stage and its state, and holds the presentation
-effects, Pause Stage, and Clear Stage. The demo panel holds a list of the app's
-demos beside the open demo's status, steps and playback controls, and keeps one
-height while a demo plays, pauses, or finishes. A new demo starts from a
-prompt-based composer with starter ideas (two fixed, three that Claude finds in
-the app's own features). While BetterMeets operates the app, a multi-hue glow
-traces the stage's edge.
+A resizable window places a full-height vertical window selector on the left,
+with the window's own buttons at its top in place of a title bar. The selected
+source occupies the main area, with a header card above it and, once a window is
+chosen, a demo panel below it. The header card names the app on stage and its
+state, and holds the presentation effects, Pause Stage, and Clear Stage. The
+demo panel holds a list of the app's demos beside the open demo's status, steps
+and playback controls, and keeps one height while a demo plays, pauses, or
+finishes. A new demo starts from a prompt-based composer with starter ideas (two
+fixed, three that Claude finds in the app's own features). While BetterMeets
+operates the app, a multi-hue glow traces the stage's edge.
 
 A compact floating feature widget follows the selected source window, keeping
 demo playback, Pause Stage, and every presentation effect close to the app the
 presenter is using, with Clear Stage and Settings in its More menu.
 
-Stage Only hides the sidebar, demo panel, and toolbar for window sharing.
+Stage Only hides the sidebar, header card, demo panel, and window buttons for
+window sharing.
 Control–Command–S or Escape restores controls. Reopening the controls makes them
 visible to viewers of that shared window. The separate source widget remains
 available in Stage Only mode.
@@ -62,7 +64,7 @@ policy keeps demos away from destructive controls and credentials, and asks
 before anything unusual. Each app keeps any number of demos on this Mac, which
 the presenter can rename, edit, or delete from the demo list, and each names the
 screen it starts on in a few words. Anthropic access is opt-in, asked once for every
-app the first time BetterMeets opens, with keys in Keychain. While presenting,
+app the first time a window is chosen, with keys in Keychain. While presenting,
 the presenter can step back to the previous step or start over from the opening
 line.
 

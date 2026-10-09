@@ -10,11 +10,14 @@ reopening the share picker or exposing your desktop.
 
 BetterMeets brings tools, window selection, and the live stage into one resizable
 Mac window. The left sidebar is a compact vertical rail of application icons that runs the full height of the window. The main area shows the selected source at its original
-aspect ratio. The window toolbar shows the app on stage, its state, and its
-window title, then the presentation effects, Pause Stage, and Clear Stage.
-Below the stage, a demo panel in the same rounded material as the rail holds
-a list of the app's real-time demos beside the open demo's status, steps, and
-playback controls.
+aspect ratio. A header card above the stage shows the app on stage, its state,
+and its window title, then the presentation effects, Pause Stage, and Clear
+Stage. The window has no title bar: its close, minimize, and zoom buttons sit at
+the top of the rail, and the source title, the header card's empty space, the
+rail's top, and the gutters between the cards drag the window. Below the stage,
+once you choose a window, a demo panel in the same rounded material as the rail
+holds a list of the app's real-time demos beside the open demo's status, steps,
+and playback controls.
 
 Choose an app icon to put a window on stage. Selecting the live source again
 keeps it live. Use Pause/Resume (Shift–Command–P) to hide or restore the source.
@@ -23,9 +26,10 @@ marked live only after ScreenCaptureKit delivers its first complete video frame.
 The window keeps the size and position you chose when sources change.
 
 Choose **Stage Only** (Control–Command–S) to hide the window rail,
-demo panel, and toolbar. Then share **BetterMeets** in your meeting app.
-Press the same shortcut or Escape to restore controls. Use the standard green
-traffic light for full screen while controls are visible. Returning
+header card, demo panel, and window buttons. Then share **BetterMeets** in your
+meeting app. Press the same shortcut or Escape to restore controls. Use the
+green zoom button at the top of the rail for full screen while controls are
+visible. Returning
 to controls while sharing makes them visible to your audience.
 
 The stage is a live presentation surface. Use **Open Source App** from the menu (Shift–Command–O) to
@@ -40,7 +44,7 @@ Scroll vertically to browse sources; Up/Down and Return select by keyboard, and
 Space opens a larger preview. Source shortcuts also scroll the selected tile
 into view. New and closed windows update automatically.
 
-Presentation tools are available from the window toolbar, the menu bar, and
+Presentation tools are available from the header card, the menu bar, and
 Settings (Command–comma).
 Each effect’s settings show its On/Off state beside the preview.
 
@@ -90,7 +94,7 @@ ideas Claude Haiku 5.5 finds in the window's own features, named in a few words
 window and its element list to Anthropic; ideas are kept per app, and per site
 in a browser, so each is read once unless you choose **More Ideas**.
 
-The first time BetterMeets opens, the demo panel asks once, for every app,
+The first time you choose a window, the demo panel asks once, for every app,
 whether Claude may see the window you choose and operate it in the background
 while you watch. The row says that building sends your request, screenshots,
 and control labels to Anthropic; **Learn More** adds that playing or testing
@@ -451,7 +455,7 @@ identity.
 4. Select a source window.
 5. Enable **Stage Only**, then share **BetterMeets** in your meeting.
 6. Switch sources from BetterMeets or your pinned global shortcuts.
-7. Use **Pause Stage**/**Resume Stage** in the toolbar or the floating source tools.
+7. Use **Pause Stage**/**Resume Stage** in the header card or the floating source tools.
 8. Optional: turn on Auto Polish and choose its framing and motion in Settings
    → Auto Polish.
 
@@ -464,7 +468,7 @@ inside it.
 | Path | Purpose |
 | --- | --- |
 | `Sources/MeetStage/MeetStageApp.swift` | SwiftUI scenes and menu commands |
-| `Sources/MeetStage/WorkspaceView.swift` and `StageToolbar.swift` | Unified workspace layout, window toolbar, and Stage Only mode |
+| `Sources/MeetStage/WorkspaceView.swift` and `StageHeader.swift` | Unified workspace layout, the header card, and Stage Only mode |
 | `Sources/MeetStageCore/` | Framework-free capture frame validation, bounded concurrency, and the real-time demo action policy, compiled as an independent SPM target |
 | `Sources/MeetStage/CaptureServices.swift` | Injected thumbnail and Screen Recording authorization services |
 | `Sources/MeetStage/ControlView.swift` and `Control*.swift` | Vertical window selector, settings, reusable controls, and preview rendering |
@@ -479,7 +483,7 @@ inside it.
 | `Sources/MeetStage/StageWindowSizing.swift` | Stage geometry and aspect-ratio handling |
 | `Sources/MeetStage/AutoPresentation.swift` and `CaptureManager+AutoPresentation.swift` | Click-driven zoom camera, read-only pointer tracking, and 2× native system-cursor mirroring |
 | `Sources/MeetStage/StageFramePresentation.swift` | Styled-frame layout, built-in backdrops, blur, corners, and shadows |
-| `Sources/MeetStage/WindowConfiguration.swift` | AppKit window behavior used by SwiftUI scenes |
+| `Sources/MeetStage/WindowConfiguration.swift` | AppKit window behavior used by SwiftUI scenes: the window buttons in the rail and the drag areas that stand in for a title bar |
 | `Sources/MeetStage/GlobalHotKeyManager.swift` | Configurable global source-slot shortcut registration |
 | `Sources/MeetStage/Annotations.swift`, `AnnotationShapeRecognizer.swift`, and `AnnotationOverlay.swift` | Temporary ink, closed-shape recognition and rendering, plus AppKit source-overlay presentation |
 | `Sources/MeetStage/ClickHighlights.swift`, `KeystrokeHighlights.swift`, and `SpotlightEffect.swift` | Effect-specific models, monitoring, overlays, and rendering |
