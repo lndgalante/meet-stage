@@ -54,15 +54,16 @@ final class StageActionsPresenter {
             backing: .buffered,
             defer: false
         )
-        panel.contentView = NSHostingView(
-            rootView: StageActionsView(manager: manager, layout: .floating)
-        )
+        let content = NSHostingView(rootView: StageActionsView(manager: manager))
+        panel.contentView = content
         self.panel = panel
-        trackingTask = Task { [weak panel] in
+        trackingTask = Task { [weak panel, weak content] in
             while !Task.isCancelled {
-                guard let panel else { return }
+                guard let panel, let content else { return }
                 Self.position(
                     panel,
+                    // The demo button comes and goes, so the panel follows its content's height.
+                    size: content.fittingSize,
                     sourcePID: source.processIdentifier,
                     snapshot: WindowFrameResolver.currentSnapshot(for: source.id),
                     frontmostPID: NSWorkspace.shared.frontmostApplication?.processIdentifier
@@ -86,6 +87,7 @@ final class StageActionsPresenter {
 
     static func position(
         _ panel: StageActionsPanel,
+        size: CGSize,
         sourcePID: pid_t,
         snapshot: WindowFrameSnapshot?,
         frontmostPID: pid_t?
@@ -110,7 +112,8 @@ final class StageActionsPresenter {
         guard let screen,
             let frame = StageActionsPlacement.panelFrame(
                 sourceFrame: sourceFrame,
-                visibleScreen: screen.visibleFrame
+                visibleScreen: screen.visibleFrame,
+                panelSize: size
             )
         else {
             panel.orderOut(nil)

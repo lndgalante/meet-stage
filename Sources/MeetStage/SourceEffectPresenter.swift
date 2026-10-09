@@ -13,8 +13,10 @@ final class SourceEffectPresenter {
         sourceWindowID: CGWindowID,
         fallbackSourceFrame: CGRect
     ) {
-        if let hostingView, panel != nil, self.sourceWindowID == sourceWindowID {
+        if let hostingView, let panel, self.sourceWindowID == sourceWindowID {
             hostingView.rootView = AnyView(content)
+            // New content cancels a fade that was still running.
+            panel.alphaValue = 1
             return
         }
         dismiss()
@@ -43,6 +45,24 @@ final class SourceEffectPresenter {
         ) { [weak panel] frame in
             guard let panel, panel.frame != frame else { return }
             panel.setFrame(frame, display: true)
+        }
+    }
+
+    /// Fades the overlay out, then closes it, unless new content arrives first.
+    func fadeOut(duration: TimeInterval) {
+        guard let panel, duration > 0 else {
+            dismiss()
+            return
+        }
+        NSAnimationContext.runAnimationGroup { context in
+            context.duration = duration
+            context.timingFunction = CAMediaTimingFunction(name: .easeOut)
+            panel.animator().alphaValue = 0
+        }
+        Task { [weak self, weak panel] in
+            try? await Task.sleep(for: .seconds(duration))
+            guard let self, let panel, self.panel === panel, panel.alphaValue == 0 else { return }
+            self.dismiss()
         }
     }
 

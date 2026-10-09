@@ -200,6 +200,18 @@ actor AccessibilityService {
         }
     }
 
+    /// Presses the close button of the app's window at each frame (global,
+    /// top-left origin). False if any window can't be found or closed that way.
+    func closeWindows(pid: pid_t, frames: [CGRect]) -> Bool {
+        let app = AXUIElementCreateApplication(pid)
+        return frames.map { frame in
+            guard let window = AccessibilityWindowResolver.uniqueMatchingWindow(in: app, sourceFrame: frame),
+                let button = elementAttribute(window, kAXCloseButtonAttribute)
+            else { return false }
+            return AXUIElementPerformAction(button, kAXPressAction as CFString) == .success
+        }.allSatisfy { $0 }
+    }
+
     func focus(_ handle: ElementHandle) throws -> Bool {
         AXUIElementSetAttributeValue(try element(handle), kAXFocusedAttribute as CFString, kCFBooleanTrue) == .success
     }
@@ -217,8 +229,9 @@ actor AccessibilityService {
     func systemHitTest(pid: pid_t, point: CGPoint, target: ElementHandle) throws -> HitTestResult {
         let element = try element(target)
         var hit: AXUIElement?
-        guard AXUIElementCopyElementAtPosition(AXUIElementCreateSystemWide(), Float(point.x), Float(point.y), &hit)
-            == .success, let hit
+        guard
+            AXUIElementCopyElementAtPosition(AXUIElementCreateSystemWide(), Float(point.x), Float(point.y), &hit)
+                == .success, let hit
         else { return HitTestResult(isTarget: false, role: "", subrole: nil, label: "") }
         var owner: pid_t = 0
         AXUIElementGetPid(hit, &owner)
@@ -249,7 +262,8 @@ actor AccessibilityService {
         let isSecure = subrole == "AXSecureTextField"
         return FocusedElementInfo(
             matchesTarget: matches, role: string(focused, kAXRoleAttribute) ?? "",
-            isSecure: isSecure, isInWebArea: ancestors(of: focused, limit: 30).contains {
+            isSecure: isSecure,
+            isInWebArea: ancestors(of: focused, limit: 30).contains {
                 string($0, kAXRoleAttribute) == "AXWebArea"
             }, value: isSecure ? nil : string(focused, kAXValueAttribute))
     }
@@ -308,22 +322,26 @@ struct LiveAXSource: AXNodeSource {
         case loaded, loadingProgress, busy
     }
 
-    private let attributes: CFArray = [
-        kAXRoleAttribute, kAXSubroleAttribute, kAXTitleAttribute, kAXDescriptionAttribute, kAXValueAttribute,
-        kAXPositionAttribute, kAXSizeAttribute, kAXChildrenAttribute, kAXEnabledAttribute, kAXIdentifierAttribute,
-        "AXDOMIdentifier", kAXSelectedAttribute, kAXFocusedAttribute, kAXPlaceholderValueAttribute, "AXARIACurrent",
-        kAXHelpAttribute, kAXURLAttribute, "AXLoaded", "AXLoadingProgress", "AXElementBusy",
-    ] as CFArray
+    private let attributes: CFArray =
+        [
+            kAXRoleAttribute, kAXSubroleAttribute, kAXTitleAttribute, kAXDescriptionAttribute, kAXValueAttribute,
+            kAXPositionAttribute, kAXSizeAttribute, kAXChildrenAttribute, kAXEnabledAttribute, kAXIdentifierAttribute,
+            "AXDOMIdentifier", kAXSelectedAttribute, kAXFocusedAttribute, kAXPlaceholderValueAttribute, "AXARIACurrent",
+            kAXHelpAttribute, kAXURLAttribute, "AXLoaded", "AXLoadingProgress", "AXElementBusy"
+        ] as CFArray
 
     func read(_ handle: AXUIElement) -> (node: AXRawNode, children: [AXUIElement])? {
         var values: CFArray?
-        guard AXUIElementCopyMultipleAttributeValues(handle, attributes, AXCopyMultipleAttributeOptions(), &values)
-            == .success, let slots = values as? [AnyObject], slots.count == Slot.allCases.count
+        guard
+            AXUIElementCopyMultipleAttributeValues(handle, attributes, AXCopyMultipleAttributeOptions(), &values)
+                == .success, let slots = values as? [AnyObject], slots.count == Slot.allCases.count
         else { return nil }
         func value(_ slot: Slot) -> AnyObject? {
             let object = slots[slot.rawValue]
             // Unsupported attributes come back as AXValue-wrapped errors.
-            if CFGetTypeID(object) == AXValueGetTypeID(), AXValueGetType(unsafeDowncast(object, to: AXValue.self)) == .axError {
+            if CFGetTypeID(object) == AXValueGetTypeID(),
+                AXValueGetType(unsafeDowncast(object, to: AXValue.self)) == .axError
+            {
                 return nil
             }
             return object

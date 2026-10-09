@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 
 extension CaptureManager {
     // MARK: - Focus and cursor capture
@@ -219,11 +220,24 @@ extension CaptureManager {
         updatePresentationPointerMonitoring()
     }
 
+    /// Fades out the demo highlight and the virtual cursor; with Reduce Motion on, clears them at once.
+    func fadeOutDemoCue() {
+        guard demoCue != nil || demoPointer != nil else { return }
+        let duration = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion ? 0 : 0.6
+        isFadingDemoCue = true
+        sourceDemoPresenter.fadeOut(duration: duration)
+        withAnimation(duration > 0 ? .easeOut(duration: duration) : nil) {
+            demoCue = nil
+            demoPointer = nil
+        }
+        isFadingDemoCue = false
+    }
+
     func synchronizeSourceDemoEffect() {
         guard isLive, isSelectedSourceFocused, let source = activeCaptureSource,
             let cue = demoCue, cue.hasSourceOverlay
         else {
-            sourceDemoPresenter.dismiss()
+            if !isFadingDemoCue { sourceDemoPresenter.dismiss() }
             return
         }
         sourceDemoPresenter.show(

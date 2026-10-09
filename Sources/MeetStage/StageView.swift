@@ -257,6 +257,7 @@ private struct ZoomableStageContent: View {
                 if manager.isLive, let cue = manager.demoCue {
                     DemoEffectLayer(cue: cue)
                         .id(cue)
+                        .transition(.opacity)
                 }
 
                 if manager.isLive, let pointer = manager.demoPointer {

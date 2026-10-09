@@ -13,7 +13,7 @@ struct DemoReplayTests {
             reply(.typeText(elementID: 1, text: "The Matrix", submit: true, title: "Search The Matrix", script: "")),
             reply(.click(elementID: 2, title: "Open the first result", script: "")),
             reply(.present([ScoutBeat(effect: .spotlight, elementIDs: [0], title: "Show the title", script: "Here it is.")])),
-            reply(.finish(title: "Find The Matrix", startDescription: "Subtis home", closingScript: "")),
+            reply(.finish(title: "Find The Matrix", startDescription: "Subtis home", startLabel: "", closingScript: "")),
         ])
         var limits = fastScoutLimits()
         limits.beatPreview = .milliseconds(1)
@@ -160,7 +160,7 @@ struct DemoReplayTests {
         let scouted = app()
         let model = ScriptedModel([
             reply(.click(elementID: 0, title: "Open search", script: "")),
-            reply(.finish(title: "Search", startDescription: "Subtis home", closingScript: "")),
+            reply(.finish(title: "Search", startDescription: "Subtis home", startLabel: "", closingScript: "")),
         ])
         var limits = fastScoutLimits()
         limits.beatPreview = .milliseconds(1)

@@ -14,28 +14,16 @@ struct ControlBarButton: View {
     @FocusState private var isFocused: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.colorSchemeContrast) private var colorSchemeContrast
-    @Environment(\.stageActionLayout) private var layout
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 8) {
-                ZStack(alignment: .topTrailing) {
-                    Image(systemName: systemImage)
-                        .font(.system(size: ControlMetrics.controlBarIconSize, weight: .medium))
-                        .offset(x: glyphOffset.width, y: glyphOffset.height)
-                        .frame(width: 20)
-                    if showsPermissionWarning {
-                        PermissionWarningBadge().offset(x: 4, y: -5)
-                    }
-                }
-                if layout == .sidebar {
-                    Text(title)
-                        .font(.callout)
-                        .lineLimit(1)
-                    Spacer(minLength: 0)
-                    if isOn == true {
-                        Circle().fill(ControlPalette.accent).frame(width: 4, height: 4)
-                    }
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: systemImage)
+                    .font(.system(size: ControlMetrics.controlBarIconSize, weight: .medium))
+                    .offset(x: glyphOffset.width, y: glyphOffset.height)
+                    .frame(width: 20)
+                if showsPermissionWarning {
+                    PermissionWarningBadge().offset(x: 4, y: -5)
                 }
             }
             .foregroundStyle(
@@ -43,11 +31,7 @@ struct ControlBarButton: View {
                     ? ControlPalette.accent
                     : Color.primary.opacity(isHovering || colorSchemeContrast == .increased ? 1 : 0.8)
             )
-            .padding(.horizontal, layout == .sidebar ? 8 : 0)
-            .frame(
-                width: layout == .floating ? StageActionsMetrics.actionSize : nil,
-                height: layout == .floating ? StageActionsMetrics.actionSize : ControlMetrics.controlBarButtonHeight
-            )
+            .frame(width: StageActionsMetrics.actionSize, height: StageActionsMetrics.actionSize)
             .background(
                 buttonBackground, in: RoundedRectangle(cornerRadius: ControlMetrics.controlBarActionCornerRadius)
             )
@@ -61,7 +45,6 @@ struct ControlBarButton: View {
         .accessibilityValue(accessibilityValue)
         .accessibilityHint(help)
         .accessibilityAddTraits(isOn == true ? .isSelected : [])
-        .frame(maxWidth: layout == .floating ? StageActionsMetrics.actionSize : .infinity)
         .frame(height: ControlMetrics.controlBarButtonHeight)
         .contentShape(Rectangle())
         .onHover { isHovering = $0 }

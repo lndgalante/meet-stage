@@ -38,6 +38,9 @@ final class FakeApp: DemoDriving {
     var isBrowser = true
     var engine: AppEngine = .chromium
     var failNextInput: DemoError?
+    /// The next click opens a separate window of the app.
+    var nextClickOpensWindow = false
+    private(set) var openWindows = 0
     /// Element index → index of its clickable ancestor on the same screen.
     var interactiveParents: [Int: Int] = [:]
     /// Runs right before an input is dispatched, after its checks.
@@ -56,7 +59,8 @@ final class FakeApp: DemoDriving {
 
     func appInfo(for source: DemoSource) throws -> DemoAppInfo {
         DemoAppInfo(
-            pid: 4242, engine: engine, isBrowser: isBrowser, appVersion: "1.0", sizeClass: .regular, windowBucket: "12x8")
+            pid: 4242, engine: engine, isBrowser: isBrowser, appVersion: "1.0", sizeClass: .regular,
+            windowBucket: "12x8")
     }
 
     func snapshot(_ source: DemoSource, waitForContent: Bool) async throws -> AXSnapshot {
@@ -110,7 +114,14 @@ final class FakeApp: DemoDriving {
                 return
             }
             log.append("click \(element.label)")
-            if let toggle = element.toggle, let index = screens[current]!.elements.firstIndex(where: { $0.label == element.label }) {
+            if nextClickOpensWindow {
+                nextClickOpensWindow = false
+                openWindows += 1
+                return
+            }
+            if let toggle = element.toggle,
+                let index = screens[current]!.elements.firstIndex(where: { $0.label == element.label })
+            {
                 screens[current]!.elements[index].toggle = !toggle
             }
             if let next = element.opens { current = next }
@@ -137,8 +148,18 @@ final class FakeApp: DemoDriving {
     }
 
     func scopeBaseline(_ source: DemoSource) -> DemoScopeBaseline { DemoScopeBaseline(windowNumbers: []) }
-    func scopeViolation(_ source: DemoSource, since baseline: DemoScopeBaseline) -> String? { nil }
+    func scopeViolation(_ source: DemoSource, since baseline: DemoScopeBaseline) -> String? {
+        openWindows > 0 ? "Example opened a new window." : nil
+    }
+    func closeWindows(_ source: DemoSource, openedSince baseline: DemoScopeBaseline) async -> Bool {
+        log.append("close \(openWindows) window")
+        openWindows = 0
+        return true
+    }
     func show(_ cue: DemoCue?) { cues.append(cue) }
+    func fadeOutCue() { cues.append(nil) }
+    private(set) var broughtToFront = 0
+    func bringToFront(_ source: DemoSource) async { broughtToFront += 1 }
     func movePointer(to point: NormalizedWindowPoint?, duration: Double) {}
 
     private func element(for handle: ElementHandle) throws -> FakeElement {
@@ -174,7 +195,7 @@ final class ScriptedModel: DemoModeling, @unchecked Sendable {
         return ScriptDraft(
             opening: "Let's find a movie.", closing: "That's the whole flow.",
             titles: request.steps.map { "Polished \($0.title)" },
-            scripts: request.steps.map { "Line for \($0.title)." })
+            scripts: request.steps.map { "Line for \($0.title)." }, startLabel: "the search page")
     }
 
     func scoutTurn(_ request: ScoutTurnRequest, key: String) async throws -> ScoutReply {
@@ -183,6 +204,14 @@ final class ScriptedModel: DemoModeling, @unchecked Sendable {
             return replies.isEmpty ? .failure(DemoError.invalidResponse) : replies.removeFirst()
         }
         return try reply.get()
+    }
+
+    func ideas(_ request: IdeasRequest, key: String) async throws -> [DemoIdea] {
+        [
+            DemoIdea(label: "Movie search", prompt: "Search for a movie and open its page"),
+            DemoIdea(label: "Subtitle download", prompt: "Show where to download a movie's subtitle"),
+            DemoIdea(label: "Latest releases", prompt: "Open the latest releases and highlight the newest one")
+        ]
     }
 
     func relocate(_ request: RelocateRequest, key: String) async throws -> (ids: [Int]?, costMicroUSD: Int) {
@@ -207,8 +236,10 @@ func subtisApp() -> FakeApp {
         url: "https://subtis.io/",
         elements: [
             FakeElement(role: "AXHeading", label: "Subtis", rect: rect(0.1, 0.05)),
-            FakeElement(role: "AXTextField", label: "Buscar película", rect: rect(0.3, 0.2, 0.4), placeholder: "Buscar película"),
-            FakeElement(role: "AXButton", label: "Buscar", rect: rect(0.72, 0.2)),
+            FakeElement(
+                role: "AXTextField", label: "Buscar película", rect: rect(0.3, 0.2, 0.4), placeholder: "Buscar película"
+            ),
+            FakeElement(role: "AXButton", label: "Buscar", rect: rect(0.72, 0.2))
         ],
         submitOpens: "results")
     let results = FakeScreen(
@@ -216,15 +247,19 @@ func subtisApp() -> FakeApp {
         elements: [
             FakeElement(role: "AXHeading", label: "Resultados", rect: rect(0.1, 0.05)),
             FakeElement(role: "AXList", label: "Resultados", rect: rect(0.1, 0.15, 0.8, 0.6), isContainer: true),
-            FakeElement(role: "AXLink", label: "The Matrix (1999)", rect: rect(0.1, 0.2, 0.6), container: "Resultados", opens: "movie"),
-            FakeElement(role: "AXLink", label: "The Matrix Reloaded (2003)", rect: rect(0.1, 0.3, 0.6), container: "Resultados", opens: "movie"),
+            FakeElement(
+                role: "AXLink", label: "The Matrix (1999)", rect: rect(0.1, 0.2, 0.6), container: "Resultados",
+                opens: "movie"),
+            FakeElement(
+                role: "AXLink", label: "The Matrix Reloaded (2003)", rect: rect(0.1, 0.3, 0.6), container: "Resultados",
+                opens: "movie")
         ])
     let movie = FakeScreen(
         url: "https://subtis.io/movie/603",
         elements: [
             FakeElement(role: "AXHeading", label: "The Matrix", rect: rect(0.1, 0.05, 0.4)),
             FakeElement(role: "AXStaticText", label: "1999 · 136 min", rect: rect(0.1, 0.12, 0.3)),
-            FakeElement(role: "AXButton", label: "Descargar subtítulo", rect: rect(0.1, 0.3, 0.3)),
+            FakeElement(role: "AXButton", label: "Descargar subtítulo", rect: rect(0.1, 0.3, 0.3))
         ])
     return FakeApp(screens: ["home": home, "results": results, "movie": movie], start: "home")
 }

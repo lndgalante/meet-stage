@@ -11,37 +11,25 @@ struct WorkspaceView: View {
             if windowState.stageOnly {
                 stage
             } else {
-                VStack(spacing: 0) {
-                    HStack(spacing: 12) {
-                        ControlView(manager: manager)
-                            .frame(width: WorkspaceMetrics.sidebarWidth)
-                            .workspacePanel()
-                        VStack(spacing: 8) {
-                            StageStatusBar(manager: manager)
-                            stage
-                        }
-                        .frame(minWidth: 440)
+                HStack(spacing: 12) {
+                    ControlView(manager: manager)
+                        .frame(width: WorkspaceMetrics.sidebarWidth)
+                        .workspacePanel()
+                    VStack(spacing: 12) {
+                        stage
+                            .overlay { DemoDrivingGlow(demo: manager.demo, cornerRadius: 16) }
+                        DemoBarView(manager: manager, demo: manager.demo)
                     }
-                    .padding(12)
-                    Divider()
-                    DemoBarView(manager: manager, demo: manager.demo)
+                    .frame(minWidth: 440)
                 }
+                .padding(12)
             }
         }
         .background(Color(nsColor: .windowBackgroundColor))
         .frame(minWidth: WorkspaceMetrics.minimumSize.width, minHeight: WorkspaceMetrics.minimumSize.height)
         .background(WindowConfigurator())
         .background(StageActionsInstaller(manager: manager))
-        .toolbar {
-            ToolbarItem(placement: .principal) {
-                HStack(spacing: 6) {
-                    Image(systemName: "rectangle.on.rectangle")
-                        .foregroundStyle(.secondary)
-                    Text("BetterMeets")
-                        .font(.headline)
-                }
-            }
-        }
+        .toolbar { StageToolbar(manager: manager) }
         .toolbar(removing: .title)
         .ignoresSafeArea(.container, edges: windowState.stageOnly ? .top : [])
         .toolbar(windowState.stageOnly ? .hidden : .visible, for: .windowToolbar)

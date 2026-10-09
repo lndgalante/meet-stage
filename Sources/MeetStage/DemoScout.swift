@@ -33,6 +33,23 @@ enum ScoutStop: Equatable, Sendable {
     case error(DemoError)
 }
 
+extension ScoutStop {
+    /// Why the build stopped, written for the presenter.
+    var message: String {
+        switch self {
+        case .user: "Build paused."
+        case .userInput: "Paused because you clicked or typed in the app."
+        case .focusLost: "Paused because the app lost focus."
+        case .relaunched: "This build was interrupted. Resume it from the current screen, or use the steps so far."
+        case .leftScope(let reason): reason + " Close it and come back to the app to resume."
+        case .needsApproval(let pending): pending.message
+        case .blocked(let reason, _): reason
+        case .limit(let limit): limit.message
+        case .error(let error): error.localizedDescription
+        }
+    }
+}
+
 enum ScoutResult: Equatable, Sendable {
     case finished
     case stopped(ScoutStop)
@@ -47,6 +64,8 @@ final class DemoScout {
         var maxTurns = 24
         var maxDuration = Duration.seconds(240)
         var maxSpendMicroUSD = 2_000_000
+        /// How many windows the app may open, each closed again, before the build stops.
+        var maxClosedWindows = 3
         var settleMinimum = Duration.milliseconds(400)
         var settlePoll = Duration.milliseconds(250)
         /// How long each chosen highlight is shown while building.
@@ -59,16 +78,19 @@ final class DemoScout {
     private let model: any DemoModeling
     private let key: String
     private let limits: Limits
+    private let language: ScriptLanguage
     private let check: () throws -> Void
     private let onUpdate: (RealTimeDemo, String) -> Void
     private var info: DemoAppInfo
     private var baseline: DemoScopeBaseline
+    /// Windows the app opened that the scout closed again, so the build could go on.
+    private var closedWindows = 0
     private var unchangedTurns = 0
     private var interrupted = false
 
     init(
         demo: RealTimeDemo, source: DemoSource, driver: any DemoDriving, model: any DemoModeling, key: String,
-        limits: Limits = Limits(), check: @escaping () throws -> Void,
+        limits: Limits = Limits(), language: ScriptLanguage = .automatic, check: @escaping () throws -> Void,
         onUpdate: @escaping (RealTimeDemo, String) -> Void
     ) throws {
         self.demo = demo
@@ -77,6 +99,7 @@ final class DemoScout {
         self.model = model
         self.key = key
         self.limits = limits
+        self.language = language
         self.check = check
         self.onUpdate = onUpdate
         info = try driver.appInfo(for: source)
@@ -168,7 +191,7 @@ final class DemoScout {
             prompt: demo.prompt, appName: source.name, engine: info.engine,
             start: demo.start?.url.map { "\($0.host ?? "")\($0.path)" } ?? "native app", outline: draft.outline,
             facts: facts(), turn: draft.turn + 1, maxTurns: limits.maxTurns, screenshot: screenshot,
-            elements: elements, correction: nil)
+            elements: elements, correction: nil, language: language)
         for attempt in 0..<2 {
             do {
                 return try await model.scoutTurn(request, key: key)
@@ -205,7 +228,8 @@ final class DemoScout {
             guard listed.contains(id), let node = snapshot.node(id) else { return nil }
             if !node.roleClass.isInteractive, node.roleClass != .row, node.roleClass != .cell,
                 let ancestor = node.interactiveAncestorID,
-                let locator = DemoLocatorFactory.locator(for: ancestor, in: snapshot), let parent = snapshot.node(ancestor)
+                let locator = DemoLocatorFactory.locator(for: ancestor, in: snapshot),
+                let parent = snapshot.node(ancestor)
             {
                 return (locator, parent)
             }
@@ -214,19 +238,22 @@ final class DemoScout {
         func unusable(_ id: Int) -> ScoutResult? {
             reject(
                 turn,
-                "element \(id) isn’t in the current list or can’t be found again reliably; choose a uniquely labelled element or its row.")
+                "element \(id) isn’t in the current list or can’t be found again reliably; choose a uniquely labelled element or its row."
+            )
             return nil
         }
 
         switch decision {
-        case .finish(let title, let startDescription, let closingScript):
+        case .finish(let title, let startDescription, let startLabel, let closingScript):
             let steps = ScoutCompaction.compact(draft.records)
             guard !steps.isEmpty else {
                 return .stopped(.blocked(reason: "Claude finished without recording any steps.", alternative: ""))
             }
-            if let toggle = Self.unrestoredToggle(in: steps), !draft.records.contains(where: {
-                $0.fact.contains("restore") && $0.turn == turn - 1
-            }) {
+            if let toggle = Self.unrestoredToggle(in: steps),
+                !draft.records.contains(where: {
+                    $0.fact.contains("restore") && $0.turn == turn - 1
+                })
+            {
                 // Replays must leave the app as they found it, or the next run starts flipped.
                 reject(turn, "restore “\(toggle)” to how it was at the start before finishing.")
                 return nil
@@ -234,6 +261,7 @@ final class DemoScout {
             demo.title = String((title.isEmpty ? demo.title : title).prefix(80))
             demo.closingScript = String(closingScript.prefix(300))
             demo.start?.description = String(startDescription.prefix(200))
+            demo.start?.label = startLabel.isEmpty ? nil : String(startLabel.prefix(32))
             update("Recorded \(steps.count) steps")
             return .finished
 
@@ -301,7 +329,8 @@ final class DemoScout {
                         title: clean(title: beat.title, fallback: beat.effect.label), script: script,
                         holdSeconds: DemoStep.hold(for: script, action: action), action: action, pre: pre))
                 shown.append(
-                    "\(beat.effect.rawValue) " + targets.map { "“\(String($0.0.displayName.prefix(40)))”" }
+                    "\(beat.effect.rawValue) "
+                        + targets.map { "“\(String($0.0.displayName.prefix(40)))”" }
                         .joined(separator: " + "))
                 let rect = targets.map(\.1.rect).dropFirst().reduce(targets[0].1.rect) { $0.union($1) }
                 update("Highlighting \(clean(title: beat.title, fallback: "a detail"))")
@@ -314,7 +343,10 @@ final class DemoScout {
                 reject(turn, "none of those element IDs could be highlighted reliably.")
                 return nil
             }
-            save(ScoutRecord(turn: turn, steps: steps, outcome: .changed, fact: "#\(turn) showed " + shown.joined(separator: "; ")))
+            save(
+                ScoutRecord(
+                    turn: turn, steps: steps, outcome: .changed,
+                    fact: "#\(turn) showed " + shown.joined(separator: "; ")))
             unchangedTurns = 0
             return nil
         }
@@ -371,7 +403,9 @@ final class DemoScout {
         switch action {
         case .click: input = .click(ElementHandle(generation: snapshot.generation, id: node?.id ?? -1), name: name)
         case .typeText(_, let text, let submit):
-            input = .type(ElementHandle(generation: snapshot.generation, id: node?.id ?? -1), name: name, text: text, submit: submit)
+            input = .type(
+                ElementHandle(generation: snapshot.generation, id: node?.id ?? -1), name: name, text: text,
+                submit: submit)
         case .press(let key): input = .press(key)
         case .navigate(let url): input = .navigate(url)
         case .present: return nil
@@ -408,7 +442,11 @@ final class DemoScout {
         var changed = Self.changed(from: snapshot, to: settled)
         var record = draft.records.last ?? ScoutRecord(turn: turn, steps: [step], outcome: .pending, fact: "")
         var neededPointer = false
-        if !changed, case .click(let locator) = action, let id = DemoLocatorMatcher.match(locator, in: settled).nodeID {
+        // A click that opened another window changed nothing here, and clicking again would open another.
+        let openedWindow = driver.scopeViolation(source, since: baseline) != nil
+        if !changed, !openedWindow, case .click(let locator) = action,
+            let id = DemoLocatorMatcher.match(locator, in: settled).nodeID
+        {
             // Accessibility's press did nothing (some controls close at once while their
             // window isn't focused); try a real click before telling Claude it failed.
             update("Trying a real click on \(String(locator.displayName.prefix(40)))")
@@ -433,7 +471,8 @@ final class DemoScout {
             locator.toggleValueAfter = value
             record.steps[0].action = .click(locator)
         }
-        let urlNote = changed && settled.webURL != snapshot.webURL
+        let urlNote =
+            changed && settled.webURL != snapshot.webURL
             ? " (" + (ScreenSignatures.urlKey(settled.webURL) ?? "new page") + ")" : ""
         record.fact =
             "#\(turn) \(describe(action))\(neededPointer ? " (needed a real click)" : "") → "
@@ -442,7 +481,19 @@ final class DemoScout {
         noteProgress(changed)
 
         if let violation = driver.scopeViolation(source, since: baseline) {
-            return .stopped(.leftScope(violation))
+            // A window the action just opened can't be on the stage. Close it, leave the
+            // action out of the demo and let Claude find another way.
+            guard closedWindows < limits.maxClosedWindows, await driver.closeWindows(source, openedSince: baseline)
+            else {
+                return .stopped(.leftScope(violation))
+            }
+            closedWindows += 1
+            try check()
+            record.outcome = .rejected
+            record.fact =
+                "#\(turn) \(describe(action)) → opened a separate window, which BetterMeets closed. The demo can only "
+                + "show this window, so reach it another way or move on."
+            replaceLast(record)
         }
         return nil
     }
@@ -515,7 +566,8 @@ final class DemoScout {
         try check()
         guard var last = draft.records.last, last.outcome == .pending else { return }
         last.outcome = .unobserved
-        last.fact = "#\(last.turn) \(last.steps.first.map { describe($0.action) } ?? "scroll") → result not observed yet"
+        last.fact =
+            "#\(last.turn) \(last.steps.first.map { describe($0.action) } ?? "scroll") → result not observed yet"
         draft.records[draft.records.count - 1] = last
         onUpdate(demo, "")
     }
@@ -528,7 +580,8 @@ final class DemoScout {
             draft.records.removeLast()
         } else if last.outcome == .unobserved {
             last.outcome = .contaminated
-            last.fact = last.fact.replacingOccurrences(of: "result not observed yet", with: "result unknown; check the screen")
+            last.fact = last.fact.replacingOccurrences(
+                of: "result not observed yet", with: "result unknown; check the screen")
             draft.records[draft.records.count - 1] = last
         }
     }
@@ -581,7 +634,7 @@ final class DemoScout {
 
     private func clean(title: String, fallback: String) -> String {
         let text = title.split(whereSeparator: \.isWhitespace).joined(separator: " ")
-        return text.isEmpty ? fallback : String(text.prefix(48))
+        return text.isEmpty ? fallback : String(text.prefix(32))
     }
 
     // MARK: Policy
@@ -633,14 +686,16 @@ final class DemoScout {
                 && (container == nil || node.containerID == container?.id)
                 && (down ? node.rect.y >= 1 && node.rect.midY <= 1.8 : node.rect.maxY <= 0 && node.rect.midY >= -0.8)
         }
-        let best = down ? candidates.max { $0.rect.midY < $1.rect.midY } : candidates.min { $0.rect.midY < $1.rect.midY }
+        let best =
+            down ? candidates.max { $0.rect.midY < $1.rect.midY } : candidates.min { $0.rect.midY < $1.rect.midY }
         return best?.id
     }
 
     /// A switch-like button clicked an odd number of times, such as Ledger's
     /// discreet-mode eye, which the demo would leave flipped.
     static func unrestoredToggle(in steps: [DemoStep]) -> String? {
-        let pattern = #"discreet|privacy|hide balances|show balances|mask|dark mode|light mode|theme|mute|toggle|modo discreto"#
+        let pattern =
+            #"discreet|privacy|hide balances|show balances|mask|dark mode|light mode|theme|mute|toggle|modo discreto"#
         var counts: [String: (Int, String)] = [:]
         for step in steps {
             guard case .click(let locator) = step.action, locator.labelIsStable,

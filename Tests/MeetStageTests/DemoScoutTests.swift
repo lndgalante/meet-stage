@@ -20,27 +20,51 @@ struct DemoScoutTests {
             check: {}, onUpdate: { _, _ in })
     }
 
+    @Test("A click that opens a separate window is closed and left out, and the build goes on")
+    func closesStrayWindow() async throws {
+        let app = subtisApp()
+        app.nextClickOpensWindow = true
+        let model = ScriptedModel([
+            reply(.click(elementID: 2, title: "Open search", script: "")),
+            reply(.typeText(elementID: 1, text: "The Matrix", submit: true, title: "Search The Matrix", script: "")),
+            reply(.finish(title: "Find The Matrix", startDescription: "Subtis home", startLabel: "", closingScript: "")),
+        ])
+        let scout = try makeScout(app, model, prompt: "Search for The Matrix")
+
+        #expect(try await scout.run() == .finished)
+        #expect(app.log == ["click Buscar", "close 1 window", "type The Matrix ⏎"])
+        let steps = ScoutCompaction.compact(scout.demo.draft?.records ?? [])
+        #expect(steps.map(\.title) == ["Search The Matrix"])
+        #expect(model.facts[1].last?.contains("opened a separate window") == true)
+    }
+
     @Test("Records a search, a result and highlights from what was really on screen")
     func recordsSearchFlow() async throws {
         let app = subtisApp()
+        let longTitle = "Open the first result from the search results"
         let model = ScriptedModel([
             reply(
                 .typeText(elementID: 1, text: "The Matrix", submit: true, title: "Search The Matrix", script: ""),
                 outline: ["Search", "Open the result", "Show the page"]),
-            reply(.click(elementID: 2, title: "Open the first result", script: "")),
+            reply(.click(elementID: 2, title: longTitle, script: "")),
             reply(
                 .present([
                     ScoutBeat(effect: .spotlight, elementIDs: [0, 1], title: "Show the title", script: "Here's the movie."),
                     ScoutBeat(effect: .draw, elementIDs: [2], title: "Point at download", script: "This gets the subtitle."),
                 ])),
-            reply(.finish(title: "Find The Matrix", startDescription: "Subtis home", closingScript: "That's it.")),
+            reply(
+                .finish(
+                    title: "Find The Matrix", startDescription: "Subtis home",
+                    startLabel: "the Subtis home page, with the search field empty", closingScript: "That's it.")),
         ])
         let scout = try makeScout(app, model, prompt: "Search for The Matrix and open the result")
 
         #expect(try await scout.run() == .finished)
 
         let steps = ScoutCompaction.compact(scout.demo.draft?.records ?? [])
-        #expect(steps.map(\.title) == ["Search The Matrix", "Open the first result", "Show the title", "Point at download"])
+        // Titles and the start label are clamped to 32 characters.
+        #expect(
+            steps.map(\.title) == ["Search The Matrix", String(longTitle.prefix(32)), "Show the title", "Point at download"])
         #expect(app.log == ["type The Matrix ⏎", "click The Matrix (1999)"])
         guard case .click(let result) = steps[1].action else {
             Issue.record("Expected a click")
@@ -52,6 +76,7 @@ struct DemoScoutTests {
         #expect(result.visualIndex == 0)
         #expect(scout.demo.start?.url?.absoluteString == "https://subtis.io/")
         #expect(scout.demo.start?.description == "Subtis home")
+        #expect(scout.demo.start?.label == "the Subtis home page, with the s")
         #expect(scout.demo.outline == ["Search", "Open the result", "Show the page"])
         #expect(model.facts[1].last?.contains("screen changed") == true)
         #expect(steps[0].pre.urlKey == "subtis.io/")
@@ -77,7 +102,7 @@ struct DemoScoutTests {
         let app = subtisApp()
         let model = ScriptedModel([
             reply(.typeText(elementID: 1, text: "Inception", submit: true, title: "Search", script: "")),
-            reply(.finish(title: "Search", startDescription: "Home", closingScript: "")),
+            reply(.finish(title: "Search", startDescription: "Home", startLabel: "", closingScript: "")),
         ])
         let scout = try makeScout(app, model, prompt: "Show how search works")
 
@@ -111,7 +136,7 @@ struct DemoScoutTests {
         app.interactiveParents = [1: 0]
         let model = ScriptedModel([
             reply(.click(elementID: 1, title: "Open Pricing", script: "")),
-            reply(.finish(title: "Pricing", startDescription: "Home", closingScript: "")),
+            reply(.finish(title: "Pricing", startDescription: "Home", startLabel: "", closingScript: "")),
         ])
         let scout = try makeScout(app, model, prompt: "Show pricing")
         #expect(try await scout.run() == .finished)
@@ -177,7 +202,7 @@ struct DemoScoutTests {
         let model = ScriptedModel([
             reply(.click(elementID: 0, title: "Delete", script: "")),
             reply(.present([ScoutBeat(effect: .draw, elementIDs: [0], title: "Point at delete", script: "")])),
-            reply(.finish(title: "Account", startDescription: "Home", closingScript: "")),
+            reply(.finish(title: "Account", startDescription: "Home", startLabel: "", closingScript: "")),
         ])
         let scout = try makeScout(app, model, prompt: "Show how to delete an account")
 

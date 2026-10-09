@@ -6,9 +6,10 @@ enum StageActionsMetrics {
     static let cornerRadius: CGFloat = 18
     static let inset: CGFloat = 10
     static let spacing: CGFloat = 6
+    /// Demo, Pause Stage, five effects and More, with two dividers.
     static let panelHeight =
-        ControlMetrics.controlBarButtonHeight * 10
-        + spacing * 10 + 1 + inset * 2
+        ControlMetrics.controlBarButtonHeight * 8
+        + spacing * 9 + 2 + inset * 2
     static let edgeGap: CGFloat = 12
     static let panelSize = CGSize(width: panelWidth, height: panelHeight)
 }

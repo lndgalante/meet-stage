@@ -36,7 +36,7 @@ struct DemoRequestFailure: Sendable {
     var message: String {
         if let reason { return "Anthropic (\(status)): \(reason)" }
         switch status {
-        case 401: return "Anthropic didn’t accept the API key (401). Check Demo Setup."
+        case 401: return "Anthropic didn’t accept the API key (401). Check Settings › Demos."
         case 403: return "The API key doesn’t have permission for this request (403). Check your Anthropic account."
         case 429: return "Anthropic’s request limit was reached (429). Try again shortly or check your account limits."
         default: return "Anthropic returned HTTP \(status) without an error message. Copy Details to investigate."

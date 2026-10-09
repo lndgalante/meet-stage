@@ -43,6 +43,8 @@ final class CaptureManager: ObservableObject {
     }
     /// The stage's virtual cursor while a demo drives the source in the background.
     @Published var demoPointer: DemoPointer?
+    /// The source overlay is fading out on its own; clearing the cue must not cut it short.
+    var isFadingDemoCue = false
     lazy var demo = DemoSession(driver: DemoDriver(manager: self), defaults: demoDefaults)
     private let demoDefaults: UserDefaults
     @Published var isAnnotating = false

@@ -11,6 +11,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     case annotations
     case clicks
     case keystrokes
+    case demos
 
     var id: Self { self }
 
@@ -22,8 +23,12 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .annotations: String(localized: "Annotations")
         case .clicks: String(localized: "Click Highlights")
         case .keystrokes: String(localized: "Keystrokes")
+        case .demos: String(localized: "Demos")
         }
     }
+
+    /// Panes that configure a stage effect with an On/Off switch.
+    var isEffect: Bool { self != .general && self != .demos }
 }
 
 struct BetterMeetsSettingsView: View {
@@ -49,7 +54,7 @@ struct BetterMeetsSettingsView: View {
                     Text(selectedTab.title)
                         .font(.title2.weight(.semibold))
                         .accessibilityAddTraits(.isHeader)
-                    if selectedTab != .general {
+                    if selectedTab.isEffect {
                         effectState
                     }
                     Group {
@@ -60,6 +65,7 @@ struct BetterMeetsSettingsView: View {
                         case .annotations: annotationSettings
                         case .clicks: clickSettings
                         case .keystrokes: keystrokeSettings
+                        case .demos: DemoSettingsView(demo: manager.demo)
                         }
                     }
                 }
@@ -128,7 +134,7 @@ struct BetterMeetsSettingsView: View {
 
     private var effectIsEnabled: Bool {
         switch selectedTab {
-        case .general: false
+        case .general, .demos: false
         case .stage: manager.autoPresentationEnabled
         case .spotlight: manager.spotlightEnabled
         case .annotations: manager.annotationsEnabled
@@ -139,7 +145,7 @@ struct BetterMeetsSettingsView: View {
 
     private func toggleEffect() {
         switch selectedTab {
-        case .general: break
+        case .general, .demos: break
         case .stage: manager.toggleAutoPresentation(focusSource: false)
         case .spotlight: manager.toggleSpotlight(focusSource: false)
         case .annotations: manager.toggleAnnotations(focusSource: false)
@@ -461,7 +467,7 @@ struct BetterMeetsSettingsView: View {
     }
 }
 
-private struct SettingsFormRow<Content: View>: View {
+struct SettingsFormRow<Content: View>: View {
     let title: String
     let content: Content
 
@@ -471,7 +477,7 @@ private struct SettingsFormRow<Content: View>: View {
     }
 
     var body: some View {
-        HStack(spacing: 14) {
+        HStack(alignment: .firstTextBaseline, spacing: 14) {
             Text(title)
                 .font(.callout)
                 .frame(width: 105, alignment: .trailing)

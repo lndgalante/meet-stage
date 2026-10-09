@@ -28,6 +28,8 @@ final class SpeechListener: ObservableObject {
     private(set) var droppedWords = 0
     /// The language being recognized, for the status text.
     private(set) var language: String?
+    /// When the recognizer last reported speech, to notice a natural pause.
+    private(set) var lastHeard = Date.distantPast
     var onTranscript: (() -> Void)?
 
     private var engine: AVAudioEngine?
@@ -245,6 +247,7 @@ final class SpeechListener: ObservableObject {
     }
 
     private func receive(_ text: String, isFinal: Bool) {
+        lastHeard = Date()
         let words = text.split(whereSeparator: \.isWhitespace).map(String.init)
         if isFinal {
             finalizedWords.append(contentsOf: words)

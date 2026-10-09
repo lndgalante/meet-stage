@@ -92,11 +92,11 @@ struct StageActionsTests {
         defer { panel.close() }
 
         for foregroundPID in [sourcePID, ownPID, sourcePID, nil, sourcePID, ownPID + 2] {
-            StageActionsPresenter.position(panel, sourcePID: sourcePID, snapshot: snapshot, frontmostPID: foregroundPID)
+            StageActionsPresenter.position(panel, size: StageActionsMetrics.panelSize, sourcePID: sourcePID, snapshot: snapshot, frontmostPID: foregroundPID)
             #expect(panel.isVisible == (foregroundPID == sourcePID))
         }
 
-        StageActionsPresenter.position(panel, sourcePID: sourcePID, snapshot: nil, frontmostPID: sourcePID)
+        StageActionsPresenter.position(panel, size: StageActionsMetrics.panelSize, sourcePID: sourcePID, snapshot: nil, frontmostPID: sourcePID)
         #expect(!panel.isVisible)
     }
 }

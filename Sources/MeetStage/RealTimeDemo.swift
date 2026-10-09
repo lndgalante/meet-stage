@@ -21,7 +21,6 @@ struct NormRect: Codable, Hashable, Sendable {
         [x, y, w, h].allSatisfy(\.isFinite) && w > 0 && h > 0
     }
 
-
     func union(_ other: NormRect) -> NormRect {
         let minX = min(x, other.x)
         let minY = min(y, other.y)
@@ -259,6 +258,8 @@ struct DemoStartPoint: Codable, Hashable, Sendable {
     var returnAnchor: DemoElementLocator?
     var toggles: [ToggleState]
     var description: String
+    /// A few words that read after "Starts on". Optional so demos saved before it existed still load.
+    var label: String?
     var sizeClass: DemoSizeClass
 }
 
@@ -325,8 +326,27 @@ struct RealTimeDemo: Codable, Hashable, Identifiable, Sendable {
         if case .draft(let draft) = status { draft } else { nil }
     }
 
+    /// A build that stopped before it read its first screen, so there's nothing to keep.
+    var isEmptyDraft: Bool { draft != nil && start == nil }
+
     var isCompiled: Bool {
         if case .draft = status { false } else { !steps.isEmpty && start != nil }
+    }
+
+    /// The start screen in a few words, for "Starts on {startLabel}". Demos without
+    /// a label get one from the first clause of the start description.
+    var startLabel: String {
+        let fallback = "the starting screen"
+        if let label = start?.label?.trimmingCharacters(in: .whitespacesAndNewlines), !label.isEmpty { return label }
+        var text = Substring(start?.description ?? "")
+        for separator in [",", " with "] {
+            if let range = text.range(of: separator) { text = text[..<range.lowerBound] }
+        }
+        if let range = text.range(of: " on the ") { text = text[text.index(range.lowerBound, offsetBy: 4)...] }
+        text = Substring(text.trimmingCharacters(in: .whitespacesAndNewlines))
+        if text.hasSuffix(".") { text = text.dropLast() }
+        let label = text.split(whereSeparator: \.isWhitespace).prefix(4).joined(separator: " ")
+        return label.isEmpty || label.count > 32 ? fallback : label
     }
 
     var estimatedSeconds: Int {
@@ -366,7 +386,8 @@ enum DemoFingerprint {
     /// Identifies everything that decides whether a checked replay still holds:
     /// the start, every action that changes the app, the app version, and the
     /// window size class. Scripts, titles, holds, and highlights are excluded.
-    static func make(_ demo: RealTimeDemo, appVersion: String, sizeClass: DemoSizeClass, window: String = "") -> String {
+    static func make(_ demo: RealTimeDemo, appVersion: String, sizeClass: DemoSizeClass, window: String = "") -> String
+    {
         struct Payload: Encodable {
             let host: String?
             let path: String?
@@ -410,14 +431,14 @@ enum DemoError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .invalidPlan: "This demo has an invalid step. Edit it or build it again."
-        case .missingKey: "Add your Anthropic API key in Demo Setup."
+        case .missingKey: "Add your Anthropic API key in Settings › Demos."
         case .missingSource: "Choose a live source window first."
         case .permission: "Allow BetterMeets in System Settings → Privacy & Security → Accessibility, then try again."
         case .screenshot: "Couldn’t read the source window. Make sure it’s visible, then try again."
         case .sourceChanged: "The source window changed. Select the demo’s window to continue."
         case .focusChanged: "Paused because the source window lost focus."
         case .invalidResponse: "Claude returned an incomplete answer. Try again."
-        case .missingConsent: "Allow Claude to see and control the selected window in Demo Setup."
+        case .missingConsent: "Allow Claude to see and operate the selected window in Settings › Demos."
         case .keychain: "Couldn’t save the key to Keychain. Try again."
         case .webContentUnavailable(let engine):
             engine == .gecko

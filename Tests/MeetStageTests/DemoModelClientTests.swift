@@ -94,6 +94,26 @@ struct DemoModelClientTests {
         #expect(reply.decision == .blocked(reason: "No such page", alternative: ""))
     }
 
+    @Test("The script language reaches the build, the rewrite and the ideas; automatic follows the request")
+    func scriptLanguage() throws {
+        func text(_ body: [String: Any]) throws -> String {
+            try #require(String(data: try DemoModelClient.encode(body), encoding: .utf8))
+        }
+        var scout = request
+        scout.language = .spanish
+        #expect(try text(DemoModelClient.scoutBody(scout, effort: "medium")).contains("in Spanish, as a native speaker"))
+        #expect(try text(DemoModelClient.scoutBody(request, effort: "medium")).contains("language of the presenter's request"))
+
+        var script = ScriptRequest(
+            prompt: "Show Transactions", appName: "Ledger Wallet", start: "Home", outline: [],
+            steps: [.init(kind: "Click", target: "Transactions", title: "Open Transactions", script: "", isNavigation: true)],
+            tone: .conversational, audience: "")
+        #expect(try text(DemoModelClient.scriptBody(script)).contains("language of the presenter's request"))
+        script.language = .spanish
+        #expect(try text(DemoModelClient.scriptBody(script)).contains("in Spanish, as a native speaker"))
+        #expect(ScriptLanguage.spanish.label == "Español")
+    }
+
     @Test("Script requests list every step and accept only a complete answer")
     func scriptRequests() throws {
         let request = ScriptRequest(
@@ -110,9 +130,42 @@ struct DemoModelClientTests {
             ["opening": "Hi", "closing": "Bye", "steps": [["title": "Open", "script": "Let's go."], ["title": "Row", "script": "This row."]]],
             stepCount: 2)
         #expect(draft.scripts == ["Let's go.", "This row."])
+        #expect(draft.startLabel.isEmpty)
+        let schema = try #require(
+            (DemoModelClient.scriptBody(request)["tools"] as? [[String: Any]])?.first?["input_schema"] as? [String: Any])
+        #expect((schema["required"] as? [String])?.contains("startLabel") == true)
+        let labelled = try DemoModelClient.decodeScript(
+            [
+                "opening": "Hi", "closing": "Bye", "startLabel": "  the   Scheduled page ",
+                "steps": [["title": "Open", "script": ""], ["title": "Row", "script": ""]],
+            ], stepCount: 2)
+        #expect(labelled.startLabel == "the Scheduled page")
         #expect(throws: DemoError.invalidResponse) {
             try DemoModelClient.decodeScript(["opening": "", "closing": "", "steps": []], stepCount: 2)
         }
+    }
+
+    @Test("Finish carries a start label, and an answer without one still finishes")
+    func decodesFinishStartLabel() throws {
+        var input: [String: Any] = [
+            "title": "Schedule a daily summary", "startDescription": "ChatGPT on the Scheduled page",
+            "startLabel": " the Scheduled page ", "closingScript": "That's it.",
+        ]
+        let finish = try DemoModelClient.decodeScout("finish", input)
+        #expect(
+            finish.decision
+                == .finish(
+                    title: "Schedule a daily summary", startDescription: "ChatGPT on the Scheduled page",
+                    startLabel: "the Scheduled page", closingScript: "That's it."))
+        input["startLabel"] = nil
+        guard case .finish(_, _, let startLabel, _) = try DemoModelClient.decodeScout("finish", input).decision else {
+            Issue.record("Expected finish")
+            return
+        }
+        #expect(startLabel.isEmpty)
+        let finishTool = try #require(DemoModelClient.scoutTools.first { $0["name"] as? String == "finish" })
+        let schema = try #require(finishTool["input_schema"] as? [String: Any])
+        #expect((schema["required"] as? [String])?.contains("startLabel") == true)
     }
 
     @Test("Fallback attempts are each billed at their own model's rates")

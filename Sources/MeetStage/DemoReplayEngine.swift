@@ -38,6 +38,9 @@ final class DemoReplayEngine {
         var speed: Double = 1
         var pausesAfterEachStep = false
         var singleStep = false
+        /// Presenting: replays the actions before this step quickly and silently,
+        /// skipping their highlights, to get back to it from the start.
+        var rewindTo: Int?
         /// Test hooks: a fixed hold and gate timeout instead of the paced ones.
         var holdOverride: Double?
         var gateTimeout: Duration?
@@ -236,6 +239,11 @@ final class DemoReplayEngine {
         while index < demo.steps.count {
             try check()
             let step = demo.steps[index]
+            if isRewinding(index), !step.action.isMutating {
+                hooks.onCommit(index + 1)
+                index += 1
+                continue
+            }
             hooks.onStep(index, step.title)
             let previous = index > 0 ? demo.steps[index - 1].action : nil
             let gate = try await self.gate(index, after: previous)
@@ -257,7 +265,8 @@ final class DemoReplayEngine {
                 if options.mode == .verify { passedSteps.insert(step.id) }
             }
 
-            if options.singleStep || options.pausesAfterEachStep, index + 1 < demo.steps.count {
+            if options.singleStep || options.pausesAfterEachStep, index + 1 < demo.steps.count, !isRewinding(index + 1)
+            {
                 return .pausedAfter(index)
             }
             index += 1
@@ -345,9 +354,11 @@ final class DemoReplayEngine {
             heals[step.id] = healed.locators
             return .resolved(healed.snapshot, healed.ids)
         }
-        return .failure(.targetNotFound(locators.first(where: {
-            DemoLocatorMatcher.match($0, in: snapshot).nodeID == nil
-        })?.displayName ?? step.title))
+        return .failure(
+            .targetNotFound(
+                locators.first(where: {
+                    DemoLocatorMatcher.match($0, in: snapshot).nodeID == nil
+                })?.displayName ?? step.title))
     }
 
     /// Scrolls a resolved but off-screen target into view: first by asking the
@@ -371,7 +382,8 @@ final class DemoReplayEngine {
         let container = hint.flatMap { containerRect(for: $0, in: latest) } ?? latest.containerNode(of: node)?.rect
         for _ in 0..<8 {
             do {
-                try await driver.perform(.wheel(around: container, down: down, increments: 1), on: source, pace: .scout) {}
+                try await driver.perform(.wheel(around: container, down: down, increments: 1), on: source, pace: .scout)
+                {}
             } catch DemoError.inputNotDelivered {
                 return
             }
@@ -486,8 +498,16 @@ final class DemoReplayEngine {
         return nil
     }
 
+    private func isRewinding(_ index: Int) -> Bool {
+        index < (options.rewindTo ?? 0)
+    }
+
     private func hold(_ index: Int) async throws {
         let step = demo.steps[index]
+        if isRewinding(index) {
+            try await Task.sleep(for: .milliseconds(150))
+            return
+        }
         if let fixed = options.holdOverride {
             try await Task.sleep(for: .seconds(fixed))
             return
@@ -498,7 +518,9 @@ final class DemoReplayEngine {
         }
         // Speed shortens pauses and silent steps, never the time a line takes to say.
         let speaking = DemoStep.speakingTime(for: step.script)
-        let seconds = speaking > 0 ? max(step.holdSeconds / max(options.speed, 0.5), speaking + 0.4)
+        let seconds =
+            speaking > 0
+            ? max(step.holdSeconds / max(options.speed, 0.5), speaking + 0.4)
             : step.holdSeconds / max(options.speed, 0.5)
         if let hold = hooks.hold {
             try await hold(index, seconds)
@@ -530,7 +552,8 @@ final class DemoReplayEngine {
         }.joined(separator: "; ")
         hooks.onStep(index, "Looking for \(locators.first?.displayName ?? step.title)")
         let result = try await model.relocate(
-            RelocateRequest(stepTitle: step.title, description: description, screenshot: screenshot, elements: encoded.text),
+            RelocateRequest(
+                stepTitle: step.title, description: description, screenshot: screenshot, elements: encoded.text),
             key: key)
         try check()
         guard let ids = result.ids, ids.allSatisfy(encoded.listed.contains) else { return nil }

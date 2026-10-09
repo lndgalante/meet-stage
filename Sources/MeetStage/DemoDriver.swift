@@ -53,7 +53,13 @@ protocol DemoDriving: AnyObject {
     ) async throws
     func scopeBaseline(_ source: DemoSource) -> DemoScopeBaseline
     func scopeViolation(_ source: DemoSource, since baseline: DemoScopeBaseline) -> String?
+    /// Closes windows the app opened since `baseline`; true once none remain.
+    func closeWindows(_ source: DemoSource, openedSince baseline: DemoScopeBaseline) async -> Bool
     func show(_ cue: DemoCue?)
+    /// Fades out the last highlight and the virtual cursor once a run has ended.
+    func fadeOutCue()
+    /// Puts the demo's window in front, so the presenter presents from the app itself.
+    func bringToFront(_ source: DemoSource) async
     /// Moves the stage's demo cursor; nil hides it.
     func movePointer(to point: NormalizedWindowPoint?, duration: Double)
 }
@@ -101,7 +107,7 @@ final class DemoDriver: DemoDriving {
             .flatMap { $0["CFBundleURLSchemes"] as? [String] ?? [] }
         let version = [
             bundle?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String,
-            bundle?.object(forInfoDictionaryKey: "CFBundleVersion") as? String,
+            bundle?.object(forInfoDictionaryKey: "CFBundleVersion") as? String
         ].compactMap { $0 }.joined(separator: " ")
         let frame = WindowFrameResolver.currentFrame(for: window.id, fallback: window.window.frame)
         return DemoAppInfo(
@@ -186,6 +192,22 @@ final class DemoDriver: DemoDriving {
         return nil
     }
 
+    func closeWindows(_ source: DemoSource, openedSince baseline: DemoScopeBaseline) async -> Bool {
+        guard let window = try? window(for: source) else { return false }
+        let pid = window.processIdentifier
+        let opened = windowFrames(of: pid).filter { !baseline.windowNumbers.contains($0.key) }
+        guard !opened.isEmpty, await ax.closeWindows(pid: pid, frames: Array(opened.values)) else { return false }
+        for _ in 0..<10 {
+            if windowNumbers(of: pid).isSubset(of: baseline.windowNumbers) { return true }
+            try? await Task.sleep(for: .milliseconds(150))
+        }
+        return false
+    }
+
+    func fadeOutCue() {
+        manager?.fadeOutDemoCue()
+    }
+
     func show(_ cue: DemoCue?) {
         guard manager?.demoCue != cue else { return }
         manager?.demoCue = cue
@@ -250,7 +272,9 @@ final class DemoDriver: DemoDriving {
     private func denyDestructive(_ hit: HitTestResult) throws {
         guard let kind = Self.policyKind(role: hit.role, subrole: hit.subrole), !hit.label.isEmpty else { return }
         let element = DemoPolicyElement(kind: kind, label: hit.label, labelIsData: kind == .row || kind == .cell)
-        if case .deny(let reason) = DemoActionPolicy.evaluate(.click(element), prompt: "", startHost: nil, approved: false) {
+        if case .deny(let reason) = DemoActionPolicy.evaluate(
+            .click(element), prompt: "", startHost: nil, approved: false)
+        {
             throw DemoError.policyDenied(reason)
         }
     }
@@ -397,17 +421,7 @@ final class DemoDriver: DemoDriving {
         let pid = window.processIdentifier
         let wasActive = NSApp.isActive
         if NSWorkspace.shared.frontmostApplication?.processIdentifier != pid {
-            guard let application = NSRunningApplication(processIdentifier: pid) else {
-                throw DemoError.inputNotDelivered(source.name)
-            }
-            if wasActive { NSApp.yieldActivation(to: application) }
-            application.activate()
-            let app = AXUIElementCreateApplication(pid)
-            if let frame = WindowFrameResolver.currentSnapshot(for: window.id)?.frame,
-                let axWindow = AccessibilityWindowResolver.uniqueMatchingWindow(in: app, sourceFrame: frame)
-            {
-                AXUIElementPerformAction(axWindow, kAXRaiseAction as CFString)
-            }
+            guard raise(window) else { throw DemoError.inputNotDelivered(source.name) }
             var arrived = false
             for _ in 0..<30 {
                 try await Task.sleep(for: .milliseconds(50))
@@ -423,6 +437,29 @@ final class DemoDriver: DemoDriving {
         }
         try await body()
         try? await Task.sleep(for: .milliseconds(120))
+    }
+
+    func bringToFront(_ source: DemoSource) async {
+        guard let window = try? window(for: source), !SourceWindowFocusValidator.isExactlyFocused(window) else {
+            return
+        }
+        raise(window)
+    }
+
+    /// Activates the window's app and raises that exact window above its others.
+    /// False when the app is no longer running.
+    @discardableResult
+    private func raise(_ window: WindowSource) -> Bool {
+        guard let application = NSRunningApplication(processIdentifier: window.processIdentifier) else { return false }
+        if NSApp.isActive { NSApp.yieldActivation(to: application) }
+        application.activate()
+        let app = AXUIElementCreateApplication(window.processIdentifier)
+        if let frame = WindowFrameResolver.currentSnapshot(for: window.id)?.frame,
+            let axWindow = AccessibilityWindowResolver.uniqueMatchingWindow(in: app, sourceFrame: frame)
+        {
+            AXUIElementPerformAction(axWindow, kAXRaiseAction as CFString)
+        }
+        return true
     }
 
     // MARK: Geometry and visuals
@@ -443,8 +480,7 @@ final class DemoDriver: DemoDriving {
 
     /// Glides the stage cursor to `point` and waits for it to arrive.
     private func glide(to point: CGPoint, window: WindowSource, pace: DemoPace) async throws {
-        let seconds = Double(pace.cursorTravel.components.attoseconds) / 1e18 + Double(pace.cursorTravel.components.seconds)
-        movePointer(to: normalized(point, in: window), duration: seconds)
+        movePointer(to: normalized(point, in: window), duration: pace.cursorTravel / .seconds(1))
         try await Task.sleep(for: pace.cursorTravel)
     }
 
@@ -482,14 +518,24 @@ final class DemoDriver: DemoDriving {
     }
 
     private func windowNumbers(of pid: pid_t) -> Set<CGWindowID> {
+        Set(windowFrames(of: pid).keys)
+    }
+
+    /// The app's on-screen standard windows and their global frames.
+    private func windowFrames(of pid: pid_t) -> [CGWindowID: CGRect] {
         guard let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly], kCGNullWindowID) as? [[String: Any]]
-        else { return [] }
-        return Set(
-            windows.compactMap { window in
-                guard window[kCGWindowOwnerPID as String] as? Int32 == pid,
-                    window[kCGWindowLayer as String] as? Int == 0
-                else { return nil }
-                return window[kCGWindowNumber as String] as? CGWindowID
-            })
+        else { return [:] }
+        var frames: [CGWindowID: CGRect] = [:]
+        for window in windows {
+            guard window[kCGWindowOwnerPID as String] as? Int32 == pid,
+                window[kCGWindowLayer as String] as? Int == 0,
+                let number = window[kCGWindowNumber as String] as? CGWindowID
+            else { continue }
+            let bounds = (window[kCGWindowBounds as String] as? NSDictionary)
+                .flatMap { CGRect(dictionaryRepresentation: $0 as CFDictionary) }
+            // Keep a window even without bounds, so scope checks still count it.
+            frames[number] = bounds ?? .null
+        }
+        return frames
     }
 }

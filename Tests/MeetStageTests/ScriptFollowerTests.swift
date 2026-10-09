@@ -110,14 +110,43 @@ struct PresenterPacingTests {
         try await holding.value
     }
 
-    @Test("A step without a line moves on when you say “next” and pause")
-    func sayNext() async throws {
+    @Test("A step without a line moves on by itself after a short beat")
+    func silentStepsContinue() async throws {
         let prompter = PresenterPrompter(defaults: UserDefaults(suiteName: "prompter-\(UUID().uuidString)")!)
         prompter.listener.simulateHearing("")
         prompter.show(.step(1), text: "", heading: "", upNext: nil, position: nil)
-        let holding = Task { try await prompter.hold(seconds: 0.1) }
-        try await Task.sleep(for: .milliseconds(300))
-        prompter.listener.simulateHearing("okay next", isFinal: true)
+        let started = ContinuousClock.now
+        try await prompter.hold(seconds: 30)
+        #expect(ContinuousClock.now - started < .seconds(2))
+    }
+
+    @Test("Saying a line in your own words, then pausing, moves on")
+    func paraphraseThenPause() async throws {
+        let prompter = PresenterPrompter(defaults: UserDefaults(suiteName: "prompter-\(UUID().uuidString)")!)
+        prompter.listener.simulateHearing("")
+        prompter.show(
+            .step(0), text: "The status tells us whether it's confirmed on-chain, so you don't have to check an explorer.",
+            heading: "", upNext: nil, position: nil)
+        let holding = Task { try await prompter.hold(seconds: 30) }
+        prompter.listener.simulateHearing("and the status shows it's confirmed on chain so no need to check the explorer")
+        #expect(prompter.follower.coverage >= PresenterPrompter.gistCoverage)
+        let started = ContinuousClock.now
+        try await holding.value
+        #expect(ContinuousClock.now - started < .seconds(3))
+    }
+
+    @Test("A short aside doesn't count as saying the line")
+    func asideKeepsWaiting() async throws {
+        let prompter = PresenterPrompter(defaults: UserDefaults(suiteName: "prompter-\(UUID().uuidString)")!)
+        prompter.listener.simulateHearing("")
+        prompter.show(
+            .step(0), text: "The status tells us whether it's confirmed on-chain, so you don't have to check an explorer.",
+            heading: "", upNext: nil, position: nil)
+        let holding = Task { try await prompter.hold(seconds: 30) }
+        prompter.listener.simulateHearing("let me just mention the status quickly")
+        try await Task.sleep(for: .milliseconds(1_600))
+        #expect(prompter.isWaitingForVoice)
+        prompter.skipLine()
         try await holding.value
     }
 

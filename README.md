@@ -9,9 +9,12 @@ reopening the share picker or exposing your desktop.
 ## How it works
 
 BetterMeets brings tools, window selection, and the live stage into one resizable
-Mac window. The left sidebar is a compact vertical rail of application icons. The main area shows the selected source at its original
-aspect ratio. Source status, Pause Stage, and Clear Stage sit above the preview.
-The bottom strip holds the real-time demo composer and playback controls.
+Mac window. The left sidebar is a compact vertical rail of application icons that runs the full height of the window. The main area shows the selected source at its original
+aspect ratio. The window toolbar shows the app on stage, its state, and its
+window title, then the presentation effects, Pause Stage, and Clear Stage.
+Below the stage, a demo panel in the same rounded material as the rail holds
+a list of the app's real-time demos beside the open demo's status, steps, and
+playback controls.
 
 Choose an app icon to put a window on stage. Selecting the live source again
 keeps it live. Use Pause/Resume (Shift–Command–P) to hide or restore the source.
@@ -20,7 +23,7 @@ marked live only after ScreenCaptureKit delivers its first complete video frame.
 The window keeps the size and position you chose when sources change.
 
 Choose **Stage Only** (Control–Command–S) to hide the window rail,
-status strip, and toolbar. Then share **BetterMeets** in your meeting app.
+demo panel, and toolbar. Then share **BetterMeets** in your meeting app.
 Press the same shortcut or Escape to restore controls. Use the standard green
 traffic light for full screen while controls are visible. Returning
 to controls while sharing makes them visible to your audience.
@@ -37,15 +40,19 @@ Scroll vertically to browse sources; Up/Down and Return select by keyboard, and
 Space opens a larger preview. Source shortcuts also scroll the selected tile
 into view. New and closed windows update automatically.
 
-Presentation tools are available from the menu bar and Settings (Command–comma).
+Presentation tools are available from the window toolbar, the menu bar, and
+Settings (Command–comma).
 Each effect’s settings show its On/Off state beside the preview.
 
 The window rail stays compact at every window size. Hover over an icon or press
 Space to see the full window title, preview, and shortcut. Unavailable pinned
 windows have a local Unpin action.
 
-The same tools also appear in the floating widget beside the selected source
-window, together with Pause/Resume, Clear Stage, and Show Controls. It follows moves and resizes, uses the right or left gutter when
+A compact floating widget beside the selected source window keeps the demo
+button (once the app has a demo) and Pause/Resume at the top, then every effect
+in order of importance: Auto Polish, Spotlight, Annotations, Click Highlights,
+and Keystrokes, which shows a warning badge while it needs Accessibility. Its
+**More** menu holds Clear Stage, Show BetterMeets, and Settings. It follows moves and resizes, uses the right or left gutter when
 space allows, and stays inside the screen. It remains available in Stage Only
 mode while the source app is active. Returning to BetterMeets or another app
 hides it, as does the source becoming unavailable.
@@ -68,16 +75,33 @@ sources at a 2560-pixel edge, at 30 fps. Presentation effects share pointer
 monitoring. BetterMeets uses the microphone only while you present a demo with
 **Follow my voice** on; speech is transcribed on the Mac, and nothing is saved
 or sent. Real-time demos send screenshots and control labels of the selected
-window to Anthropic only after the presenter enables AI access.
+window to Anthropic only after the presenter enables Claude access: on every
+build turn, once per app or site to suggest demo ideas, and while playing or
+testing only when a control moved and has to be found again.
 
 ## Real-time demos
 
-Select an app window, describe the walkthrough in the bottom strip, and choose
-**Build Demo**. Demo Setup accepts an Anthropic API key (stored in Keychain),
-the **Allow Claude to see and control the selected window while building**
-toggle, and Accessibility access, which lets BetterMeets read the app and click
-and type in it. The first build in each app asks for a one-time confirmation
-before BetterMeets touches it.
+Select an app window, describe the walkthrough in the demo panel's request
+field, and choose **Build Demo** inside the field. The **Try** row under the
+field offers ideas that fill it without building: **Quick tour** and **Main
+flow** always, plus, with Claude access on and a key saved, three
+ideas Claude Haiku 5.5 finds in the window's own features, named in a few words
+(hover one to read its request). Finding them sends one screenshot of the
+window and its element list to Anthropic; ideas are kept per app, and per site
+in a browser, so each is read once unless you choose **More Ideas**.
+
+The first time BetterMeets opens, the demo panel asks once, for every app,
+whether Claude may see the window you choose and operate it in the background
+while you watch. The row says that building sends your request, screenshots,
+and control labels to Anthropic; **Learn More** adds that playing or testing
+later sends a screenshot only to find a control that moved, and that clicking
+or typing in the app pauses it. **Allow** turns on Claude access; after **Not Now**, Build
+asks again with **Allow and Build** while access is off. Without an Anthropic
+API key, Build asks for one inline (stored in Keychain); **Save and Build**
+continues. **Settings › Demos** holds
+the key, the **See and operate the selected window while building** checkbox,
+and Accessibility access, which lets BetterMeets read the app and click and type
+in it. **Demo Settings…** in the demo panel's **Pacing** menu opens it.
 
 Claude does not plan the demo from a single screenshot. Claude Opus 5.5 operates
 the real app one action per turn: BetterMeets reads the window's Accessibility
@@ -87,48 +111,69 @@ can't be shown) using an element from the current list, and BetterMeets checks
 that the element exists, can be found again uniquely, and passes the safety
 policy before performing it. Once the app settles, BetterMeets records what
 actually changed, so every step targets something that was really on screen.
-Steps appear in the strip as they are recorded, followed by dashed outlines for
-beats still to come. A build stops after 24 turns, 40 steps, four minutes, or
-$2 of API usage (failed and fallback model calls count), or when several
-actions in a row change nothing.
+Steps appear in the demo panel's step grid as they are recorded, followed by
+dashed rings for beats still to come. While BetterMeets builds, tests, or goes
+back to the start, a slowly turning multi-hue glow traces the stage's edge. If
+an action opens a separate window of the app, BetterMeets closes it with its
+close button, leaves that action out of the demo, tells Claude, and keeps
+building, up to three times per build; a window it can't close pauses the build
+until you close it and return to the app. A build stops after 24 turns, 40
+steps, four minutes, or $2 of API usage (failed and fallback model calls
+count), or when several actions in a row change nothing.
 
 If the app doesn't show what the request needs, Claude explores briefly, then
 stops with the reason and the closest real alternative it saw.
-**Show … Instead** returns the app to where the build started and rebuilds with
-that alternative; **Edit Request** returns to the composer. An action the
-safety policy wants you to confirm pauses the build, circles the control, and
-offers **Allow** and **Skip**. After **Stop** or an
-interruption, choose **Keep Building**, **Use N Steps** to check what was
-recorded so far, or **Discard**, which returns the app to where the build
-started. A build that hits a limit offers the last two.
+**Build Alternative** returns the app to where the build started and rebuilds
+with that alternative, which the panel names; **Edit Request** returns to the
+composer. An action the safety policy wants you to confirm pauses the build,
+circles the control, and offers **Skip** and **Allow**. After **Pause Build** or
+an interruption, choose **Resume Build**; **Edit Request**, which returns the app
+to where the build started and keeps your words; or **Use N Steps** to test what
+was recorded so far. A build that hits a limit offers **Edit Request** and
+**Use N Steps**. Editing a build's request removes only that draft; the app's
+other demos stay.
 
 When a build finishes, BetterMeets returns the app to its starting point without
 asking a model: browsers press their Back button until the start address shows,
 reopening it in the same tab only if that fails, and other apps close dialogs
 with their Close or Cancel button (or Escape), reselect the recorded start item,
 and reset switches to how they started. It then plays the demo back with short
-holds to check it, confirming the start screen as it goes. A paused check
-continues where it stopped, and only a check in which every step passed shows
-**Checked**. The check is tied to the start, the actions that change the app,
+holds to test it, confirming the start screen as it goes. A paused test run
+continues where it stopped, and only a test run in which every step passed shows
+**Tested**. The result is tied to the start, the actions that change the app,
 the app's version, and the window's size in 100-point steps.
-Editing titles, scripts, holds, the start description, or the closing line, or
-rewriting the script, keeps it; an app update, resizing the window into another
-100-point step, or a changed action shows **Not checked** until **Check Again**
-passes.
+Renaming the demo, editing step titles, lines (including the opening and closing
+lines), or the name of its start screen, or rewriting the lines, keeps it; an app update,
+resizing the window into another 100-point step, or a changed action shows
+**Not tested** until **Test Again** passes. If you switch to another app while a
+demo builds or tests, BetterMeets comes back to the front when the demo is
+ready; when macOS keeps it in the background, or the build or test run needs
+you, a small notice appears over the app you're in, with **Open BetterMeets**.
 
-While that check runs, Claude Opus 5.5 rewrites the narration as one story: an
-opening line, a line and a two-to-four-word title for each step, and a closing
-line. Only words change (holds follow the new lines), so the check is
-unaffected; steps removed in the meantime stay removed, and lines edited in the
-meantime keep your edits. The strip shows
-**Writing the script…** until it's done. This request is text only: your
+While that test run plays, Claude Opus 5.5 rewrites the narration as one story:
+an opening line, a line and a distinct title of two to four words (at most 20
+characters) for each step, a closing line, and a short name for the screen the
+demo starts on, as in “Starts on the Scheduled page”. Every step gets a line, so navigation steps get a short spoken
+transition. Only words change (holds follow the new lines), so the test result
+is unaffected; steps removed in the meantime stay removed, and lines edited in
+the meantime keep your edits. The demo panel shows
+**Writing lines…** until it's done. This request is text only: your
 request, the app's name, the start description, the outline, and each step's
-kind, target name, title, and current line. **Use N Steps** writes a script the
-same way. To write it again while AI access is on, choose **Rewrite Script** in
-**Presenter Script…**, which also sets the tone (Conversational, Concise, or
-Technical) and optional notes about the audience, or in the Demo menu. A
-rewrite that fails keeps the existing lines and shows why in
-**Presenter Script…**.
+kind, target name, title, and current line. **Use N Steps** writes lines the
+same way. To write them again while AI access is on, choose **Rewrite Lines** in
+**Edit Demo…**, which also sets the tone (Conversational, Concise, or
+Technical), the language, and optional notes about the audience and keeps lines
+you edited in the sheet, or **Rewrite Lines** in the Demo menu. A rewrite that fails keeps the
+existing lines and shows why in **Edit Demo…**.
+
+**Script language** in Settings › Demos (also in Edit Demo's rewrite bar) picks
+the language Claude writes the demo title, step titles, every line, the opening,
+the closing and the start label in: **Same as My Request** by default, or
+English, Español, Português, Français, Deutsch, Italiano, Nederlands, 日本語,
+한국어 or 中文. App names for buttons and pages stay as they appear on screen. New
+builds, Rewrite Lines and Claude's ideas use it; to switch an existing demo,
+choose the language in Edit Demo and press **Rewrite Lines**. Follow my voice
+detects the script's language, so the teleprompter follows you in it.
 
 Steps store how to find each element rather than where it was: its role, a label
 that names the control, its container, and, for data such as table rows, its
@@ -140,18 +185,24 @@ only when clearly the closest; a different caption in that spot never stands
 in, and a scroll recorded while building is repeated before a position is
 trusted. A target with a look-alike within 30 points is refused when it's
 recorded. A count badge, as in “Inbox 3”, doesn't change which control a label
-names, and identifiers that web frameworks generate are ignored. Checking and
+names, and identifiers that web frameworks generate are ignored. Test runs and
 playback wait for the screen to settle after each action, find targets locally
-through Accessibility, and act only when exactly one element matches, so
-playing a checked demo needs no AI. If a target moved or was renamed on the
-right screen and AI access is on, Claude Haiku 4.5 can relocate it. During a
-live presentation, actions are never relocated, and a highlight that can't be
-found is skipped instead of stopping the demo. If the app is already on another
+through Accessibility, and act only when exactly one element matches, so a
+tested demo normally plays without AI. If a target moved or was renamed on the
+right screen while Claude access is on and a key is saved, Claude Haiku 5.5 can
+relocate it; that request sends one screenshot of the window and its element
+list to Anthropic. During a live presentation, only highlights are relocated,
+never actions, and a highlight that still can't be found is skipped instead of
+stopping the demo; a relocation suggests **Test Again** afterwards. If the app is already on another
 step's screen, **Continue from Step N** picks up there.
 
-Demos run the app in the background. BetterMeets doesn't bring it to the front,
-so you stay in BetterMeets and watch the stage, where a virtual cursor glides to
-each target and a click ripple marks each click. Clicks use the control's
+Demos run the app in the background. While a demo builds or tests, BetterMeets
+doesn't bring the app to the front, so you stay in BetterMeets and watch the
+stage, where a virtual cursor glides to each target and a click ripple marks each
+click. **Play** (and Start Over or Previous Step) brings the demo's window to the
+front, so you present from the app itself; with the app in front, a presentation
+remote's Right, Page Down or Space moves to the next line and Left or Page Up to
+the previous step instead of pausing the demo (the app receives those keys too). Clicks use the control's
 Accessibility press action, after checking that nothing else in the app covers
 it. Typing sets the field's text through Accessibility, character by character
 during presentations so it reads as typing on the stage; a field that already
@@ -166,60 +217,88 @@ your approval. Key steps are limited to Escape, Tab, Shift–Tab, the arrow keys
 and Page Up/Down, and show a key badge. In browsers, **Open page** steps use the
 same tab's address bar.
 
-**Play Demo** first checks that the app is at the start. If it isn't, the strip
-shows **Not at the start** with **Return to Start** or **Play Anyway**, and
-notices when you get there by hand. Playback then advances automatically.
-**Pause Demo** keeps the live source and current highlight visible; **Continue**
-resumes from the next action and never repeats one already dispatched.
-Highlights carry a short script (navigation usually needs none); while
-presenting, the current line appears below the steps in larger text. With
-**Follow my voice** on (the default), you set the pace and the strip reads
-**N steps · paced by your voice**. With it off, or when the microphone or
+**Play** first checks that the app is at the start; if it isn't, BetterMeets
+goes back there, then plays from the top. When it can't get there on its own,
+the demo panel shows **Not at the start** with **Go to Start**, **I’m There**, or
+both, plus **Play Anyway**, and notices when you get there by hand. Playback
+then advances automatically. **Pause Demo** keeps the live source and current
+highlight visible; **Resume Demo** resumes from the next action and never repeats
+one already dispatched. **Play Again** at the end goes back to the start, then
+plays from the top. While presenting, or at the end, **Previous Step** goes back
+to the start, quickly replays the actions before the previous step without
+highlights or lines, then presents that step with its line, which the
+teleprompter shows right away; **Start Over** goes back to the start and plays
+from the opening line. Both are in the demo panel's transport while presenting,
+the teleprompter, and the Demo menu. Each step carries a short line; the
+teleprompter shows the current line, and while it's hidden the demo panel shows
+the line in place of the steps. With **Follow my voice**
+on (the default), you set the pace and the demo panel's status shows a waveform
+beside **Step N of M**. With it off, or when the microphone or
 recognition is unavailable, each hold allows time to say its line at about 150
 words per minute, and playback starts at **2×**. Speed only affects timed
 playback: it shortens pauses and silent steps, never the time a line takes to
 say, and doesn't change the saved scripts or timings; typing and page loads
-keep their own pace. **Speed** (1×, 1.5×, 2×, 3×) appears in the options menu
-and the Demo menu only while Follow my voice is off; Demo Setup shows it
+keep their own pace. **Speed** (1×, 1.5×, 2×, 3×) appears in the demo panel's
+**Pacing** menu and the Demo menu only while Follow my voice is off; Settings › Demos shows it
 disabled, with an explanation, while it's on. **Pause After Each Step** is in
-all three. **Next Step** runs one step, then pauses. The floating source widget
-also has Play/Pause Demo, and Return to Start when the app isn't at the start.
-In BetterMeets, the Demo menu provides Control–Command–Return for play/pause
-and Control–Command–Right Arrow for a single step, or **Next Line** while
-presenting. **Pause Stage** remains separate: it hides the source.
+all three. While paused, **Next Step** in the demo panel's transport or the Demo
+menu runs one step, then pauses. The floating source widget also has the demo
+panel's main action under the same name (such as **Play Demo**, **Pause Demo**,
+**Resume Demo**, or **Pause Build**), and **Go to Start** when the app isn't at
+the start. In BetterMeets, the Demo menu starts with the action
+Control–Command–Return runs, named as in the demo panel (such as **Play Demo**,
+**Pause Build**, **Resume Test**, or **Play Anyway**); then
+Control–Command–Right Arrow for a single step, or **Next Line** while
+presenting; **Previous Step** (Control–Command–Left Arrow); **Start Over**;
+**Go to Start**; **Test Again**; **New Demo** (Option–Command–N); **Open Demo**
+for this app's demos; **Edit Demo…**, **Rename Demo…**, and **Delete Demo…**,
+which need the demo panel on screen; **Show Teleprompter**
+or **Hide Teleprompter** (Control–Command–N); Follow My Voice; Pause After Each
+Step; Playback Speed while Follow my voice is off; and **Rewrite Lines**.
+**Pause Stage** remains separate: it hides the source.
 
-**Presenter Notes** is a floating teleprompter that doesn't activate
-BetterMeets and remembers its position. It shows the current line in large text
-(with Smaller and Larger buttons), the step number, the next step's title, and
-a progress bar during each timed hold. Playing from the start shows the opening
-line before step 1 (continuing a paused demo doesn't), and the closing line at
-the end; without a closing line the panel clears. It opens when you play
-(turn off **Open presenter notes when playing** in Demo Setup), and the strip's
-speech-bubble button or Control–Command–N shows or hides it. BetterMeets asks
+The **teleprompter** is a dark panel centered just below the menu bar on the
+display with the camera (the built-in display when there is one), so reading it
+looks like talking to your audience. It doesn't activate BetterMeets, follows
+you across Spaces, and remembers where you drag it; **Move Under Camera** in its
+menu puts it back. It shows the step number and title, the current line in
+large text (**Larger Text** and **Smaller Text** in its menu), the next step's
+title, a **Listening** label while it waits for your voice, and a progress bar
+during each timed hold. Its header also holds the Follow my voice microphone
+with a live level and the transport: **Start Over**, **Previous Step**, Pause
+or Play, and **Next Line** while the demo plays. Playing from the start shows the opening line before step 1
+(continuing a paused demo doesn't), and the closing line at the end; without a
+closing line the panel clears. It opens when you play (turn off **Show under
+the camera when a demo plays** in Settings › Demos), and the demo panel's
+**Teleprompter** toggle or Control–Command–N shows or hides it. BetterMeets asks
 macOS to keep the panel out of screen sharing, but macOS may not honor that when
 you share your whole screen. Share the BetterMeets window, not the whole screen,
-to keep your notes private, and confirm that in your meeting app before relying
+to keep your lines private, and confirm that in your meeting app before relying
 on it.
 
-**Follow my voice** is on by default; turn it off in the notes panel, Demo
-Setup, or the Demo menu. When a demo becomes ready, BetterMeets asks for the
+**Follow my voice** is on by default; turn it off in the teleprompter,
+Settings › Demos, the demo panel's **Pacing** menu, or the Demo menu. When a demo becomes ready, BetterMeets asks for the
 microphone and lets macOS download its speech model, so neither happens in
 front of your audience. It listens only while a demo is presenting (playing or
 paused) and stops when the demo finishes. Speech is transcribed on the Mac with
 Apple's on-device speech recognition, biased toward the script's words, in the
 language the script is written in (otherwise your system language, or US
 English). Words you've said dim and the next word is highlighted. While it's
-following your voice there are no timers: each line, including the opening
-line, moves on a beat after you've said it, or when you say “next”. A step
-without a line waits for “next”, and the notes panel and strip show **Say
-“next” to continue**. “Next” counts only when it's the newest word heard and
+following your voice there are no hold timers: each line, including the opening
+line, moves on a beat after you've said it; after you've said most of its key
+words, in any order and in your own words, and paused for about a second; or
+when you say “next”. A short aside doesn't count as saying the line. A step
+without a line moves on after a short beat, and the teleprompter shows
+**Moving on**. “Next” counts only when it's the newest word heard and
 isn't read as a word of the line, and only after about 0.6 seconds with no new
 words; *siguiente*, *suivant*, *weiter*, *avanti*, *próximo*, and *seguinte*
 work too. If the audio input changes (a newly connected microphone, or your
 meeting app adjusting it), listening reconnects, at most once every 2 seconds,
-and the demo keeps waiting for you. **Skip** in the notes panel or
-Control–Command–Right Arrow (**Next Line**) always moves on; the shortcut also
-ends a timed hold. Holds use timers only when Follow my voice is off, the
+and the demo keeps waiting for you. **Next Line** in the teleprompter or the
+demo panel, Control–Command–Right Arrow, and, while BetterMeets is in front and
+the demo plays, Right Arrow, Page Down, or Space (what presentation remotes
+send) always move on, including out of a timed hold; Left Arrow or Page Up goes
+to the previous step, also while the demo is paused. Holds use timers only when Follow my voice is off, the
 microphone is denied, or recognition is unavailable or stops. Audio and
 transcripts are never saved or sent.
 
@@ -229,26 +308,43 @@ also appear over the source app while it is in front, with clicks passing
 through. Magnification changes the stage camera, while the source app keeps its
 original layout.
 
-Using the mouse or keyboard in the source app pauses building, checking, and
+Using the mouse or keyboard in the source app pauses building, test runs, and
 playback: a click or scroll inside the source window, or a key while the source
 app is in front. Input to BetterMeets itself, the meeting app, or any other app
 never pauses, and neither does a change of which app is in front. Stay in
 BetterMeets and leave the source app alone during automatic runs.
 
-**Edit Steps…** changes titles, scripts, holds, the start description, and the
-closing line, saving only the fields you changed, so a script rewritten while
-the sheet is open survives on the other lines. Targets and actions come from
-what happened in the app, so they can't be retyped; removing an action also
-removes every later step and needs a new check. **Presenter Script…** opens the
-complete read-aloud script, including the opening and closing lines, with
-**Rewrite Script** and **Copy Script** to take it elsewhere. **Return to Start** resets the app the
-same way as after a build; it does not undo other changes.
+**Edit Demo…**, from the demo panel's action bar, a double-click on the demo in
+the list, its right-click menu, a click on a step, or the Demo menu, opens the
+whole demo in one sheet: its title, the name of the screen it starts on (its
+help tag shows what BetterMeets checks there), the opening line, each step's
+title and line, and the closing line. It saves only
+the fields you changed, so lines rewritten while the sheet is open survive on
+the others, and each edited step holds for as long as its new line takes to
+say. Targets and actions come from what happened in the app, so they can't be
+retyped; removing an action also removes every later step and needs a new test
+run. **Copy Script** copies the complete read-aloud script to use elsewhere.
+**Go to Start** resets the app the same way as after a build; it
+does not undo other changes.
 
-The latest demo and request are saved separately for each app. Switching apps
-shows that app's demo or an empty composer; returning restores its steps at the
-beginning. An interrupted build reopens with **Keep Building** and
-**Use N Steps**. **New Demo…** clears only the selected app's demo and keeps its
-request. Pausing capture keeps the selected app's demo visible, with building
+Each app keeps any number of demos, each with its request, and reopens the one
+it last had open. The demo panel lists them on its left under **App Demos**,
+each marked playing, tested, not tested, paused, or build paused, with
+**+ New Demo** and **−** below. Selecting a demo opens it without playing it,
+and the arrow keys move through the list. Return renames the selected demo in
+place (Escape cancels), and renaming keeps it tested. **−**, Delete, or
+**Delete Demo…** in a demo's right-click menu or the Demo menu deletes that demo
+after asking; the others stay. **New Demo** opens an empty request field with a
+**New demo** row in the list and keeps the saved demos; **Cancel** on that row,
+Escape, or choosing another demo returns to the demo that was open before it.
+Switching demos waits until BetterMeets stops driving the app. A request
+you're still writing survives relaunching and switching apps: the app reopens on
+the request field with your draft. Lines Claude was still rewriting when you
+opened another demo are saved to the demo they belong to. Switching apps shows
+that app's demo or an empty composer; returning restores its steps at the
+beginning. An interrupted build reopens with **Resume Build** and **Use N
+Steps**; a build that stopped before recording
+where it started isn't kept. Pausing capture keeps the selected app's demo visible, with building
 and playback disabled until capture resumes. Switching sources or pausing
 capture pauses pending work, and turning off AI access stops a build. Demos from
 earlier versions can't replay; their requests return as drafts in the composer.
@@ -355,7 +451,7 @@ identity.
 4. Select a source window.
 5. Enable **Stage Only**, then share **BetterMeets** in your meeting.
 6. Switch sources from BetterMeets or your pinned global shortcuts.
-7. Use **Pause/Resume** above the preview or in the floating source tools.
+7. Use **Pause Stage**/**Resume Stage** in the toolbar or the floating source tools.
 8. Optional: turn on Auto Polish and choose its framing and motion in Settings
    → Auto Polish.
 
@@ -368,7 +464,7 @@ inside it.
 | Path | Purpose |
 | --- | --- |
 | `Sources/MeetStage/MeetStageApp.swift` | SwiftUI scenes and menu commands |
-| `Sources/MeetStage/WorkspaceView.swift` | Unified workspace layout and Stage Only mode |
+| `Sources/MeetStage/WorkspaceView.swift` and `StageToolbar.swift` | Unified workspace layout, window toolbar, and Stage Only mode |
 | `Sources/MeetStageCore/` | Framework-free capture frame validation, bounded concurrency, and the real-time demo action policy, compiled as an independent SPM target |
 | `Sources/MeetStage/CaptureServices.swift` | Injected thumbnail and Screen Recording authorization services |
 | `Sources/MeetStage/ControlView.swift` and `Control*.swift` | Vertical window selector, settings, reusable controls, and preview rendering |
@@ -390,8 +486,8 @@ inside it.
 | `Sources/MeetStage/PresentationPreferences.swift` | Shared color, size, and keystroke appearance options |
 | `Sources/MeetStage/StageLogoStore.swift` | Bounded image normalization and Application Support persistence |
 | `Sources/MeetStage/WorkspaceObservationBag.swift` | App lifecycle observation and notification-token ownership |
-| `Sources/MeetStage/Demo*.swift`, `RealTimeDemo.swift`, `AccessibilityService.swift`, and `AXSnapshot.swift` | Real-time demo building, matching, replay, script writing, and the bottom strip |
-| `Sources/MeetStage/PresenterNotes.swift`, `ScriptFollower.swift`, and `SpeechListener.swift` | Presenter notes panel, script following, and on-device speech recognition |
+| `Sources/MeetStage/Demo*.swift`, `RealTimeDemo.swift`, `AccessibilityService.swift`, and `AXSnapshot.swift` | Real-time demo building, matching, replay, script writing, the demo panel, the Edit Demo sheet, and Settings › Demos |
+| `Sources/MeetStage/Teleprompter.swift`, `ScriptFollower.swift`, and `SpeechListener.swift` | Teleprompter panel, script following, and on-device speech recognition |
 | `Tests/MeetStageTests/` | Policy, persistence, geometry, and AppKit interaction tests |
 | `Resources/Info.plist` | Bundle name, version, permissions, and icon metadata |
 | `Brand/` | BetterMeets icon masters and brand guidance |
@@ -529,8 +625,8 @@ notarization are intentionally external to the repository.
   not yet supported.
 - macOS may block protected video surfaces, causing them to appear black.
 - Keep BetterMeets open while it is being shared.
-- macOS may not keep the presenter notes panel out of a whole-screen share;
-  share the BetterMeets window to keep notes private. Exclusion hasn't yet been
+- macOS may not keep the teleprompter out of a whole-screen share; share the
+  BetterMeets window to keep your lines private. Exclusion hasn't yet been
   confirmed in a live meeting share.
 - If an app restores two windows with the same title, its pinned shortcut stays
   unavailable instead of guessing.

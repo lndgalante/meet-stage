@@ -14,6 +14,29 @@ struct ScriptFollower: Equatable, Sendable {
     private(set) var spoken = 0
     /// How many heard words had arrived at the last move; only later ones are new evidence.
     private var heardUsed = 0
+    /// Key words of the line said so far, in any order, so paraphrasing counts.
+    private var covered: Set<Int> = []
+
+    /// Common English and Spanish words that say little on their own, so they never count as key words.
+    private static let commonWords: Set<String> = [
+        "this", "that", "these", "those", "with", "from", "your", "have", "here", "there", "what", "when", "where",
+        "which", "will", "just", "into", "they", "them", "then", "than", "also", "about", "como", "para", "esta",
+        "este", "pero", "porque", "donde", "cuando", "tiene", "hace", "aqui", "ahora", "vamos", "solo", "todo",
+        "cada", "sobre", "desde", "hasta", "puede", "tambien", "esto", "estos", "estas", "ustedes", "nuestro",
+        "nuestra"
+    ]
+
+    /// The line's meaningful words: four letters or more, not common words like "this" or "para".
+    private var keyWords: [Int] {
+        words.indices.filter { words[$0].count >= 4 && !Self.commonWords.contains(words[$0]) }
+    }
+
+    /// Share of the line's key words said so far, in any order.
+    var coverage: Double {
+        let keys = keyWords
+        guard !keys.isEmpty else { return isComplete ? 1 : 0 }
+        return Double(keys.filter { covered.contains($0) || $0 < spoken }.count) / Double(keys.count)
+    }
 
     static let fillers: Set<String> = ["um", "uh", "erm", "ah", "eh", "hmm", "mm", "este"]
 
@@ -45,6 +68,11 @@ struct ScriptFollower: Equatable, Sendable {
         let heard = transcript.split(whereSeparator: \.isWhitespace).map { Self.normalize(String($0)) }
             .filter { !$0.isEmpty && !Self.fillers.contains($0) }
         if heard.count < heardUsed { heardUsed = heard.count }
+        // Written compounds are often said as two words ("on-chain" → "on chain").
+        let candidates = heard + zip(heard, heard.dropFirst()).map { $0 + $1 }
+        for key in keyWords where !covered.contains(key) {
+            if candidates.contains(where: { Self.similar($0, words[key], partial: false) }) { covered.insert(key) }
+        }
         guard let last = heard.last, !words.isEmpty, spoken < words.count, heard.count > heardUsed else {
             return false
         }
