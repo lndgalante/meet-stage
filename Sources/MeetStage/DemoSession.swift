@@ -173,6 +173,8 @@ final class DemoSession: ObservableObject {
         didSet { defaults.set(scriptAudience, forKey: "demo.scriptAudience") }
     }
     @Published private(set) var teleprompterVisible = false
+    /// The presenter paused the stage, so the open demo can't play.
+    @Published private(set) var stagePaused = false
     /// Set by the Demo menu; the panel handles it and sets it back to nil.
     @Published var panelRequest: DemoPanelRequest?
     @Published var opensTeleprompter: Bool {
@@ -194,11 +196,15 @@ final class DemoSession: ObservableObject {
     private var boundSource: DemoSource?
     private var scout: DemoScout?
     private var verifyEngine: DemoReplayEngine?
+    /// The presentation's latest run. Each resume is a new engine, which takes over
+    /// where framing left the page from it.
+    private var presentEngine: DemoReplayEngine?
     /// A request to build once the app is back at its start (Show … Instead).
     private var pendingRebuild: String?
     /// The demo that was open when New Demo was chosen, for Cancel.
     private var demoBeforeNew: UUID?
-    /// The step to present from once the app is back at its start (Previous Step).
+    /// The step Previous Step went back to, until a run reaches it: once the app
+    /// is back at its start, runs replay quietly up to it, a resume included.
     private(set) var rewindTarget: Int?
     private var ideasTask: Task<Void, Never>?
     /// Lets the last highlight of a finished run linger, then fades it.
@@ -212,16 +218,34 @@ final class DemoSession: ObservableObject {
     private var prompterChanges: AnyCancellable?
     /// Catches a presentation remote's keys in BetterMeets' own windows while presenting.
     private var remoteKeyMonitor: Any?
-    private lazy var toast = DemoToastController()
     /// A build or check is running whose result the presenter should hear about,
     /// even if they've switched to another app meanwhile.
     private var announcesResult = false
+    /// What the notice over another app shows, kept without windows too.
+    private(set) var demoNoticeState = DemoNoticeState()
+    /// Test hook: whether BetterMeets is the active app.
+    var isAppActive: () -> Bool = { NSApp?.isActive ?? false }
+    /// Test hook: brings BetterMeets forward, with its controls when asked. Only
+    /// the presenter's click on the notice's Open BetterMeets calls it.
+    var bringForward: (_ showingControls: Bool) -> Void = { showingControls in
+        if showingControls { BetterMeetsWindowState.shared.stageOnly = false }
+        BetterMeetsWindowActions.showStage()
+    }
     private let opensWindows: Bool
     private lazy var teleprompter: TeleprompterController = {
-        let controller = TeleprompterController()
-        controller.onClose = { [weak self] in self?.teleprompterVisible = false }
-        return controller
+        let teleprompter = TeleprompterController()
+        // The notice hangs below the teleprompter, so it follows it as it shows, hides and resizes.
+        teleprompter.onDockedChange = { [weak self] in self?.demoNotice.redock() }
+        return teleprompter
     }()
+    private lazy var demoNotice: DemoNoticeController = {
+        let notice = DemoNoticeController { [weak self] in self?.teleprompter.docked }
+        notice.onOpen = { [weak self] in self?.openFromDemoNotice() }
+        notice.onDismiss = { [weak self] in self?.dismissDemoNotice() }
+        return notice
+    }()
+    /// Real clicks and scrolls must land on the app, not on the teleprompter or the notice over it.
+    private lazy var inputObstructions = DemoInputObstructions([teleprompter, demoNotice])
     /// Test hook: fixed holds and gate timeouts for replays.
     var replayTuning: (holdOverride: Double?, gateTimeout: Duration?) = (nil, nil)
 
@@ -254,10 +278,12 @@ final class DemoSession: ObservableObject {
         playbackSpeed = DemoPlaybackSpeed(rawValue: defaults.double(forKey: "demo.playbackSpeed")) ?? .fast
         selectedSource = driver.selectedSource
         liveSource = driver.source
+        stagePaused = driver.isStagePaused
         loadSelectedDemo()
         // Views that observe the session also show the voice setting and the current line.
         prompterChanges = prompter.$followsVoice.map { _ in () }.merge(with: prompter.$line.map { _ in () })
             .sink { [weak self] in self?.objectWillChange.send() }
+        if opensWindows { driver.inputObstruction = inputObstructions }
     }
 
     static let keyStore = KeychainSecret(
@@ -404,7 +430,7 @@ final class DemoSession: ObservableObject {
                     bundleID: source.bundleID, appName: source.name, engine: info.engine, isBrowser: info.isBrowser),
                 title: title, status: .draft(ScoutDraft()))
             persist()
-            announcesResult = true
+            startAnnouncing()
             startScout(source: source, key: key)
         } catch {
             notice = error.localizedDescription
@@ -577,7 +603,7 @@ final class DemoSession: ObservableObject {
     func checkAgain() {
         guard !isBusy, demo?.isCompiled == true, isLiveSourceSelected else { return }
         recheckSuggested = false
-        announcesResult = true
+        startAnnouncing()
         returnToStart(then: .verify)
     }
 
@@ -628,6 +654,7 @@ final class DemoSession: ObservableObject {
         let id = runID
         boundSource = source
         verifyEngine = nil
+        presentEngine = nil
         notice = nil
         phase = .returning(then: then)
         activity = "Going back to the start"
@@ -706,9 +733,8 @@ final class DemoSession: ObservableObject {
         switch then {
         case .verify: startReplay(mode: .verify, from: 0)
         case .play:
-            let target = rewindTarget ?? 0
-            rewindTarget = nil
-            startReplay(mode: .present, from: 0, startsFromTop: target == 0, rewindTo: target > 0 ? target : nil)
+            if rewindTarget == 0 { rewindTarget = nil }
+            startReplay(mode: .present, from: 0, startsFromTop: rewindTarget == nil)
         case .ready:
             phase = .ready
             activity = ""
@@ -739,11 +765,14 @@ final class DemoSession: ObservableObject {
 
     func play(singleStep: Bool = false) {
         sourceDidChange()
-        rewindTarget = nil
         switch phase {
         case .ready, .finished:
+            rewindTarget = nil
+            // Like Start Over, Play Again shows the opening at once, not the closing line it leaves.
+            if phase == .finished, canPlay, let demo { showFirstLine(of: demo) }
             startReplay(mode: .present, from: 0, singleStep: singleStep, checkStart: true, startsFromTop: true)
         case .needsStart(_, .ready), .needsStart(_, .play):
+            rewindTarget = nil
             startReplay(mode: .present, from: 0, singleStep: singleStep, startsFromTop: true)
         case .paused(let mode, let next, _, _):
             startReplay(mode: mode, from: next, singleStep: singleStep && mode == .present)
@@ -761,7 +790,8 @@ final class DemoSession: ObservableObject {
     func previousStep() {
         guard let demo, demo.isCompiled, phase == .finished || phase.replayMode == .present else { return }
         let current = phase == .finished ? demo.steps.count : phase.currentStep ?? phase.nextStep
-        rewind(to: max(0, current - 1))
+        // While catching up, the presenter is on the step it's going back to, not where the replay is.
+        rewind(to: max(0, max(current, rewindTarget ?? 0) - 1))
     }
 
     /// Presents the demo again from the opening line.
@@ -775,7 +805,8 @@ final class DemoSession: ObservableObject {
         cancelWork()
         bringToFront(source)
         rewindTarget = step
-        if step > 0 { showLine(for: step, in: demo) }
+        // The line it goes back to shows at once, not the one it left.
+        if step > 0 { showLine(for: step, in: demo) } else { showFirstLine(of: demo) }
         returnToStart(then: .play)
     }
 
@@ -826,7 +857,7 @@ final class DemoSession: ObservableObject {
 
     private func startReplay(
         mode: ReplayMode, from index: Int, singleStep: Bool = false, checkStart: Bool = false,
-        startsFromTop: Bool = false, rewindTo: Int? = nil
+        startsFromTop: Bool = false
     ) {
         guard let source = driver.source, isLiveSourceSelected, let demo, demo.isCompiled, demo.app.matches(source),
             index <= demo.steps.count
@@ -839,6 +870,7 @@ final class DemoSession: ObservableObject {
         let id = runID
         boundSource = source
         notice = nil
+        let rewindTo = mode == .present ? rewindTarget.flatMap { $0 > index ? $0 : nil } : nil
         if mode == .present { bringToFront(source) }
         phase = .running(mode, next: index, current: nil)
         activity = mode == .verify ? "Step \(index + 1) of \(demo.steps.count)" : ""
@@ -854,6 +886,12 @@ final class DemoSession: ObservableObject {
                 demo: demo, source: source, mode: mode, id: id, singleStep: singleStep,
                 playsOpening: mode == .present && index == 0 && startsFromTop, rewindTo: rewindTo)
             if mode == .verify { verifyEngine = engine }
+            if mode == .present {
+                if index > 0, let previous = presentEngine, previous.demo.id == demo.id {
+                    engine.drift = previous.drift
+                }
+                presentEngine = engine
+            }
         }
         task = Task { [weak self] in
             guard let self else { return }
@@ -920,7 +958,10 @@ final class DemoSession: ObservableObject {
                     self.activity = "Step \(index + 1) of \(steps): \(title)"
                 } else if let rewindTo, index < rewindTo {
                     // Catching up quietly; the line it's going back to is already showing.
-                } else if let demo = self.demo, self.prompter.line != .step(index) {
+                } else if let demo = self.demo, self.prompter.line != .step(index) || self.rewindTarget != nil {
+                    // Reaching the step it went back to starts its line afresh, so
+                    // nothing heard or skipped while catching up counts.
+                    self.rewindTarget = nil
                     self.showLine(for: index, in: demo)
                 }
             },
@@ -1119,9 +1160,10 @@ final class DemoSession: ObservableObject {
 
     func showTeleprompter() {
         guard opensWindows else { return }
+        // The line first, so the island grows straight to the size that shows it.
+        previewPrompter()
         teleprompter.show(demo: self)
         teleprompterVisible = true
-        previewPrompter()
     }
 
     func hideTeleprompter() {
@@ -1214,45 +1256,42 @@ final class DemoSession: ObservableObject {
         }
     }
 
-    /// When a build or check finishes, or needs the presenter, while they're in
-    /// another app: come back to the front, or show a notice over that app.
+    /// From now until the demo is ready or presenting, what the run comes to is
+    /// news, even a notice the presenter put away for an earlier run.
+    private func startAnnouncing() {
+        announcesResult = true
+        demoNoticeState.forgetDismissed()
+    }
+
+    /// Keeps the notice over the presenter's app in step with the session: while
+    /// BetterMeets is in the background, a build or test run they started shows
+    /// when it's ready or needs them, until they act on it or the phase moves on.
+    /// BetterMeets never comes forward by itself.
     private func announceIfAway() {
-        guard opensWindows, announcesResult, let content = announcement else { return }
-        if content.kind == .ready || phase.isPresenting { announcesResult = false }
-        guard !NSApp.isActive else { return }
-        if content.kind == .ready {
-            BetterMeetsWindowActions.showStage()
-            // macOS may refuse to bring BetterMeets forward on its own; then say so where they are.
-            Task { [weak self] in
-                try? await Task.sleep(for: .milliseconds(400))
-                guard let self, !NSApp.isActive else { return }
-                self.toast.show(content)
-            }
-        } else {
-            toast.show(content)
+        let content =
+            announcesResult ? DemoNoticeContent.make(phase: phase, demo: demo, isChecked: isChecked) : nil
+        // A ready demo is announced once; presenting ends the run's news.
+        if content?.kind == .ready || phase.isPresenting { announcesResult = false }
+        let change = demoNoticeState.update(to: content, isActive: isAppActive())
+        guard opensWindows else { return }
+        switch change {
+        case .none: break
+        case .show(let content): demoNotice.show(content)
+        case .hide: demoNotice.hide()
         }
     }
 
-    private var announcement: DemoToastContent? {
-        let title = demo?.title ?? "Your demo"
-        switch phase {
-        case .ready:
-            let steps = demo?.steps.count ?? 0
-            return DemoToastContent(
-                kind: .ready, title: "Demo ready",
-                detail: "\(title) · \(isChecked ? "Tested" : "Not tested") · \(steps) steps")
-        case .scoutPaused(let stop) where stop != .user:
-            return DemoToastContent(kind: .attention, title: "Your demo build needs you", detail: stop.message)
-        case .needsStart(_, .verify):
-            let start = demo?.start?.description ?? "the screen where the build started"
-            return DemoToastContent(
-                kind: .attention, title: "Go back to the start to finish the test run", detail: start)
-        case .offTrack(.verify, let index, let mismatch):
-            return DemoToastContent(
-                kind: .attention, title: "The test run stopped at step \(index + 1)", detail: mismatch.message)
-        default:
-            return nil
-        }
+    /// Open BetterMeets on the notice. Something to act on in the demo panel
+    /// brings the controls back from Stage Only, as Show Controls does.
+    func openFromDemoNotice() {
+        let showsControls = demoNoticeState.shown?.kind == .attention
+        demoNoticeState.presenterDismissed()
+        bringForward(showsControls)
+    }
+
+    /// Dismiss on the notice, or switching to BetterMeets.
+    func dismissDemoNotice() {
+        demoNoticeState.presenterDismissed()
     }
 
     private func updateRemoteKeys() {
@@ -1291,15 +1330,20 @@ final class DemoSession: ObservableObject {
             return
         }
         switch phase {
-        case .ready, .needsStart:
-            if let opening = demo.openingScript, !opening.isEmpty {
-                prompter.show(
-                    .opening, text: opening, heading: "Opening", upNext: demo.steps.first?.title, position: nil)
-            } else if !demo.steps.isEmpty {
-                showLine(for: 0, in: demo)
-            }
-        default:
+        case .needsStart(_, then: .play) where (rewindTarget ?? 0) > 0:
+            // Going back to a step: its line stays while the presenter gets the app to the start.
             break
+        case .ready, .needsStart: showFirstLine(of: demo)
+        default: break
+        }
+    }
+
+    /// The opening line, or the first step's when there isn't one.
+    private func showFirstLine(of demo: RealTimeDemo) {
+        if let opening = demo.openingScript, !opening.isEmpty {
+            prompter.show(.opening, text: opening, heading: "Opening", upNext: demo.steps.first?.title, position: nil)
+        } else if !demo.steps.isEmpty {
+            showLine(for: 0, in: demo)
         }
     }
 
@@ -1421,6 +1465,7 @@ final class DemoSession: ObservableObject {
         rewindTarget = nil
         buildSetup = nil
         verifyEngine = nil
+        presentEngine = nil
         scriptError = nil
         demo = nil
         recheckSuggested = false
@@ -1432,6 +1477,7 @@ final class DemoSession: ObservableObject {
     // MARK: Source changes
 
     func sourceDidChange() {
+        if stagePaused != driver.isStagePaused { stagePaused = driver.isStagePaused }
         let selection = driver.selectedSource
         liveSource = driver.source
         if let boundSource, isBusy, liveSource != boundSource {
@@ -1478,6 +1524,7 @@ final class DemoSession: ObservableObject {
         recheckSuggested = false
         buildSetup = nil
         verifyEngine = nil
+        presentEngine = nil
         pendingRebuild = nil
         driver.show(nil)
         driver.movePointer(to: nil, duration: 0)
@@ -1493,6 +1540,7 @@ final class DemoSession: ObservableObject {
             previewPrompter()
             if phase == .ready { prepareListener() }
             if phase == .composing { findIdeas() }
+            announceIfAway()
         }
     }
 

@@ -139,6 +139,9 @@ struct AXNode: Sendable, Hashable, Identifiable {
     var inDialog = false
     /// Nearest clickable ancestor, for text or images inside a link or button.
     var interactiveAncestorID: Int?
+    /// The visible part of the page or scroll area the node sits in. Nil outside
+    /// scrolling content, where nothing can bring a cut node into view.
+    var viewport: NormRect?
 }
 
 struct WebContentState: Sendable, Equatable {
@@ -256,6 +259,8 @@ struct AXSnapshotBuilder<Source: AXNodeSource> {
         var inWebArea = false
         var inDialog = false
         var interactiveAncestor: Int?
+        /// Inside a web area or scroll area, so `clip` is a viewport that scrolls.
+        var scrolls = false
     }
 
     init(source: Source, window: Source.Handle, windowFrame: CGRect) {
@@ -336,6 +341,7 @@ struct AXSnapshotBuilder<Source: AXNodeSource> {
             var deferred = context
             deferred.containerID = id ?? context.containerID
             deferred.clip = context.clip.intersection(frame)
+            deferred.scrolls = true
             deferredWebAreas.append((handle, frame, deferred))
             return []
         }
@@ -345,7 +351,10 @@ struct AXSnapshotBuilder<Source: AXNodeSource> {
         if let id, nodes[id].isContainer { childContext.containerID = id }
         if let id, roleClass.isInteractive { childContext.interactiveAncestor = id }
         if isDialog { childContext.inDialog = true }
-        if roleClass == .scrollArea, let frame = raw.frame { childContext.clip = context.clip.intersection(frame) }
+        if roleClass == .scrollArea, let frame = raw.frame {
+            childContext.clip = context.clip.intersection(frame)
+            childContext.scrolls = true
+        }
 
         var fragments: [(text: String, depth: Int)] = []
         for child in children {
@@ -420,10 +429,7 @@ struct AXSnapshotBuilder<Source: AXNodeSource> {
             }
         guard isUseful || isContainer else { return nil }
 
-        let rect = NormRect(
-            x: (frame.minX - windowFrame.minX) / windowFrame.width,
-            y: (frame.minY - windowFrame.minY) / windowFrame.height,
-            w: frame.width / windowFrame.width, h: frame.height / windowFrame.height)
+        let rect = normalized(frame)
         let center = CGPoint(x: frame.midX, y: frame.midY)
         let clip = context.clip
         // The root clip is the window, so a null clip always means fully scrolled away.
@@ -444,9 +450,18 @@ struct AXSnapshotBuilder<Source: AXNodeSource> {
                 textLength: isField && !isSecure ? (raw.stringValue?.count ?? 0) : nil, toggleValue: toggle,
                 containerID: context.containerID, isContainer: isContainer,
                 inWebArea: inWebArea, url: roleClass == .link || roleClass == .webArea ? raw.url : nil,
-                inDialog: context.inDialog, interactiveAncestorID: context.interactiveAncestor))
+                inDialog: context.inDialog, interactiveAncestorID: context.interactiveAncestor,
+                viewport: context.scrolls && !clip.isNull ? normalized(clip) : nil))
         handles.append(handle)
         return id
+    }
+
+    /// A global frame in fractions of the window, top-left origin.
+    private func normalized(_ frame: CGRect) -> NormRect {
+        NormRect(
+            x: (frame.minX - windowFrame.minX) / windowFrame.width,
+            y: (frame.minY - windowFrame.minY) / windowFrame.height,
+            w: frame.width / windowFrame.width, h: frame.height / windowFrame.height)
     }
 
     private static func clean(_ text: String?) -> String? {

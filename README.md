@@ -150,9 +150,10 @@ Renaming the demo, editing step titles, lines (including the opening and closing
 lines), or the name of its start screen, or rewriting the lines, keeps it; an app update,
 resizing the window into another 100-point step, or a changed action shows
 **Not tested** until **Test Again** passes. If you switch to another app while a
-demo builds or tests, BetterMeets comes back to the front when the demo is
-ready; when macOS keeps it in the background, or the build or test run needs
-you, a small notice appears over the app you're in, with **Open BetterMeets**.
+demo builds or tests, BetterMeets stays in the background: when the demo is
+ready, or the build or test run needs you, a black notice grows out of the
+camera notch (or hangs below the menu bar, or below the teleprompter when it's
+up) with **Open BetterMeets**. It stays until you open BetterMeets or dismiss it.
 
 While that test run plays, Claude Opus 5.5 rewrites the narration as one story:
 an opening line, a line and a distinct title of two to four words (at most 20
@@ -261,24 +262,38 @@ or **Hide Teleprompter** (Control–Command–N); Follow My Voice; Pause After E
 Step; Playback Speed while Follow my voice is off; and **Rewrite Lines**.
 **Pause Stage** remains separate: it hides the source.
 
-The **teleprompter** is a dark panel centered just below the menu bar on the
-display with the camera (the built-in display when there is one), so reading it
-looks like talking to your audience. It doesn't activate BetterMeets, follows
-you across Spaces, and remembers where you drag it; **Move Under Camera** in its
-menu puts it back. It shows the step number and title, the current line in
-large text (**Larger Text** and **Smaller Text** in its menu), the next step's
-title, a **Listening** label while it waits for your voice, and a progress bar
-during each timed hold. Its header also holds the Follow my voice microphone
-with a live level and the transport: **Start Over**, **Previous Step**, Pause
-or Play, and **Next Line** while the demo plays. Playing from the start shows the opening line before step 1
-(continuing a paused demo doesn't), and the closing line at the end; without a
-closing line the panel clears. It opens when you play (turn off **Show under
-the camera when a demo plays** in Settings › Demos), and the demo panel's
-**Teleprompter** toggle or Control–Command–N shows or hides it. BetterMeets asks
-macOS to keep the panel out of screen sharing, but macOS may not honor that when
-you share your whole screen. Share the BetterMeets window, not the whole screen,
-to keep your lines private, and confirm that in your meeting app before relying
-on it.
+The **teleprompter** is a black island that grows out of the camera notch on
+the display with the camera (the built-in display when there is one), so
+reading it looks like talking to your audience; on a display without a notch it
+hangs just below the menu bar. It doesn't activate BetterMeets or take
+keystrokes from the app you're presenting, follows you across Spaces and over
+full-screen apps, and always stays at the camera: it can't be dragged, and it
+docks itself again when displays change. While there's nothing to read, such
+as while building or testing, it's a slim strip as tall as the menu bar with a
+short status beside the camera. With a line, it expands.
+Beside the camera, the step number and title (or **Opening** or **Wrap up**)
+sit on the left and **Next** with the next step's title on the right. Below
+them is the current line in large rounded text (**Larger Text** and **Smaller
+Text** in its menu), with the words you've said dimmed and the next word
+underlined. The footer holds a level meter that fills as you say the line; a
+status with the last words heard, a countdown during each timed hold, or why
+the demo paused or stopped; the transport, always in the same places: **Start
+Over**, **Previous Step**, the one main action (such as **Play**, **Pause
+Demo**, or **Resume Demo**), and **Next Line** (**Next Step** while paused);
+the Follow my voice microphone; and a menu.
+
+While a line is up, the island covers the menu bar on either side of the notch,
+so menus and status items there are hidden until it shrinks or hides. When a
+demo clicks or scrolls under it, it gets out of the way for a moment. Playing
+from the start shows the opening line before step 1 (continuing a paused demo
+doesn't), and the closing line at the end; without a closing line it shows
+**Done** and offers **Play Again**. It opens when you play (turn off **Show
+under the camera when a demo plays** in Settings › Demos), and the demo panel's
+**Teleprompter** toggle or Control–Command–N shows or hides it, as does **Hide
+Teleprompter** in its menu. BetterMeets asks macOS to keep the teleprompter out
+of screen sharing, but macOS may not honor that when you share your whole
+screen. Share the BetterMeets window, not the whole screen, to keep your lines
+private, and confirm that in your meeting app before relying on it.
 
 **Follow my voice** is on by default; turn it off in the teleprompter,
 Settings › Demos, the demo panel's **Pacing** menu, or the Demo menu. When a demo becomes ready, BetterMeets asks for the
@@ -293,7 +308,7 @@ line, moves on a beat after you've said it; after you've said most of its key
 words, in any order and in your own words, and paused for about a second; or
 when you say “next”. A short aside doesn't count as saying the line. A step
 without a line moves on after a short beat, and the teleprompter shows
-**Moving on**. “Next” counts only when it's the newest word heard and
+**Moving on…**. “Next” counts only when it's the newest word heard and
 isn't read as a word of the line, and only after about 0.6 seconds with no new
 words; *siguiente*, *suivant*, *weiter*, *avanti*, *próximo*, and *seguinte*
 work too. If the audio input changes (a newly connected microphone, or your
@@ -491,7 +506,7 @@ inside it.
 | `Sources/MeetStage/StageLogoStore.swift` | Bounded image normalization and Application Support persistence |
 | `Sources/MeetStage/WorkspaceObservationBag.swift` | App lifecycle observation and notification-token ownership |
 | `Sources/MeetStage/Demo*.swift`, `RealTimeDemo.swift`, `AccessibilityService.swift`, and `AXSnapshot.swift` | Real-time demo building, matching, replay, script writing, the demo panel, the Edit Demo sheet, and Settings › Demos |
-| `Sources/MeetStage/Teleprompter.swift`, `ScriptFollower.swift`, and `SpeechListener.swift` | Teleprompter panel, script following, and on-device speech recognition |
+| `Sources/MeetStage/Teleprompter*.swift`, `Island*.swift`, `ScriptRows.swift`, `ScriptFollower.swift`, and `SpeechListener.swift` | The teleprompter island, its layout and content, script following, and on-device speech recognition |
 | `Tests/MeetStageTests/` | Policy, persistence, geometry, and AppKit interaction tests |
 | `Resources/Info.plist` | Bundle name, version, permissions, and icon metadata |
 | `Brand/` | BetterMeets icon masters and brand guidance |

@@ -39,9 +39,10 @@ components:
   demo-step-row:
     height: "18pt"
   teleprompter:
-    width: "560pt"
-    height: "200pt"
+    width: "460–700pt (500pt at 26pt text)"
+    shoulder: "16pt"
     rounded: "20pt"
+    control: "28pt"
 ---
 
 # BetterMeets design system
@@ -344,36 +345,113 @@ Follow my voice and a note that each step moves on when its line is finished and
 speech stays on this Mac, Pause after each step, and Speed, disabled while following
 the voice; and Accessibility status.
 
-The teleprompter is a borderless, nonactivating dark HUD panel: black at 86% opacity
-(solid with Reduce Transparency), 20-point continuous corners, a faint white edge,
-and a forced dark appearance. It is 560 × 200 points at first (at least 380 × 120),
-centered just below the menu bar on the display with the camera (the built-in
-display when present, else the main display), so reading it looks like talking to
-the audience. It floats at status-bar level on every Space, remembers where it was
-dragged, and Move Under Camera puts it back. Its header shows the step position
-(such as 2/6) in monospaced digits, the step title, the Follow my voice toggle (a
-microphone with a live level capsule while listening, preparing text, or Mic
-unavailable), transport, and an options menu with Larger Text, Smaller Text,
-Move Under Camera, and Hide Teleprompter, which its context menu repeats. Whenever
-the demo can be presented (ready, playing, paused, off track, or finished), the
-transport reads Start Over (a counterclockwise arrow), Previous Step (disabled on the
-first step), a pause button while playing or a play button otherwise, and Next Line
-(enabled only while playing). VoiceOver names them as the panel does: Start Over,
-Previous Step, Pause Demo, then Play, Resume Demo, Try Again, or Play Again, and Next
-Line. The line is centered in medium SF Rounded at 26 points by default (16–48), with the same
-said-word and next-word styling as the demo panel; the highlight eases over 0.15 seconds.
-A step without a line shows “No line for this step” in secondary text. The footer
-shows “Next:” and the next step's title on the left and, on the right, an accent
-“Listening” waveform label while the demo waits for the voice (“Moving on” on a step
-without a line), otherwise a thin progress bar during timed holds.
+The teleprompter is a solid black island that grows out of the camera notch on the
+display with the camera (the built-in display when present, else the primary
+display), so reading it looks like talking to the audience. It is a borderless,
+nonactivating panel just above the menu bar and its status items and below other
+apps' menus, on every Space and over full-screen apps, with no shadow and a forced
+dark appearance. It never activates BetterMeets, can't be dragged or resized, and
+docks itself again whenever it shows, the text size changes, or displays change. With
+a notch it is flush with the top edge and centered on the notch, with concave
+shoulders where it meets the menu bar and continuous bottom corners; without one it
+hangs from the bottom of the menu bar. When there is no line to read (before the demo
+is built, or while building, testing, or going back to get ready), it is a compact
+island only as tall as the menu bar and 224 points wider than the notch (300 × 28
+points without one), with a short status beside the camera, after a glyph when the
+state calls for one, and a 20-point options button on the other side. With a line it
+expands to 500 × 188 points at the default text size (460–700 points wide as the text
+grows), with 16-point shoulders and 20-point corners, and it stays expanded when the
+demo finishes, to offer Play Again.
 
-When a build or test run finishes, or needs the presenter, while BetterMeets is in
-the background, a ready demo brings BetterMeets forward. If macOS refuses, or the
-build needs attention, a nonactivating notice appears near the top of the screen
-under the pointer, in regular material with 14-point corners: a green seal or orange
-bubble, a headline title, a two-line detail, a prominent Open BetterMeets button,
-and a dismiss button. A ready notice leaves after 8 seconds, and any notice leaves
-when BetterMeets becomes active.
+Beside the camera, in 11-point semibold SF Rounded, the left side shows where the
+demo is: the step position (such as 2/6) in monospaced digits and the step title, or
+Opening, Wrap up, or Done, after a pause, spinner, orange warning, or green check
+glyph when the state calls for one. The right side shows Next and the next step's
+title, Wrap up before the closing line, or Last step, and nothing on the closing
+line. Each side stops 8 points short of the camera, and a title that doesn't fit is
+cut, with the full text in its help tag. Below, only the current line shows, in
+semibold SF Rounded (bold with Bold Text) at 26 points by default (16–48),
+leading-aligned in rows that scroll forward only, so the row being read stays second
+from the top with the row before it in view (at the very largest sizes, at the top);
+a line shown again, as after Start Over, reads from its first row. Rows that go on
+below the bottom edge fade out, and the top edge fades only over a row already read,
+never over the row being read. The next step's words appear only when its step
+begins. Words already said are white at 34 percent and, while Follow my voice
+listens, the next word is underlined in the accent color; the highlight eases over
+0.15 seconds. With voice off the line is uniformly white and scrolls with the timed
+hold, keeping its place when the hold ends or the demo pauses, and once a line is said
+all of it dims as the demo moves on. Paused, stopped,
+not at the start, or going back, the line dims to 60 percent. A step without a line
+reads “No line for this step” in italics, and a demo that finishes without a closing
+line reads “That’s the whole demo.” A new line slides in from below, or from above
+when the demo goes back.
+
+The footer holds a level meter whose bars follow the voice and whose lit bars, in the
+accent color, show how much of the line is said or how much of a timed hold has
+passed; a status of up to two lines (the last three words heard, Listening, a
+countdown, Moving on…, the microphone getting ready, or why the demo paused, stopped,
+or can't play, in orange with a warning glyph when something is wrong); four
+transport buttons in fixed places (Start Over, Previous Step, the state's one primary
+action, and Next Line, Next Step, or Skip Step); then Follow my voice and
+Teleprompter options. All six are 28-point circles: a forward primary is filled with
+the accent color, Pause Demo stays quiet, and buttons are disabled rather than
+hidden, so none ever moves. The microphone is crossed out while Follow my voice is
+off, takes the accent color while it listens, shows a spinner while it gets ready,
+and turns orange when it's unavailable. Titles, help, and enabled states match the
+demo panel, and VoiceOver names the buttons as the panel does. VoiceOver reads the
+island as Teleprompter: the place (such as “Step 2 of 6, Pick the schedule”, plus
+paused, stopped, or going back), Next, Current line with the line as its value, the
+status with how much of the line is said (both kept current through a timed hold), then
+the controls. The options menu and the
+island's context menu hold Larger Text, Smaller Text, any other action the panel
+offers in that state (such as Play Anyway or Try Again), and Hide Teleprompter.
+Showing grows the island out of the notch over 0.4 seconds before its content fades
+in; hiding fades the content and folds the island back in, and switching between
+compact and expanded morphs it the same way, as does a new text size. From 40 points up
+the island is already as large as it gets, so only the content fades out and back in
+at the new size. Without a notch it also fades as it
+grows and folds. With Reduce Motion it fades instead, rows snap instead of scrolling,
+and the meter's bars stay flat. Increase Contrast raises the island's faint text and
+fills and adds a faint edge on the sides and bottom; an off-track stop adds an orange
+edge. When a demo clicks or scrolls under the island, it steps aside for that input
+and fades back.
+
+When a build or test run the presenter started finishes, or needs them, while
+BetterMeets is in the background, BetterMeets stays where it is and a notice grows out
+of the camera notch on the display under the pointer, where the presenter is already
+looking. It is the same solid black, forced-dark island as the teleprompter, on the
+same nonactivating panel, with the expanded teleprompter's 16-point shoulders and
+20-point corners, as wide as the notch plus 300 points (440–520 points; 440 without a
+notch). Without a notch it hangs from the bottom of the menu bar. When the
+teleprompter is up on that display, the notice is instead a black card with 20-point
+continuous corners, 8 points below it and exactly as wide as its body at any text size
+(inside the expanded island's 16-point shoulders or the status pill's 8-point ones),
+so its text lines up with the teleprompter's; it follows the teleprompter as it
+resizes. Beside the camera, in 12-point semibold SF Rounded and never behind it, a
+badge says what happened: a green seal with Demo ready, or an orange bubble with Build
+paused, Test waiting, or Test stopped. An attention card always hangs under the status
+pill, so it drops the badge and leads with its title, 14 points from the top, instead
+of repeating the pill. Below, the app's 32-point icon leads a 15-point semibold title
+and a 12-point detail of up to two lines in white at 60 percent: for a ready demo, its
+title and “Tested · 4 steps · Dia” (or Not tested); otherwise what the build or test
+run needs. At the bottom right, Open BetterMeets is an accent-filled 28-point capsule
+beside a 28-point Dismiss circle in the teleprompter's button style. Content sits 12
+points inside the body, as in the teleprompter, with 14 points below the buttons. It
+grows out of the notch over 0.4 seconds before its content fades in and folds back
+when it leaves; without a notch, and with Reduce Motion, it fades, and a card slides 8
+points out from under the teleprompter, its window reaching up to the teleprompter so
+the slide is never clipped. A newer notice replaces it in place, cross-fading the
+content and morphing to the new height. There is no timeout: it stays until the
+presenter clicks Open BetterMeets (the only thing that brings BetterMeets forward) or
+Dismiss, switches to BetterMeets, or the demo moves on to something it doesn't
+describe, and a notice put away doesn't return while the demo stays in that state.
+VoiceOver hears it as it appears (“Demo ready: El Gran Premio de Cannes, tested, 4
+steps”), since it never takes focus, and the demo panel stays quiet about that change
+meanwhile; it reads it as Demo notice with Open BetterMeets and Dismiss buttons, and
+Dismiss's help tag shows though BetterMeets is in the background. Open BetterMeets on
+Build paused, Test waiting, or Test stopped also leaves Stage Only, so the panel to
+act in is there. Increase Contrast raises the detail to 80 percent and adds the
+teleprompter's faint edge.
 
 While BetterMeets builds, tests, or goes back to the start, the stage's edge carries
 Claude's multi-hue glow (accent, purple, pink, and orange): a 2-point angular-gradient

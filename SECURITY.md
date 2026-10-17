@@ -73,7 +73,7 @@ entitlement and `NSMicrophoneUsageDescription`.
   Native window chrome remains subject to the meeting app's capture behavior.
 - The source-following tool widget is an independent panel, not a child of the
   source or workspace. It is visible when sharing an entire display.
-- The teleprompter is also a separate window, placed under the camera. It sets
+- The teleprompter is also a separate window, docked at the camera notch. It sets
   `sharingType = .none`, asking macOS to keep it out of screen sharing, but
   macOS may not honor that for whole-display shares. Settings › Demos tells
   presenters to share the BetterMeets window, not the whole screen, to keep

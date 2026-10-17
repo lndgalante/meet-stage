@@ -1,6 +1,8 @@
 import AVFoundation
+import Accelerate
 import CoreMedia
 import NaturalLanguage
+import Observation
 import Speech
 
 /// Live, on-device transcription of the presenter's microphone for the
@@ -19,8 +21,9 @@ final class SpeechListener: ObservableObject {
     }
 
     @Published private(set) var state: State = .off
-    /// Input loudness, 0…1, for the listening indicator.
-    @Published private(set) var level: Float = 0
+    /// Recent input loudness for the island's meter. Observed on its own, so
+    /// only the meter redraws twenty times a second.
+    let levels = LevelHistory()
     /// Recent words heard, most recent last.
     private(set) var transcriptWords: [String] = []
     /// Words dropped from the front of `transcriptWords`, so positions stay
@@ -161,7 +164,10 @@ final class SpeechListener: ObservableObject {
             input.installTap(
                 onBus: 0, bufferSize: 2_048, format: inputFormat,
                 block: Self.makeTap(from: inputFormat, to: format, continuation: continuation) { [weak self] level in
-                    Task { @MainActor in self?.level = level }
+                    Task { @MainActor in
+                        guard let self, run == self.generation else { return }
+                        self.levels.append(level)
+                    }
                 })
             engine.prepare()
             try engine.start()
@@ -230,7 +236,7 @@ final class SpeechListener: ObservableObject {
             Task { await analyzer.cancelAndFinishNow() }
         }
         analyzer = nil
-        level = 0
+        levels.reset()
     }
 
     /// The audio input changed (a new device, or another app reconfiguring the
@@ -269,6 +275,19 @@ final class SpeechListener: ObservableObject {
             wantsToListen = true
             receive(text, isFinal: isFinal)
         }
+
+        /// Test hook: behave as if listening, with `levels` from the microphone.
+        func simulateListening(levels: [Float]) {
+            wantsToListen = true
+            state = .listening
+            levels.forEach(self.levels.append)
+        }
+
+        /// Test hook: show `state`, wanting to listen whenever a real listener would.
+        func simulateState(_ state: State) {
+            wantsToListen = state == .listening || state.isPreparing
+            self.state = state
+        }
     #endif
 
     /// Recognizes the language the script is written in, which can differ from
@@ -291,16 +310,14 @@ final class SpeechListener: ObservableObject {
         continuation: AsyncStream<AnalyzerInput>.Continuation, level: @escaping @Sendable (Float) -> Void
     ) -> AVAudioNodeTapBlock {
         let converter = UncheckedBox(AVAudioConverter(from: inputFormat, to: format))
-        let meter = UncheckedBox(LevelThrottle())
+        let meter = UncheckedBox(LevelMeter(sampleRate: inputFormat.sampleRate))
         return { buffer, _ in
-            if let samples = buffer.floatChannelData?[0], buffer.frameLength > 0, meter.value.shouldReport() {
-                var sum: Float = 0
-                for index in 0..<Int(buffer.frameLength) { sum += samples[index] * samples[index] }
-                let rms = (sum / Float(buffer.frameLength)).squareRoot()
-                level(min(1, rms * 12))
+            if let samples = buffer.floatChannelData?[0], buffer.frameLength > 0 {
+                meter.value.consume(samples, frames: Int(buffer.frameLength), emit: level)
             }
             guard let converter = converter.value else { return }
-            let capacity = AVAudioFrameCount(Double(buffer.frameLength) * format.sampleRate / inputFormat.sampleRate) + 32
+            let capacity =
+                AVAudioFrameCount(Double(buffer.frameLength) * format.sampleRate / inputFormat.sampleRate) + 32
             guard let output = AVAudioPCMBuffer(pcmFormat: format, frameCapacity: capacity) else { return }
             var supplied = false
             var error: NSError?
@@ -320,14 +337,59 @@ final class SpeechListener: ObservableObject {
     }
 }
 
-/// Reports the input level about ten times a second, not on every buffer.
-private final class LevelThrottle {
-    private var last = ContinuousClock.now
-    func shouldReport() -> Bool {
-        let now = ContinuousClock.now
-        guard now - last >= .milliseconds(90) else { return false }
-        last = now
-        return true
+/// The last few seconds of input loudness, 0…1, newest last.
+@MainActor
+@Observable
+final class LevelHistory {
+    /// 3.2 seconds at 20 levels a second; the meter shows as many as fit.
+    static let capacity = 64
+
+    private(set) var samples = [Float](repeating: 0, count: capacity)
+
+    /// Adds a level. A drop releases softly, so bars fall instead of flickering.
+    func append(_ level: Float) {
+        let level = max(level, (samples.last ?? 0) * 0.6)
+        samples = Array(samples.dropFirst()) + [level]
+    }
+
+    func reset() {
+        samples = [Float](repeating: 0, count: Self.capacity)
+    }
+}
+
+/// Turns microphone audio into one level per twentieth of a second, whatever
+/// the buffer size. Runs on the audio thread.
+final class LevelMeter {
+    private let window: Int
+    private var sum: Float = 0
+    private var count = 0
+
+    init(sampleRate: Double) {
+        window = max(256, Int(sampleRate / 20))
+    }
+
+    func consume(_ samples: UnsafePointer<Float>, frames: Int, emit: (Float) -> Void) {
+        var offset = 0
+        while offset < frames {
+            let length = min(frames - offset, window - count)
+            var squares: Float = 0
+            vDSP_svesq(samples + offset, 1, &squares, vDSP_Length(length))
+            sum += squares
+            count += length
+            offset += length
+            if count == window {
+                emit(Self.level(rms: (sum / Float(count)).squareRoot()))
+                sum = 0
+                count = 0
+            }
+        }
+    }
+
+    /// Loudness on a decibel scale: −55 dBFS (a quiet room) is 0 and −12 dBFS
+    /// (speaking up close) is 1, so ordinary speech moves the bars instead of
+    /// pinning them.
+    static func level(rms: Float) -> Float {
+        min(1, max(0, (20 * log10(max(rms, 1e-7)) + 55) / 43))
     }
 }
 

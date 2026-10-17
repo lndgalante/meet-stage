@@ -18,6 +18,10 @@ struct FakeElement {
     var opens: String?
     /// Ignores Accessibility's press, like a popup that closes while unfocused.
     var pointerOnly = false
+    /// Stays put while the page scrolls, like a browser's toolbar.
+    var fixed = false
+    /// Page content that stays put while the page scrolls, like a sticky header or a fixed banner.
+    var sticky = false
 }
 
 struct FakeScreen {
@@ -26,6 +30,12 @@ struct FakeScreen {
     var dialogOpen = false
     /// Screen opened by typing into a field and pressing Return.
     var submitOpens: String?
+    /// The page's scrollport in window fractions. Nil for a screen that doesn't
+    /// scroll, whose elements' rects and visibility are taken as given.
+    var viewport: NormRect?
+    /// How far the page is scrolled, in window fractions; element rects are at no scroll.
+    var scrollY = 0.0
+    var maxScrollY = 3.0
 }
 
 @MainActor
@@ -45,8 +55,18 @@ final class FakeApp: DemoDriving {
     var interactiveParents: [Int: Int] = [:]
     /// Runs right before an input is dispatched, after its checks.
     var beforeInput: ((DemoInput) -> Void)?
+    /// Ignores `AXScrollToVisible`, like a custom scroller.
+    var ignoresScrollToVisible = false
+    /// How many looks after a scroll still show the page where it was, like Chromium's tree catching up.
+    var scrollLag = 0
+    /// Elements can't be followed across a scroll, like Chromium rebuilding a lazily rendered section.
+    var forgetsElementsWhenScrolled = false
+    private var scrolledAfterGeneration = 0
+    private var lagging: (scrollY: Double, looks: Int)?
     private var generation = 0
+    private var screenOfGeneration: [Int: String] = [:]
     private var lastSnapshot: AXSnapshot?
+    static let windowHeight = 800.0
     let demoSource = DemoSource(windowID: 42, bundleID: "com.example.app", name: "Example")
 
     init(screens: [String: FakeScreen], start: String) {
@@ -56,6 +76,8 @@ final class FakeApp: DemoDriving {
 
     var selectedSource: DemoSource? { demoSource }
     var source: DemoSource? { demoSource }
+    weak var inputObstruction: (any DemoInputObstruction)?
+    var isStagePaused = false
 
     func appInfo(for source: DemoSource) throws -> DemoAppInfo {
         DemoAppInfo(
@@ -65,23 +87,39 @@ final class FakeApp: DemoDriving {
 
     func snapshot(_ source: DemoSource, waitForContent: Bool) async throws -> AXSnapshot {
         await Task.yield()
-        let screen = screens[current]!
+        guard let screen = screens[current] else { throw DemoError.missingSource }
         generation += 1
+        screenOfGeneration[generation] = current
+        var scrollY = screen.scrollY
+        if let lag = lagging {
+            scrollY = lag.scrollY
+            lagging = lag.looks > 1 ? (lag.scrollY, lag.looks - 1) : nil
+        }
         var nodes: [AXNode] = []
         var containerIDs: [String: Int] = [:]
         for element in screen.elements {
             let id = nodes.count
             if element.isContainer { containerIDs[element.label] = id }
             let roleClass = AXRoleClass(role: element.role, subrole: element.subrole)
+            var rect = element.rect
+            var visible = element.isVisible
+            var viewport: NormRect?
+            if let page = screen.viewport, !element.fixed {
+                if !element.sticky { rect.y -= scrollY }
+                if engine == .chromium || engine == .electron { rect = Self.clip(rect, to: page) }
+                let slack = 1 / Self.windowHeight
+                visible = visible && rect.midY >= page.y - slack && rect.midY <= page.maxY + slack
+                viewport = page
+            }
             nodes.append(
                 AXNode(
                     id: id, role: element.role, subrole: element.subrole, roleClass: roleClass,
                     label: element.label, identifier: nil, placeholder: element.placeholder, help: nil,
-                    rect: element.rect, isVisible: element.isVisible, isSelected: element.selected, isFocused: false,
+                    rect: rect, isVisible: visible, isSelected: element.selected, isFocused: false,
                     isEnabled: true, isSecure: element.subrole == "AXSecureTextField",
                     textLength: roleClass == .field ? fieldText.count : nil, toggleValue: element.toggle,
                     containerID: element.container.flatMap { containerIDs[$0] }, isContainer: element.isContainer,
-                    inWebArea: true, url: nil, interactiveAncestorID: interactiveParents[id]))
+                    inWebArea: true, url: nil, interactiveAncestorID: interactiveParents[id], viewport: viewport))
         }
         let snapshot = AXSnapshot(
             generation: generation, windowFrame: CGRect(x: 0, y: 0, width: 1200, height: 800), nodes: nodes,
@@ -89,6 +127,64 @@ final class FakeApp: DemoDriving {
             webContent: WebContentState(hasChildren: true, loaded: true, progress: 1, busy: false))
         lastSnapshot = snapshot
         return snapshot
+    }
+
+    /// Elements keep their index on a screen, so they're followed by it, from looks
+    /// no more than two older, like `AccessibilityService`.
+    func follow(_ handles: [ElementHandle], into snapshot: AXSnapshot) async -> [Int?] {
+        handles.map { handle in
+            if forgetsElementsWhenScrolled, handle.generation <= scrolledAfterGeneration,
+                snapshot.generation > scrolledAfterGeneration
+            {
+                return nil
+            }
+            guard let screen = screenOfGeneration[handle.generation], screen == screenOfGeneration[snapshot.generation],
+                snapshot.generation - handle.generation <= 2,
+                screens[screen]?.elements.indices.contains(handle.id) == true
+            else { return nil }
+            return handle.id
+        }
+    }
+
+    /// Chromium's frames: clipped to the viewport, or a one-point strip at its
+    /// nearest edge when wholly outside it.
+    static func clip(_ rect: NormRect, to page: NormRect) -> NormRect {
+        let top = max(rect.y, page.y)
+        let bottom = min(rect.maxY, page.maxY)
+        if bottom > top { return NormRect(x: rect.x, y: top, w: rect.w, h: bottom - top) }
+        let strip = 1 / windowHeight
+        return NormRect(x: rect.x, y: rect.y >= page.maxY ? page.maxY - strip : page.y, w: rect.w, h: strip)
+    }
+
+    /// `AXScrollToVisible` as each engine does it: Chromium and Gecko center a target
+    /// that isn't wholly in view, WebKit stops a partly visible one at the nearest
+    /// edge, and AppKit scrolls as little as it can.
+    private func scrollIntoView(_ element: FakeElement) {
+        guard !ignoresScrollToVisible, let screen = screens[current], let page = screen.viewport, !element.fixed
+        else { return }
+        var live = element.rect
+        if !element.sticky { live.y -= screen.scrollY }
+        let fully = live.y >= page.y && live.maxY <= page.maxY
+        let covers = live.y <= page.y && live.maxY >= page.maxY
+        guard !fully, !covers else { return }
+        let hidden = live.maxY <= page.y || live.y >= page.maxY
+        let nearest = live.h > page.h || live.y < page.y ? live.y - page.y : live.maxY - page.maxY
+        let dy: Double =
+            switch engine {
+            case .chromium, .electron, .gecko: live.midY - page.midY
+            case .webkit: hidden ? live.midY - page.midY : nearest
+            case .native: nearest
+            }
+        scroll(by: dy * Self.windowHeight)
+    }
+
+    private func scroll(by points: Double) {
+        guard var screen = screens[current], screen.viewport != nil else { return }
+        let old = screen.scrollY
+        screen.scrollY = min(max(old + points / Self.windowHeight, 0), screen.maxScrollY)
+        screens[current] = screen
+        scrolledAfterGeneration = generation
+        if scrollLag > 0 { lagging = (old, scrollLag) }
     }
 
     func screenshot(_ source: DemoSource) async throws -> DemoWindowScreenshot.Capture {
@@ -120,9 +216,9 @@ final class FakeApp: DemoDriving {
                 return
             }
             if let toggle = element.toggle,
-                let index = screens[current]!.elements.firstIndex(where: { $0.label == element.label })
+                let index = screens[current]?.elements.firstIndex(where: { $0.label == element.label })
             {
-                screens[current]!.elements[index].toggle = !toggle
+                screens[current]?.elements[index].toggle = !toggle
             }
             if let next = element.opens { current = next }
         case .type(let handle, _, let text, let submit):
@@ -130,7 +226,7 @@ final class FakeApp: DemoDriving {
             fieldText = text
             try commit()
             log.append("type \(text)\(submit ? " ⏎" : "")")
-            if submit, let next = screens[current]!.submitOpens { current = next }
+            if submit, let next = screens[current]?.submitOpens { current = next }
         case .press(let key):
             try commit()
             log.append("press \(key.rawValue)")
@@ -138,12 +234,19 @@ final class FakeApp: DemoDriving {
             try commit()
             log.append("open \(url.absoluteString)")
             if let match = screens.first(where: { $0.value.url == url.absoluteString })?.key { current = match }
-        case .wheel(_, let down, _):
+        case .wheel(_, let down, let increments):
             try commit()
             log.append("scroll \(down ? "down" : "up")")
-        case .scrollToVisible:
+            scroll(by: (down ? 160 : -160) * Double(increments))
+        case .scrollBy(_, let points):
             try commit()
-            log.append("scroll into view")
+            log.append("scroll by \(Int(points.rounded()))")
+            scroll(by: points)
+        case .scrollToVisible(let handle):
+            let element = try element(for: handle)
+            try commit()
+            log.append("scroll into view \(element.label)")
+            scrollIntoView(element)
         }
     }
 
@@ -169,9 +272,9 @@ final class FakeApp: DemoDriving {
         return screen.elements[handle.id]
     }
 
-    /// The ID the next snapshot gives the element with `label` on the current screen.
+    /// The ID the next snapshot gives the element with `label` on the current screen, or -1 if there's none.
     func id(of label: String) -> Int {
-        screens[current]!.elements.firstIndex { $0.label == label }!
+        screens[current]?.elements.firstIndex { $0.label == label } ?? -1
     }
 }
 
@@ -180,6 +283,7 @@ final class ScriptedModel: DemoModeling, @unchecked Sendable {
     private let lock = NSLock()
     private var replies: [Result<ScoutReply, Error>]
     private var relocations: [[Int]?]
+    private var relocated = 0
     private(set) var requests: [ScoutTurnRequest] = []
     private(set) var scriptRequests: [ScriptRequest] = []
     var scriptDelay = Duration.zero
@@ -215,8 +319,14 @@ final class ScriptedModel: DemoModeling, @unchecked Sendable {
     }
 
     func relocate(_ request: RelocateRequest, key: String) async throws -> (ids: [Int]?, costMicroUSD: Int) {
-        lock.withLock { (relocations.isEmpty ? nil : relocations.removeFirst(), 0) }
+        lock.withLock {
+            relocated += 1
+            return (relocations.isEmpty ? nil : relocations.removeFirst(), 0)
+        }
     }
+
+    /// How many times replay asked Claude to find a target.
+    var relocateCount: Int { lock.withLock { relocated } }
 
     var facts: [[String]] { lock.withLock { requests.map(\.facts) } }
 }
@@ -268,5 +378,6 @@ func fastScoutLimits() -> DemoScout.Limits {
     var limits = DemoScout.Limits()
     limits.settleMinimum = .milliseconds(1)
     limits.settlePoll = .milliseconds(1)
+    limits.framing = .instant
     return limits
 }

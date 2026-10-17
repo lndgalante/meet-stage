@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import Testing
 
@@ -89,6 +90,82 @@ struct DemoSessionTests {
         try await waitUntil { session.phase == .finished }
     }
 
+    @Test("A build that finishes in the background leaves a ready notice; only Open BetterMeets brings it forward")
+    func readyNoticeWhileAway() async throws {
+        let app = subtisApp()
+        let session = session(app, searchModel(), defaults())
+        session.isAppActive = { false }
+        var broughtForward: [Bool] = []
+        session.bringForward = { broughtForward.append($0) }
+        session.prompt = "Search for The Matrix and open the result"
+        session.build()
+        try await waitUntil { session.phase == .ready && !session.isWritingScript }
+        let notice = try #require(session.demoNoticeState.shown)
+        #expect(notice.kind == .ready)
+        #expect(notice.badge == "Demo ready")
+        #expect(notice.title == session.demo?.title)
+        #expect(notice.detail == "Tested · 3 steps · Example")
+        #expect(notice.bundleID == "com.example.app")
+        // Playing ends the notice.
+        session.play()
+        try await waitUntil { session.phase == .finished }
+        #expect(session.demoNoticeState.shown == nil)
+        #expect(broughtForward.isEmpty)
+
+        session.checkAgain()
+        try await waitUntil { session.phase == .ready }
+        #expect(session.demoNoticeState.shown == notice)
+        // A ready demo needs nothing from the panel, so Stage Only stays as it is.
+        session.openFromDemoNotice()
+        #expect(broughtForward == [false])
+        #expect(session.demoNoticeState.shown == nil)
+    }
+
+    @Test("A build that finishes while BetterMeets is active leaves no notice, even after switching away")
+    func noNoticeWhileActive() async throws {
+        let app = subtisApp()
+        var active = true
+        let session = session(app, searchModel(), defaults())
+        session.isAppActive = { active }
+        session.prompt = "Search for The Matrix and open the result"
+        session.build()
+        try await waitUntil { session.phase == .ready && !session.isWritingScript }
+        #expect(session.demoNoticeState.shown == nil)
+        // The panel said it already, so coming back to ready while away doesn't announce it.
+        active = false
+        session.returnToStart()
+        #expect(session.phase == .returning(then: .ready))
+        try await waitUntil { session.phase == .ready }
+        #expect(session.demoNoticeState.shown == nil)
+    }
+
+    @Test("A build paused again after the presenter put its notice away and resumed it shows the notice again")
+    func pauseNoticeReturnsAfterResume() async throws {
+        let app = subtisApp()
+        let search = reply(
+            .typeText(elementID: 1, text: "The Matrix", submit: true, title: "Search The Matrix", script: ""))
+        let session = session(app, ScriptedModel([search, search]), defaults())
+        session.isAppActive = { false }
+        var broughtForward: [Bool] = []
+        session.bringForward = { broughtForward.append($0) }
+        session.prompt = "Search for The Matrix"
+        app.failNextInput = .focusChanged
+        session.build()
+        try await waitUntil { session.phase == .scoutPaused(.focusLost) }
+        let paused = try #require(session.demoNoticeState.shown)
+        #expect(paused.badge == "Build paused")
+        // Something to act on in the panel brings the controls back from Stage Only.
+        session.openFromDemoNotice()
+        #expect(broughtForward == [true])
+        #expect(session.demoNoticeState.shown == nil)
+
+        app.failNextInput = .focusChanged
+        session.keepBuilding()
+        #expect(session.phase == .scouting)
+        try await waitUntil { session.phase == .scoutPaused(.focusLost) }
+        #expect(session.demoNoticeState.shown == paused)
+    }
+
     @Test("A finished presentation keeps its last highlight for a moment, then fades it")
     func finalHighlightFades() async throws {
         let app = subtisApp()
@@ -138,6 +215,127 @@ struct DemoSessionTests {
         #expect(session.prompter.line == .step(1))
         #expect(app.log == ["open https://subtis.io/", "type The Matrix ⏎", "click The Matrix (1999)"])
         session.pause()
+    }
+
+    @Test("Going back to a step keeps its line while the presenter gets the app to the start, then catches up to it")
+    func previousStepThroughNeedsStart() async throws {
+        let app = subtisApp()
+        let session = session(app, searchModel(), defaults())
+        session.prompt = "Search for The Matrix and open the result"
+        session.build()
+        try await waitUntil { session.phase == .ready && !session.isWritingScript }
+        session.play()
+        try await waitUntil { session.phase == .finished }
+
+        // The way back fails, so the presenter takes the app to the start.
+        app.failNextInput = .inputNotDelivered("Go to")
+        session.previousStep()
+        try await waitUntil {
+            if case .needsStart(_, then: .play) = session.phase { true } else { false }
+        }
+        #expect(session.prompter.line == .step(2))
+        #expect(IslandContent.make(IslandInputs(session: session)).position == "3/3")
+
+        app.current = "home"
+        session.checkStart()
+        try await waitUntil {
+            if case .running = session.phase { true } else { false }
+        }
+        // The quiet replay shows the step it goes back to, not a live opening line.
+        #expect(session.prompter.line == .step(2))
+        #expect(IslandContent.make(IslandInputs(session: session)).status == .text("Replaying up to step 3…", .plain))
+        try await waitUntil { session.phase == .finished }
+        #expect(session.rewindTarget == nil)
+    }
+
+    @Test("Going back again while catching up counts from the step it's going back to")
+    func previousStepWhileCatchingUp() async throws {
+        let app = subtisApp()
+        let session = session(app, searchModel(), defaults())
+        session.prompt = "Search for The Matrix and open the result"
+        session.build()
+        try await waitUntil { session.phase == .ready && !session.isWritingScript }
+        session.play()
+        try await waitUntil { session.phase == .finished }
+
+        session.previousStep()
+        try await waitUntil {
+            if case .running = session.phase { true } else { false }
+        }
+        #expect(session.rewindTarget == 2)
+        session.previousStep()
+        #expect(session.rewindTarget == 1)
+        #expect(session.prompter.line == .step(1))
+        session.pause()
+    }
+
+    @Test("A resume keeps catching up quietly, and a line skipped meanwhile is still said at the step")
+    func resumeWhileCatchingUp() async throws {
+        let app = subtisApp()
+        let session = session(app, searchModel(), defaults())
+        session.prompt = "Search for The Matrix and open the result"
+        session.build()
+        try await waitUntil { session.phase == .ready && !session.isWritingScript }
+        session.play()
+        try await waitUntil { session.phase == .finished }
+        session.replayTuning = (1, .milliseconds(300))
+
+        session.previousStep()
+        try await waitUntil {
+            if case .running = session.phase { true } else { false }
+        }
+        session.pause()
+        #expect(session.phase.nextStep < 2)
+        var lines: [PresenterPrompter.Line?] = []
+        let watching = session.prompter.$line.sink { lines.append($0) }
+        session.play()
+        session.skipLine()
+        try await waitUntil { session.phase.currentStep == 2 }
+        watching.cancel()
+        #expect(!lines.contains(.step(0)) && !lines.contains(.step(1)))
+        #expect(session.prompter.line == .step(2))
+        #expect(!session.prompter.follower.isComplete)
+        #expect(session.rewindTarget == nil)
+        session.pause()
+    }
+
+    @Test("Start Over and Play Again show the opening line at once, not the closing line they leave")
+    func startOverShowsOpening() async throws {
+        let app = subtisApp()
+        let session = session(app, searchModel(), defaults())
+        session.prompt = "Search for The Matrix and open the result"
+        session.build()
+        try await waitUntil { session.phase == .ready && !session.isWritingScript }
+        session.play()
+        try await waitUntil { session.phase == .finished }
+        #expect(session.prompter.line == .closing)
+
+        session.startOver()
+        #expect(session.phase == .returning(then: .play))
+        #expect(session.prompter.line == .opening)
+        // The island stays open on the opening line while the app goes back.
+        let island = IslandContent.make(IslandInputs(session: session))
+        #expect(island.mode == .expanded)
+        #expect(island.place == "Opening")
+        #expect(island.mark == .spinner)
+        try await waitUntil { session.phase == .finished }
+
+        session.play()
+        #expect(session.prompter.line == .opening)
+        try await waitUntil { session.phase == .finished }
+    }
+
+    @Test("The session follows the stage pausing and resuming")
+    func followsStagePause() {
+        let app = subtisApp()
+        let session = session(app, ScriptedModel([]), defaults())
+        #expect(!session.stagePaused)
+        app.isStagePaused = true
+        session.sourceDidChange()
+        #expect(session.stagePaused)
+        app.isStagePaused = false
+        session.sourceDidChange()
+        #expect(!session.stagePaused)
     }
 
     @Test("A check paused partway continues where it stopped and still ends checked")

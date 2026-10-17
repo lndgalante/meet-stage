@@ -44,6 +44,19 @@ final class DemoReplayEngine {
         /// Test hooks: a fixed hold and gate timeout instead of the paced ones.
         var holdOverride: Double?
         var gateTimeout: Duration?
+        /// How long scrolling a target into view may take to settle.
+        var framing = DemoFramer.Timing()
+        /// Presenting: how long a highlight that had to be scrolled into view stays up at
+        /// least, since its line showed first and may already have been said.
+        var framedCueMinimum = Duration.milliseconds(1_200)
+    }
+
+    /// How much higher, in window fractions, the content sits now than when the
+    /// remaining steps were recorded: framing that scrolled differently than while
+    /// building, or a demo built before targets were framed. Kept per page.
+    struct Drift: Equatable, Sendable {
+        var amount = 0.0
+        var page: String?
     }
 
     /// Callbacks for one run. A paused check rebinds them to its new run.
@@ -64,6 +77,8 @@ final class DemoReplayEngine {
     private(set) var passedSteps: Set<UUID> = []
     private var livePre: [UUID: ScreenSignature] = [:]
     private var liveStart: ScreenSignature?
+    /// Carried from one run of a presentation to the next, since each resume is a new engine.
+    var drift = Drift()
     private let source: DemoSource
     private let driver: any DemoDriving
     private let model: any DemoModeling
@@ -239,7 +254,9 @@ final class DemoReplayEngine {
         while index < demo.steps.count {
             try check()
             let step = demo.steps[index]
+            scrolledBefore(step)
             if isRewinding(index), !step.action.isMutating {
+                unframed(step)
                 hooks.onCommit(index + 1)
                 index += 1
                 continue
@@ -254,6 +271,7 @@ final class DemoReplayEngine {
                 if case .present = step.action, options.mode == .present {
                     // Never stop a live demo for a highlight: skip it and keep the previous view.
                     skippedBeats.append(step.title)
+                    unframed(step)
                     hooks.onCommit(index + 1)
                     index += 1
                     continue
@@ -306,13 +324,14 @@ final class DemoReplayEngine {
             let snapshot = try await driver.snapshot(source, waitForContent: false)
             try check()
             lastSnapshot = snapshot
+            if ScreenSignatures.urlKey(snapshot.webURL) != drift.page { drift = Drift() }
             let settled = !needsSettle || snapshot.digest == lastDigest
             lastDigest = snapshot.digest
             let live = ScreenSignatures.make(snapshot)
             // Headings can be below the fold, so they only identify the screen in diagnostics.
             let onScreen = ScreenSignatures.matches(step.pre, live: live, includeHeadings: false)
             if onScreen, settled, snapshot.webContent.map(\.isReady) ?? true {
-                let ids = locators.map { DemoLocatorMatcher.match($0, in: snapshot).nodeID }
+                let ids = locators.map { resolve($0, in: snapshot) }
                 // Targets found by position were recorded after the scout's scroll,
                 // so repeat that scroll before trusting what sits in that spot now.
                 if let hint = step.reveal, hintScrolls < (hint.count ?? 1),
@@ -351,14 +370,23 @@ final class DemoReplayEngine {
             return .failure(.targetNotFound(locators.first?.displayName ?? step.title))
         }
         if let healed = try await heal(index, locators: locators, snapshot: snapshot) {
-            heals[step.id] = healed.locators
+            // Kept where the steps were recorded, like every other locator.
+            heals[step.id] = healed.locators.map { $0.shifted(by: drift.amount) }
             return .resolved(healed.snapshot, healed.ids)
         }
         return .failure(
-            .targetNotFound(
-                locators.first(where: {
-                    DemoLocatorMatcher.match($0, in: snapshot).nodeID == nil
-                })?.displayName ?? step.title))
+            .targetNotFound(locators.first(where: { resolve($0, in: snapshot) == nil })?.displayName ?? step.title))
+    }
+
+    /// Finds a recorded target where the content sits now, moved by the drift,
+    /// or else where it was recorded.
+    private func resolve(_ locator: DemoElementLocator, in snapshot: AXSnapshot) -> Int? {
+        if abs(drift.amount) * snapshot.windowFrame.height >= 1,
+            let id = DemoLocatorMatcher.match(locator.shifted(by: -drift.amount), in: snapshot).nodeID
+        {
+            return id
+        }
+        return DemoLocatorMatcher.match(locator, in: snapshot).nodeID
     }
 
     /// Scrolls a resolved but off-screen target into view: first by asking the
@@ -424,7 +452,10 @@ final class DemoReplayEngine {
     private func perform(_ index: Int, snapshot: AXSnapshot, ids: [Int]) async throws -> ReplayEnd? {
         let step = demo.steps[index]
         let locators = heals[step.id] ?? step.action.locators
-        let nodes = ids.compactMap { snapshot.node($0) }
+        var snapshot = snapshot
+        var ids = ids
+        var nodes = ids.compactMap { snapshot.node($0) }
+        var framed: DemoFramer.Result?
         let pace: DemoPace = options.mode == .present ? .present : .verify
         let hooks = hooks
         let commit: @MainActor () throws -> Void = {
@@ -448,12 +479,42 @@ final class DemoReplayEngine {
             return .offTrack(index: index, .blocked(.policyDenied(reason)))
         }
 
+        if !ids.isEmpty {
+            // Bring a target the viewport cuts into view, as the scout did before recording what followed.
+            let framer = DemoFramer(driver: driver, source: source, timing: options.framing, check: hooks.check)
+            let result = try await framer.frame(ids, in: snapshot, for: step.action.isMutating ? .action : .highlight)
+            try check()
+            drift.amount += result.shift - (step.framing ?? 0)
+            drift.page = ScreenSignatures.urlKey(result.snapshot.webURL)
+            snapshot = result.snapshot
+            ids = result.ids ?? []
+            nodes = ids.compactMap { snapshot.node($0) }
+            framed = result
+            if ids.isEmpty {
+                let name = locators.first?.displayName ?? step.title
+                guard !step.action.isMutating, options.mode == .present else {
+                    return .offTrack(index: index, .targetNotFound(name))
+                }
+                // Lost while scrolling it into view: like a highlight that can't be found, skipped.
+                skippedBeats.append(step.title)
+                try commit()
+                return nil
+            }
+        }
+
         do {
             switch action {
             case .present(let beat):
-                let rect = nodes.dropFirst().reduce(nodes[0].rect) { $0.union($1.rect) }
+                let rect = DemoFraming.cueRect(
+                    for: nodes, in: snapshot, effect: beat.effect, coveredTop: framed?.coveredTop)
                 driver.show(DemoCue(effect: beat.effect, rect: rect))
+                let shown = ContinuousClock.now
                 try await hold(index)
+                if framed?.scrolled == true, options.mode == .present, options.holdOverride == nil {
+                    // Its line showed before the scrolling, so it may already be said: never just a flash.
+                    let left = options.framedCueMinimum - (ContinuousClock.now - shown)
+                    if left > .zero { try await Task.sleep(for: left) }
+                }
                 try commit()
                 return nil
 
@@ -496,6 +557,25 @@ final class DemoReplayEngine {
         try await hold(index)
         if case .press = step.action { driver.show(nil) }
         return nil
+    }
+
+    /// A step skipped without its framing leaves the content where it was before the
+    /// scout scrolled it, so the steps after it sit lower than recorded.
+    private func unframed(_ step: DemoStep) {
+        moveDrift(by: -(step.framing ?? 0), on: step)
+    }
+
+    /// While building, framing for actions left out of the demo scrolled the content
+    /// before this step was recorded. Replay never did, so it sits lower.
+    private func scrolledBefore(_ step: DemoStep) {
+        moveDrift(by: -(step.priorFraming ?? 0), on: step)
+    }
+
+    private func moveDrift(by amount: Double, on step: DemoStep) {
+        guard amount != 0 else { return }
+        if step.pre.urlKey != drift.page { drift = Drift() }
+        drift.amount += amount
+        drift.page = step.pre.urlKey
     }
 
     private func isRewinding(_ index: Int) -> Bool {

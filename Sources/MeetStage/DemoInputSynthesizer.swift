@@ -83,6 +83,28 @@ final class DemoInputSynthesizer {
         }
     }
 
+    /// Scrolls by an exact distance with precise (pixel) wheel events, which
+    /// browsers apply one to one without animating. Positive moves the content up.
+    func scroll(at point: CGPoint, points: Double, check: () throws -> Void) async throws {
+        postMouse(.mouseMoved, at: point)
+        var remaining = Int32(points.rounded())
+        while remaining != 0 {
+            try Task.checkCancellation()
+            try check()
+            let step = max(-160, min(160, remaining))
+            guard
+                let event = CGEvent(
+                    scrollWheelEvent2Source: eventSource, units: .pixel, wheelCount: 1, wheel1: -step, wheel2: 0,
+                    wheel3: 0)
+            else { return }
+            tag(event)
+            event.flags = []
+            event.post(tap: .cghidEventTap)
+            remaining -= step
+            if remaining != 0 { try await Task.sleep(for: .milliseconds(40)) }
+        }
+    }
+
     private func postMouse(_ type: CGEventType, at point: CGPoint) {
         guard
             let event = CGEvent(

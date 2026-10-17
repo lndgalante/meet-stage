@@ -273,4 +273,27 @@ struct AXSnapshotBuilderTests {
         #expect(encoded.contains("\"Back\""))
         #expect(snapshot.webContent?.isReady == true)
     }
+
+    @Test("Nodes in a page or a scroll area know the viewport that cuts them; window chrome has none")
+    func recordsViewports() throws {
+        let window = CGRect(x: 100, y: 100, width: 1000, height: 800)
+        let tree = Tree(nodes: [
+            0: (raw("AXWindow", frame: window), [1, 2, 4]),
+            1: (raw("AXButton", title: "Back", frame: CGRect(x: 110, y: 110, width: 30, height: 20)), []),
+            2: (raw("AXScrollArea", frame: CGRect(x: 100, y: 150, width: 300, height: 400)), [3]),
+            3: (raw("AXRow", title: "Inbox", frame: CGRect(x: 100, y: 500, width: 300, height: 100)), []),
+            4: (raw("AXWebArea", frame: CGRect(x: 400, y: 150, width: 700, height: 900)), [5]),
+            5: (raw("AXHeading", title: "Pricing", frame: CGRect(x: 450, y: 200, width: 300, height: 40)), [])
+        ])
+        var builder = AXSnapshotBuilder(source: tree, window: 0, windowFrame: window)
+        let snapshot = builder.build(generation: 1).snapshot
+        let back = try #require(snapshot.nodes.first { $0.label == "Back" })
+        #expect(back.viewport == nil)
+        // The list's rows are cut by the scroll area.
+        let row = try #require(snapshot.nodes.first { $0.roleClass == .row })
+        #expect(row.viewport == NormRect(x: 0, y: 0.0625, w: 0.3, h: 0.5))
+        // The page is cut by its web area where it stays inside the window.
+        let heading = try #require(snapshot.nodes.first { $0.roleClass == .heading })
+        #expect(heading.viewport == NormRect(x: 0.3, y: 0.0625, w: 0.7, h: 0.9375))
+    }
 }

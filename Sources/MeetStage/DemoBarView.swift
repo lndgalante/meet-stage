@@ -155,9 +155,9 @@ struct DemoBarView: View {
             case .grid:
                 DemoStepGrid(cells: content.cells, isEditable: content.cellsAreEditable) { edit(focusing: $0) }
             case .line:
-                PresentingLineView(prompter: demo.prompter, emptyText: "No line for this step")
+                PresentingLineView(prompter: demo.prompter, emptyText: PresenterPrompter.noLineText)
             case .closing:
-                PresentingLineView(prompter: demo.prompter, emptyText: "That’s the whole demo.")
+                PresentingLineView(prompter: demo.prompter, emptyText: PresenterPrompter.finishedText)
             case .empty:
                 Text("Nothing recorded yet.")
                     .font(.callout)
@@ -210,7 +210,10 @@ struct DemoBarView: View {
             announcementBase = phase
             return
         }
-        if let text = DemoPanelContent.announcement(from: announcementBase, to: inputs) {
+        // While the notice over another app is up, it speaks for the change.
+        if demo.demoNoticeState.shown == nil,
+            let text = DemoPanelContent.announcement(from: announcementBase, to: inputs)
+        {
             AccessibilityNotification.Announcement(text).post()
         }
         announcementBase = DemoPanelContent.announcementBase(previous: announcementBase, next: phase)

@@ -74,9 +74,11 @@ affecting the test; the presenter can rewrite it in a chosen tone for a describe
 audience. A script language (Same as My Request by default, or English, Spanish,
 Portuguese, French, German, Italian, Dutch, Japanese, Korean or Chinese) sets the
 language of the demo title, step titles, lines and start label for builds,
-rewrites and ideas; the teleprompter follows the presenter's voice in it. A dark teleprompter hangs just under the camera, so reading the
-current line looks like talking to the audience, and shows what comes next; it
-asks macOS to keep it out of screen sharing, and sharing the BetterMeets window
+rewrites and ideas; the teleprompter follows the presenter's voice in it. A black
+teleprompter island grows out of the camera notch, so reading the current line
+looks like talking to the audience; beside the camera it shows where the demo is
+and what comes next, and its meter fills as the line is said; it asks macOS to
+keep it out of screen sharing, and sharing the BetterMeets window
 rather than the whole screen keeps it private. Follow my voice, on by default,
 transcribes the presenter on the Mac while presenting, highlights the next word,
 and lets the presenter set the pace with no hold timers: each step moves on a

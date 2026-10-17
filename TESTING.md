@@ -10,7 +10,7 @@ packaged app.
 
 | Layer | Examples | Expected coverage |
 | --- | --- | --- |
-| Pure policy and geometry | shortcut reconciliation, capture selection and frame generations, window eligibility, auto-zoom camera and styled-frame transforms, normalized coordinates, stage sizing and workspace fitting, script following | Every branch and boundary value |
+| Pure policy and geometry | shortcut reconciliation, capture selection and frame generations, window eligibility, auto-zoom camera and styled-frame transforms, normalized coordinates, stage sizing and workspace fitting, script following, teleprompter island layout, row breaking, and content | Every branch and boundary value |
 | Persistence | presentation settings, shortcut pins and exclusions, corrupt or legacy data | Defaults, round trips, normalization, and invalid input |
 | Main-actor models | annotation fading, spotlight state, armed presentation effects | State changes and cancellation-sensitive behavior |
 | AppKit integration | overlay window levels, event-monitor ownership, native workspace configuration, workspace notifications | Configuration and callback translation that can run without privacy consent |
@@ -142,12 +142,17 @@ returns scripted tool decisions, a fixed script draft, and fixed ideas. No test 
 API, takes a screenshot, listens to the microphone, or posts input to another
 app: test sessions pass `opensWindows: false`, which never starts the listener,
 and pacing tests feed words through the DEBUG-only
-`SpeechListener.simulateHearing`. The demo suites contain 128 tests: 119 in the
-ten `MeetStageTests` demo suites, including `DemoPanelContentTests` (49),
-`DemoScoutTests` (10), `DemoSessionTests` (14), `ScriptFollowerTests` (5), and
-`PresenterPacingTests` (8), and 9 in `DemoActionPolicyTests`. The full suite has
-255 tests (241 in `MeetStageTests` and 14 in `MeetStageCoreTests`), with demos
-driven only by these fakes:
+`SpeechListener.simulateHearing`. `FakeApp` screens can scroll: a screen with a
+viewport moves its elements by its scroll position, clips their frames as
+Chromium does when the engine is Chromium, and performs `AXScrollToVisible` the
+way each engine does; elements can be sticky, and a screen can lose its
+elements' identity across a scroll. The demo suites contain 225 tests: 216 in the seventeen
+`MeetStageTests` demo and teleprompter suites, including
+`DemoPanelContentTests` (49), `DemoSessionTests` (24), `IslandContentTests` (23),
+`DemoMatchingTests` (14), `DemoNoticeTests` (12), `IslandLayoutTests` (11),
+`DemoScoutTests` (10), and `DemoFramingReplayTests` (19), and 9 in
+`DemoActionPolicyTests`. The full suite has 354 tests (340 in `MeetStageTests`
+and 14 in `MeetStageCoreTests`), with demos driven only by these fakes:
 
 | Suite | Coverage |
 | --- | --- |
@@ -155,22 +160,36 @@ driven only by these fakes:
 | `ScoutCompactionTests` | Keeping only the retry of an ineffective action; dropping rejected, never-dispatched, and unobserved records and toggles switched back; turning a scroll into a reveal hint |
 | `DemoReplayTests` | One in-order replay with highlights; resuming without repeating an action; not re-clicking a toggle already in its recorded state; recognizing another step's screen; skipping a missing highlight live; healing a renamed control and keeping the heal after a check; returning to the start page in the same tab without a model |
 | `DemoMatchingTests` | Stable and data labels; container-scoped label matching; ambiguity without a container unless one match is clearly nearest; data rows by visual order, and only near where they were recorded; unlabelled icon buttons found where they were and only inside their container; refusing a target crowded by look-alikes when it's recorded; reading order by visual rows; captions matched by their words and values by position; count badges that keep a control's identity and generated IDs that are ignored; identifiers over labels; screen signatures before and after confirmation; fingerprints that ignore words and timing but not actions or app version |
-| `AXSnapshotBuilderTests` | Walking web content, naming rows from their text, and never exposing field values |
+| `AXSnapshotBuilderTests` | Walking web content, naming rows from their text, and never exposing field values; the viewport a node in a page or a scroll area records, and none for window chrome |
+| `DemoFramingTests` | Scrolling only a target its viewport cuts, never one in full view, outside any page or list, next to the browser's toolbar, or in two panes; a reveal first, then one exact scroll for a highlight only when the reveal moved nothing and its frame runs past the edge, never for one that only touches it; one exact scroll back for targets another's centering pushed out; a tall target's heading brought in, a low top scrolled in once, and a top in the upper half left there; exact scrolls that leave a margin and never push a target's top out; highlights kept inside the page, clear of its edge, the toolbar, and a sticky header; measuring a scroll from edges the viewport didn't clip, without a sticky header hiding it, and finding that header |
+| `DemoFramingReplayTests` | A section cut by the fold scrolled fully into view in the background before its highlight; the highlight taken once the scroll settled; a section taller than the view showing its top, in the background; a highlight starting below a sticky header; a sticky header, a sticky banner, the hero at the top, and the footer at the end never getting a real scroll; a heading and a cut button both shown; the last highlight cleared before scrolling; a scrolled-in highlight staying up a moment when its line was already said; targets in full view never scrolled, in a browser or a native list; a native control outside any scroll area highlighted in place; an exact scroll for a highlight past the edge, but not a click, when the app ignores scrolling into view; a target whose identity a scroll lost found again; scrolling for a step left out of the demo counted for the next; a resumed presentation keeping track of the scrolled page; a demo built before framing still finding a target by position after a highlight scrolled; building and replaying ending on the same scroll and highlight without a relocation; a later highlight recorded where an earlier one's scroll left it; building scrolling a cut button in before clicking it, without counting the scroll as the click's effect, and retrying a framed icon with a real click |
 | `DemoModelClientTests` | Scout request shape (auto tool choice, strict schemas, fallbacks, stable bytes for caching); reading the tool call after thinking blocks and computing cost; prose without a tool call, refusals, and overload retries; script requests that list every step and accept only a complete answer; a start label in both answers, required by both tool schemas, with a missing one still finishing; billing each fallback attempt at its own model's rates |
-| `DemoSessionTests` | Build, return to start, test, ready, and play, then restore after relaunch, keeping the script written during the test run without undoing the result; playing from the wrong screen going back to the start first; Previous Step going back to the start, quietly replaying the actions before it, and presenting it again; continuing a paused test run where it stopped and still ending tested; stopping a build and offering to keep building; several demos per app (open one, start another, cancel back, delete one); a new demo's request surviving a relaunch, with Cancel going back to the demo before it; ideas from the app's own features in the request field with Claude access; editing a line keeping the demo tested and timing the step to the new line; renaming keeping the phase and **Tested** across a relaunch; Claude's start label landing unless the presenter edited it meanwhile; demos saved without a start label still loading with the same fingerprint; the start label falling back to the first clause of the start description (“the Scheduled page”); Claude access asked once, on first open, for every app, before touching any |
+| `DemoSessionTests` | Build, return to start, test, ready, and play, then restore after relaunch, keeping the script written during the test run without undoing the result; playing from the wrong screen going back to the start first; Previous Step going back to the start, quietly replaying the actions before it, and presenting it again; continuing a paused test run where it stopped and still ending tested; stopping a build and offering to keep building; several demos per app (open one, start another, cancel back, delete one); a new demo's request surviving a relaunch, with Cancel going back to the demo before it; ideas from the app's own features in the request field with Claude access; editing a line keeping the demo tested and timing the step to the new line; renaming keeping the phase and **Tested** across a relaunch; Claude's start label landing unless the presenter edited it meanwhile; demos saved without a start label still loading with the same fingerprint; the start label falling back to the first clause of the start description (“the Scheduled page”); Claude access asked once, on first open, for every app, before touching any; Start Over and Play Again showing the opening line at once, not the closing line they leave; Previous Step keeping its step's line when the app can't get back to the start by itself, then catching up to it; going back again while catching up counting from the step it goes back to; a resume continuing to catch up quietly, with a line skipped meanwhile still said at the step; the session following the stage pausing and resuming; a build that finishes in the background leaving a ready notice without bringing BetterMeets forward, until playing ends it; no notice for a build that finishes while BetterMeets is active, even after switching away |
 | `DemoPanelContentTests` | What the demo panel shows in every state, from composing through building, approval, a blocked request, going back to the start, not at the start, ready, testing, presenting, paused, off track, and finished: glyph, headline, subline, primary action and its role, secondaries, transport enablement, and body; VoiceOver announcements on phase changes only; short titles for narrow widths; the Demo menu's first item and the floating demo button in each phase; library row status; and how many grid columns and steps fit each width |
-| `ScriptFollowerTests` | Following a line read aloud word by word, including partial words; tolerating misheard words and swallowed endings; not jumping ahead on an ad-lib that shares one word with a later sentence; never moving backwards on a repeated word; Skip marking the line said |
+| `ScriptFollowerTests` | Following a line read aloud word by word, including partial words; tolerating misheard words and swallowed endings; not jumping ahead on an ad-lib that shares one word with a later sentence; never moving backwards on a repeated word; Skip marking the line said; the last three words heard, starting empty on each new line and following revisions that change words without adding any; a line shown again counting as a new showing; words that change nothing on screen not redrawing the teleprompter |
 | `PresenterPacingTests` | A line always getting at least the time it takes to say it; Follow my voice on by default, falling back to the timer without a listening microphone, and Skip ending a timed hold early; short words matched exactly and no jump without the words it skips; following the voice, a line holding with no timer until it's said; a step without a line moving on by itself after a short beat; a line said in your own words, then a pause, moving on, while a short aside doesn't count; “next” read as a word of the line not counting as a command |
+| `IslandContentTests` | What the teleprompter island shows in every state: compact or expanded; the band's glyph, place, and Next, with Wrap up or Last step on the last step; the line's word style and dimming; the meter; the status, by priority; and four slots that never move: Play alone in ready, Go to Start as the primary when not at the start, Pause Demo between three disabled slots while going back, Resume Demo with Next Step when paused, Try Again with Skip Step beside it when a target is missing, and Play Again with Start Over disabled at the end; catching up after Previous Step; Done with a check only without a closing line |
+| `IslandLayoutTests` | The island's frames on a notched display, with an auto-hidden menu bar, and on an external display without a notch; width and depth across text sizes 16 to 48; every size from 40 to 48 making the same largest island; row heights in the rounded script font; the collapsed, compact, and expanded shapes and the shoulders' path; whole-pixel frames; event-to-AppKit point conversion; the chrome at rest |
+| `DemoNoticeTests` | What the demo notice says: a ready demo's title with Tested or Not tested, its steps (1 step, 4 steps), and its app, and the VoiceOver announcement; Build paused, Test waiting, and Test stopped with their titles and details; no notice for phases the presenter started or that need nothing. Whether it shows: nothing while BetterMeets is active, a new announcement replacing it in place, a phase without one hiding it, switching to BetterMeets hiding it, and a notice put away not returning until a new run. Where it hangs: from the notch and 300 points wider, below the menu bar at 440 points without a notch, and as a card 8 points below the teleprompter, as wide as its body |
+| `ScriptRowsTests` | Breaking a line into rows at the column's width; a word wider than a row splitting into pieces that keep its index; an empty line as one row; a reading position that keeps a row above, only moves forward, and starts over when reset; a top fade only over a row already read |
+| `LevelHistoryTests` | The meter's decibel scale; one level per twentieth of a second of audio, whatever the buffer size; drops releasing softly; reset |
 | `DemoActionPolicyTests` | Ordinary navigation; destructive buttons denied and destructive navigation needing approval; localized destructive buttons; dialog buttons other than dismissals needing approval; data rows judged by their details; typing rules, including denied line breaks and tabs; allowed page hosts, matched exactly or as subdomains rather than as substrings |
 
 `ZZViewSnapshots` renders the demo panel's states to PNGs for design review, at
-real panel widths in Dark and Light. It draws only when `SNAPSHOT_DIR` is set
+real panel widths in Dark and Light, and the teleprompter island's states (18a
+to 18m: ready, listening, timed, no line, paused, off track, going back,
+finished, mic unavailable, compact, not at the start, no notch, and the largest
+and smallest text) under a drawn menu bar and notch, at the island's width plus
+164 points, and the demo notice (20a to 20f: ready, test stopped, build paused,
+ready without a notch, under the expanded teleprompter, and a test waiting with a
+two-line detail) the same way. It draws only when `SNAPSHOT_DIR` is set
 (`SNAPSHOT_WIDTHS` picks the widths, each the window width minus 100) and
 otherwise passes without drawing.
 
 Live end-to-end validation of the pipeline is ongoing. A 10-step Ledger
-demo has been tested and played live once. Voice following, the teleprompter's
-placement under the camera and its exclusion from screen sharing, switching
+demo has been tested and played live once. Voice following, the teleprompter
+island (growing out of the notch, docking on each display, stepping aside for a
+demo's clicks and scrolls, and its exclusion from screen sharing), switching
 between several demos of one app (the library list, New Demo, renaming, and
 deleting), the demo panel's composer, status band, and step grid, ideas from the app's own features, the
 one-time Claude access question, closing a stray window during a build, Previous
@@ -235,20 +254,25 @@ version.
    sheet while Claude writes: that line keeps your edit and the others take the
    new lines. Rewrite offline: the reason appears in the sheet and the lines
    stay.
-9. **Teleprompter.** Play a tested demo: the teleprompter opens without taking
-   focus, centered just below the menu bar on the display with the camera
-   (the built-in display, also when an external display is main), and shows
-   the opening line, then each step's line with the next step's title, a
-   **Listening** label while it waits for your voice, and a progress bar during
-   timed holds. Pause and resume: the opening line must not play again.
-   Change the text size, drag the panel, then hide and show it with the demo panel's
-   **Teleprompter** toggle and ⌃⌘N; it returns where it was, and **Move Under
-   Camera** puts it back. Its Pause, Next Line, and Play buttons and its menu
-   must work without activating BetterMeets, and VoiceOver must read them as
-   Start Over, Previous Step, Pause Demo (or Play, Resume Demo, Try Again, or Play
-   Again), and Next Line. Share the BetterMeets window in
-   Google Meet and confirm from another participant's view that the panel isn't
-   shown; then share the entire screen and record whether macOS hides it.
+9. **Teleprompter.** Play a tested demo: the teleprompter grows out of the
+   camera notch without taking focus, on the display with the camera (the
+   built-in display, also when an external display is main). Beside the camera
+   it shows the position and step title and **Next** with the next step's title;
+   below, the opening line, then each step's line, with **Listening** while it
+   waits for your voice and a countdown during timed holds. Pause and resume:
+   the opening line must not play again. During **Test Again** it is a compact
+   strip as tall as the menu bar. Change the text size: it docks again at the
+   new size, still centered on the camera; from 40 to 48 points it keeps its
+   size and only the text changes. Hide and show it with its menu, the
+   demo panel's **Teleprompter** toggle, and ⌃⌘N: it folds into the notch and
+   grows back out. It can't be dragged or resized, and there is no **Move Under
+   Camera**. Its buttons and menu must work on the first click without
+   activating BetterMeets or taking the app's keystrokes, and VoiceOver must
+   read them as Start Over, Previous Step, Pause Demo (or Play, Resume Demo, Try
+   Again, or Play Again), and Next Line, with the same names as the demo panel.
+   Share the BetterMeets window in Google Meet and confirm from another
+   participant's view that the island isn't shown; then share the entire screen
+   and record whether macOS hides it. Then run the island checks below.
 10. **Follow my voice.** With it on (the default), finish a build: macOS asks
     for the microphone when the demo becomes ready, not on Play. While
     presenting, the demo panel's headline shows a waveform beside **Step N of M**,
@@ -294,9 +318,26 @@ version.
     **New Demo**. Open another demo while **Rewrite Lines** is writing: the new
     lines land on the demo they were written for.
 12. **Away from BetterMeets.** Start a build or **Test Again**, then switch to
-    another app: when the demo is ready, BetterMeets comes to the front, or a
-    notice with **Open BetterMeets** appears over that app. An approval or a
-    stopped test run also shows a notice.
+    another app: when the demo is ready, BetterMeets stays in the background and
+    a black notice grows out of the notch on the display under the pointer
+    (below the menu bar without a notch), with the app's icon, the demo's title,
+    “Tested · N steps · App”, **Open BetterMeets**, and Dismiss. It stays until
+    acted on: **Open BetterMeets** brings BetterMeets forward and folds it away,
+    Dismiss folds it away and it doesn't come back, and switching to BetterMeets
+    any other way (Dock, ⌘-Tab) folds it too. An approval, a test waiting at the
+    start, or a stopped test run shows Build paused, Test waiting, or Test
+    stopped instead; when the test then carries on, that notice folds away, and
+    if the run ends ready a Demo ready notice grows again. Put a Build paused
+    notice away, choose **Keep Building**, switch back, and touch the app again:
+    the notice returns. With Stage Only on, **Open BetterMeets** on Build paused
+    shows the controls. With the teleprompter up, the notice is a card under it;
+    **Larger Text** and **Smaller Text** from the island's options keep the card
+    8 points below it and as wide as its body, and hiding the teleprompter moves
+    the notice into the notch once the island has folded. Under the status pill,
+    an attention card has no badge of its own. Press ⌘H on BetterMeets before a
+    build finishes: the notice shows and BetterMeets stays hidden. Hovering
+    Dismiss shows its help tag. With VoiceOver, the notice is announced as it
+    appears, once.
 13. **Ideas.** With Claude access on and a key saved, open the request field
     for a live window: **Quick tour** and **Main flow** show at
     once, three **Finding ideas…** placeholders follow, then three sparkles
@@ -341,6 +382,35 @@ version.
     demo stays in view. With VoiceOver, phase changes are announced and step
     changes aren't. Check Light, Dark, Increase Contrast, Reduce Motion, and an
     inactive window, where the primary turns grey but stays the largest control.
+18. **Sections below the fold.** In Dia, open a long landing page and scroll so
+    a section such as “Key Features” starts in the lower third of the window and
+    runs below the fold. Ask for a demo that highlights that section. While
+    building, the page scrolls the whole section into view with the browser in
+    the background (Chromium centers it), and only then does the highlight
+    appear, never cut by the bottom edge or drawn over the toolbar. Test and
+    play the demo from the same start: the page scrolls the same way and the
+    highlight lands on the same region. Repeat with a section taller than the
+    window: the page scrolls past it and back until its heading sits near the
+    middle, all in the background, and the highlight runs from its top to just
+    above the bottom edge, below a sticky header if the site has one. Highlight
+    a heading together with a button cut by the fold: both end up inside, after
+    one brief trip to the front. Highlight the hero at the top of the page, a
+    sticky header while scrolled down, and the footer at the end of the page:
+    nothing scrolls, Dia never comes to the front, and the pointer stays put.
+    When one highlight follows another, the earlier one disappears before the
+    page scrolls. Present with voice following and a short line on a cut
+    section: the highlight stays up at least a moment after it appears. Pause
+    after that highlight, then resume: a target found by position after it is
+    still found. Click a button half below the fold: it scrolls in before the
+    click. Repeat once in Chrome and in Safari (which
+    stops a section at the edge instead of centering it; the highlight still
+    stays inside), and in Finder or Notes with a row half cut by its list. A
+    demo built before this change should still play, scrolling cut highlights
+    in and still finding the targets after them. Log the before and after
+    frames in Dia once, to confirm `AXScrollToVisible` centers and how long a
+    smooth-scrolling page takes to settle. The Dock and the teleprompter can
+    still cover part of the presenter's own view of the window; what must be
+    right is the captured window.
 
 Also confirm, in any app: steps never act after a source switch or capture
 pause; recovery buttons are disabled while the source isn't live; **Use N Steps**
@@ -376,6 +446,40 @@ Switch back and verify its steps and script return. Build demos for both apps,
 relaunch, and confirm both restore. **New Demo** must keep the selected app's
 saved demos and leave the other app's alone. Repeat source switching in Stage Only, and verify pausing capture
 preserves the selected app's demo while disabling playback.
+
+### Teleprompter island
+
+The island's layout and content are unit-tested, but how it docks, morphs, and
+steps aside depends on the window server. With `./dev-app.sh`, check:
+
+1. **Notched built-in display.** The island grows from the notch with no
+   overhang, its band merges with the notch, and the menus and status items it
+   covered reappear after Hide.
+2. **First click.** With Safari in front, the first click on **Pause Demo**
+   acts, and typing afterwards still goes to Safari. The options menu and the
+   island's context menu both open.
+3. **Replay safety.** With Safari maximized, play a demo with a click on the
+   address bar and a scroll under the island: both steps pass, and the island
+   blinks out and back.
+4. **⌃⌘N while folding.** With BetterMeets in front, press ⌃⌘N twice quickly:
+   the island grows back from where it was and stays, with no stray hide.
+5. **Notices.** With the island showing, the notice for a test run that finishes
+   in the background slides out as a card 8 points below it. Hide the island
+   while the notice is up: the notice moves up into the notch, and back below
+   the island when it shows again.
+6. **Displays.** With the lid closed and an external display, the island hangs
+   below that display's menu bar. With an external display as main and the lid
+   open, it stays on the built-in display. Also check an auto-hidden menu bar,
+   a full-screen source app, Mission Control and swiping between Spaces, Stage
+   Manager, unplugging a display mid-demo, and changing the display scale: the
+   island always docks at the camera.
+7. **Whole-screen share in Meet.** Expect the island to be visible, as the
+   caption in Settings › Demos warns; sharing the BetterMeets window should hide
+   it.
+8. **Accessibility.** VoiceOver reads Teleprompter, then the place, Next,
+   Current line, the status, and the controls. With Reduce Motion the island
+   fades instead of growing, its rows snap, and the meter stays flat. Increase
+   Contrast raises the faint text and adds an edge on the sides and bottom.
 
 ### Debugging AI requests
 

@@ -70,6 +70,8 @@ final class DemoScout {
         var settlePoll = Duration.milliseconds(250)
         /// How long each chosen highlight is shown while building.
         var beatPreview = Duration.milliseconds(650)
+        /// How long scrolling a target into view may take to settle.
+        var framing = DemoFramer.Timing()
     }
 
     private(set) var demo: RealTimeDemo
@@ -106,6 +108,10 @@ final class DemoScout {
         baseline = driver.scopeBaseline(source)
     }
 
+    private var framer: DemoFramer {
+        DemoFramer(driver: driver, source: source, timing: limits.framing, check: check)
+    }
+
     private var draft: ScoutDraft {
         get { demo.draft ?? ScoutDraft() }
         set { demo.status = .draft(newValue) }
@@ -120,7 +126,7 @@ final class DemoScout {
         switch last.outcome {
         case .pending:
             // Never dispatched.
-            draft.records.removeLast()
+            dropLastRecord()
         case .unobserved where byUserInput:
             last.outcome = .contaminated
             last.fact += " The presenter used the mouse or keyboard while it ran; check the screen."
@@ -316,37 +322,56 @@ final class DemoScout {
             return nil
 
         case .present(let beats):
-            let pre = ScreenSignatures.make(snapshot)
-            var steps: [DemoStep] = []
+            let beats = Array(beats.prefix(4))
+            // Each beat's targets, followed from this turn's look through earlier beats' scrolling.
+            var pending: [[Int?]] = beats.map { beat in beat.elementIDs.prefix(6).filter { locator($0) != nil } }
+            var current = snapshot
+            var record = ScoutRecord(turn: turn, steps: [], outcome: .changed, fact: "")
             var shown: [String] = []
-            for beat in beats.prefix(4) {
-                let targets = beat.elementIDs.prefix(6).compactMap { locator($0) }
+            for (index, beat) in beats.enumerated() {
+                // Recorded the way replay meets it: after earlier beats' scrolling, before this one's.
+                let targets = pending[index].compactMap { id in
+                    id.flatMap { id in DemoLocatorFactory.locator(for: id, in: current).map { (id, $0) } }
+                }
                 guard !targets.isEmpty else { continue }
-                let action = DemoAction.present(DemoBeat(effect: beat.effect, targets: targets.map(\.0)))
+                let action = DemoAction.present(DemoBeat(effect: beat.effect, targets: targets.map(\.1)))
                 let script = String(beat.script.prefix(240))
-                steps.append(
+                let pre = ScreenSignatures.make(current)
+                update("Highlighting \(clean(title: beat.title, fallback: "a detail"))")
+                let framed = try await framer.frame(
+                    targets.map(\.0), in: current, for: .highlight, carrying: pending[(index + 1)...].flatMap { $0 })
+                var carried = framed.carried.makeIterator()
+                for later in pending.indices.dropFirst(index + 1) {
+                    pending[later] = pending[later].map { _ in carried.next() ?? nil }
+                }
+                current = framed.snapshot
+                record.steps.append(
                     DemoStep(
                         title: clean(title: beat.title, fallback: beat.effect.label), script: script,
-                        holdSeconds: DemoStep.hold(for: script, action: action), action: action, pre: pre))
+                        holdSeconds: DemoStep.hold(for: script, action: action), action: action, pre: pre,
+                        framing: framed.shift))
+                let scrolled = abs(framed.shift) * current.windowFrame.height >= 1 ? " (scrolled into view)" : ""
                 shown.append(
                     "\(beat.effect.rawValue) "
-                        + targets.map { "“\(String($0.0.displayName.prefix(40)))”" }
-                        .joined(separator: " + "))
-                let rect = targets.map(\.1.rect).dropFirst().reduce(targets[0].1.rect) { $0.union($1) }
-                update("Highlighting \(clean(title: beat.title, fallback: "a detail"))")
-                driver.show(DemoCue(effect: beat.effect, rect: rect))
+                        + targets.map { "“\(String($0.1.displayName.prefix(40)))”" }
+                        .joined(separator: " + ") + scrolled)
+                record.fact = "#\(turn) showed " + shown.joined(separator: "; ")
+                // Kept at once, so a pause during a later beat never loses the scrolling this one did.
+                if record.steps.count == 1 { save(record) } else { replaceLast(record) }
+                let nodes = framed.ids?.compactMap { current.node($0) } ?? []
+                driver.show(
+                    DemoCue(
+                        effect: beat.effect,
+                        rect: DemoFraming.cueRect(
+                            for: nodes, in: current, effect: beat.effect, coveredTop: framed.coveredTop)))
                 try await Task.sleep(for: limits.beatPreview)
                 try check()
             }
             driver.show(nil)
-            guard !steps.isEmpty else {
+            guard !record.steps.isEmpty else {
                 reject(turn, "none of those element IDs could be highlighted reliably.")
                 return nil
             }
-            save(
-                ScoutRecord(
-                    turn: turn, steps: steps, outcome: .changed,
-                    fact: "#\(turn) showed " + shown.joined(separator: "; ")))
             unchangedTurns = 0
             return nil
         }
@@ -391,21 +416,38 @@ final class DemoScout {
         }
 
         let pre = ScreenSignatures.make(snapshot)
+        // A target the viewport cuts is scrolled into view first, as replay will. The step
+        // is still recorded from the screen before, which is what replay resolves it on.
+        var look = snapshot
+        var target = node?.id
+        var framing: Double?
+        if let node {
+            let framed = try await framer.frame([node.id], in: snapshot, for: .action)
+            look = framed.snapshot
+            target = framed.ids?.first
+            framing = framed.shift
+        }
         let step = DemoStep(
             title: clean(title: title, fallback: action.kindLabel), script: String(script.prefix(240)),
             holdSeconds: DemoStep.hold(for: script, action: action), action: action, pre: pre, approved: approved,
-            approvedReason: approvedReason)
+            approvedReason: approvedReason, framing: framing)
+        guard node == nil || target != nil else {
+            // Left out of the demo, with the scrolling it did, which replay accounts for.
+            reject(turn, "the element for “\(title)” moved out of reach while scrolling it into view.", keeping: [step])
+            return nil
+        }
+        // Where framing moved the target, for looking it up again after the action.
+        let framedOffset = -(framing ?? 0)
         save(ScoutRecord(turn: turn, steps: [step], outcome: .pending, fact: ""))
         update(progressText(for: action, title: step.title))
 
         let input: DemoInput
         let name = action.locators.first?.displayName ?? step.title
         switch action {
-        case .click: input = .click(ElementHandle(generation: snapshot.generation, id: node?.id ?? -1), name: name)
+        case .click: input = .click(ElementHandle(generation: look.generation, id: target ?? -1), name: name)
         case .typeText(_, let text, let submit):
             input = .type(
-                ElementHandle(generation: snapshot.generation, id: node?.id ?? -1), name: name, text: text,
-                submit: submit)
+                ElementHandle(generation: look.generation, id: target ?? -1), name: name, text: text, submit: submit)
         case .press(let key): input = .press(key)
         case .navigate(let url): input = .navigate(url)
         case .present: return nil
@@ -419,7 +461,7 @@ final class DemoScout {
                 // Nothing reached the app (or the app refused), so the record never happened.
                 let last = draft.records.last?.outcome
                 if last == .pending || (last == .unobserved && error.wasNotDelivered) {
-                    draft.records.removeLast()
+                    dropLastRecord()
                     reject(turn, "\(describe(action)) failed: \(error.localizedDescription)")
                     return nil
                 }
@@ -437,15 +479,16 @@ final class DemoScout {
             case .press: .seconds(2)
             default: .seconds(4)
             }
-        var settled = try await settle(after: snapshot, maximum: maximum)
+        var settled = try await settle(after: look, maximum: maximum)
         try check()
-        var changed = Self.changed(from: snapshot, to: settled)
+        // Compared with the framed look, so scrolling the target in never counts as the action's effect.
+        var changed = Self.changed(from: look, to: settled)
         var record = draft.records.last ?? ScoutRecord(turn: turn, steps: [step], outcome: .pending, fact: "")
         var neededPointer = false
         // A click that opened another window changed nothing here, and clicking again would open another.
         let openedWindow = driver.scopeViolation(source, since: baseline) != nil
         if !changed, !openedWindow, case .click(let locator) = action,
-            let id = DemoLocatorMatcher.match(locator, in: settled).nodeID
+            let id = DemoLocatorMatcher.match(locator.shifted(by: framedOffset), in: settled).nodeID
         {
             // Accessibility's press did nothing (some controls close at once while their
             // window isn't focused); try a real click before telling Claude it failed.
@@ -466,13 +509,14 @@ final class DemoScout {
         }
         record.outcome = changed ? .changed : .noEffect
         if case .click(var locator) = action, locator.roleClass == .checkbox,
-            let id = DemoLocatorMatcher.match(locator, in: settled).nodeID, let value = settled.node(id)?.toggleValue
+            let id = DemoLocatorMatcher.match(locator.shifted(by: framedOffset), in: settled).nodeID,
+            let value = settled.node(id)?.toggleValue
         {
             locator.toggleValueAfter = value
             record.steps[0].action = .click(locator)
         }
         let urlNote =
-            changed && settled.webURL != snapshot.webURL
+            changed && settled.webURL != look.webURL
             ? " (" + (ScreenSignatures.urlKey(settled.webURL) ?? "new page") + ")" : ""
         record.fact =
             "#\(turn) \(describe(action))\(neededPointer ? " (needed a real click)" : "") → "
@@ -577,7 +621,7 @@ final class DemoScout {
     private func resolveUnobservedRecord() {
         guard var last = draft.records.last else { return }
         if last.outcome == .pending {
-            draft.records.removeLast()
+            dropLastRecord()
         } else if last.outcome == .unobserved {
             last.outcome = .contaminated
             last.fact = last.fact.replacingOccurrences(
@@ -586,9 +630,21 @@ final class DemoScout {
         }
     }
 
-    private func reject(_ turn: Int, _ reason: String) {
-        save(ScoutRecord(turn: turn, steps: [], outcome: .rejected, fact: "#\(turn) rejected: \(reason)"))
+    /// `keeping` holds steps left out of the demo whose framing scrolled all the same.
+    private func reject(_ turn: Int, _ reason: String, keeping steps: [DemoStep] = []) {
+        save(ScoutRecord(turn: turn, steps: steps, outcome: .rejected, fact: "#\(turn) rejected: \(reason)"))
         noteProgress(false)
+    }
+
+    /// Takes the last record out of the demo. Scrolling its framing did stays on a
+    /// record compaction leaves out, which carries it to the next step.
+    private func dropLastRecord() {
+        guard var last = draft.records.popLast(), last.steps.contains(where: { ($0.framing ?? 0) != 0 }) else {
+            return
+        }
+        last.outcome = .rejected
+        last.fact = ""
+        draft.records.append(last)
     }
 
     private func appendFact(turn: Int, _ fact: String) {

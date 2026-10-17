@@ -228,6 +228,12 @@ struct DemoStep: Codable, Identifiable, Hashable, Sendable {
     var approvedReason: String?
     /// The click needs a real pointer: the control ignored Accessibility's press.
     var usesPointer: Bool?
+    /// How far, in window fractions, scrolling this step's targets into view moved
+    /// the content up while building. Nil for steps built before targets were framed.
+    var framing: Double?
+    /// How far framing for actions left out of the demo moved the content up while
+    /// building, after the step before this one, in window fractions.
+    var priorFraming: Double?
 
     /// Presenters read aloud at about 150 words a minute.
     static let wordsPerSecond = 2.5

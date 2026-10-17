@@ -151,6 +151,16 @@ actor AccessibilityService {
         return elements[handle.id]
     }
 
+    /// Finds elements of an earlier snapshot among a later snapshot's elements by
+    /// identity, which survives scrolling where positions and clipped frames don't.
+    func follow(_ handles: [ElementHandle], into generation: Int) -> [Int?] {
+        guard let elements = self.handles[generation] else { return handles.map { _ in nil } }
+        return handles.map { handle in
+            guard let old = try? element(handle) else { return nil }
+            return elements.firstIndex { CFEqual($0, old) }
+        }
+    }
+
     func frame(of handle: ElementHandle) throws -> CGRect? {
         AccessibilityWindowResolver.frame(of: try element(handle))
     }

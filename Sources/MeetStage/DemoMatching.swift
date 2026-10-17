@@ -324,19 +324,21 @@ enum ScreenSignatures {
 
 /// Turns the scout's raw records into replayable steps: drops rejected and
 /// unobserved actions, retries, repeated clicks, and toggles undone with
-/// nothing shown in between, and turns scrolls into reveal hints.
+/// nothing shown in between, and turns scrolls into reveal hints. Scrolling a
+/// dropped step's framing did is carried to the next step on that page.
 enum ScoutCompaction {
     static func compact(_ records: [ScoutRecord]) -> [DemoStep] {
-        var kept: [ScoutRecord] = records.filter { record in
-            record.outcome != .rejected && record.outcome != .unobserved && record.outcome != .pending
+        var kept = records.indices.filter { index in
+            let outcome = records[index].outcome
+            return outcome != .rejected && outcome != .unobserved && outcome != .pending
         }
 
         // An action that changed nothing and was then retried on the same element: keep the retry.
         var index = 0
         while index < kept.count {
-            if let current = mutatingKey(kept[index]), kept[index].outcome == .noEffect,
-                let nextIndex = kept[(index + 1)...].firstIndex(where: { mutatingKey($0) != nil }),
-                mutatingKey(kept[nextIndex]) == current
+            if let current = mutatingKey(records[kept[index]]), records[kept[index]].outcome == .noEffect,
+                let nextIndex = kept[(index + 1)...].firstIndex(where: { mutatingKey(records[$0]) != nil }),
+                mutatingKey(records[kept[nextIndex]]) == current
             {
                 kept.remove(at: index)
                 continue
@@ -347,10 +349,10 @@ enum ScoutCompaction {
         // A toggle switched on and back off with nothing shown in between.
         index = 0
         while index < kept.count {
-            if let key = toggleKey(kept[index]),
-                let nextIndex = kept[(index + 1)...].firstIndex(where: { mutatingKey($0) != nil }),
-                toggleKey(kept[nextIndex]) == key,
-                !kept[(index + 1)..<nextIndex].contains(where: { $0.steps.contains { !$0.action.isMutating } })
+            if let key = toggleKey(records[kept[index]]),
+                let nextIndex = kept[(index + 1)...].firstIndex(where: { mutatingKey(records[$0]) != nil }),
+                toggleKey(records[kept[nextIndex]]) == key,
+                !kept[(index + 1)..<nextIndex].contains(where: { records[$0].steps.contains { !$0.action.isMutating } })
             {
                 kept.removeSubrange(index...nextIndex)
                 continue
@@ -358,9 +360,19 @@ enum ScoutCompaction {
             index += 1
         }
 
+        let keptSet = Set(kept)
         var steps: [DemoStep] = []
         var pendingReveal: RevealHint?
-        for record in kept {
+        var owed: (page: String?, amount: Double)?
+        for (offset, record) in records.enumerated() {
+            guard keptSet.contains(offset) else {
+                for step in record.steps {
+                    guard let framing = step.framing, framing != 0 else { continue }
+                    let earlier = owed?.page == step.pre.urlKey ? owed?.amount ?? 0 : 0
+                    owed = (step.pre.urlKey, earlier + framing)
+                }
+                continue
+            }
             if var scroll = record.scroll {
                 if let pending = pendingReveal, pending.directionDown == scroll.directionDown {
                     scroll.count = (pending.count ?? 1) + (scroll.count ?? 1)
@@ -372,6 +384,10 @@ enum ScoutCompaction {
                 if let reveal = pendingReveal {
                     step.reveal = reveal
                     pendingReveal = nil
+                }
+                if let debt = owed {
+                    if debt.page == step.pre.urlKey { step.priorFraming = (step.priorFraming ?? 0) + debt.amount }
+                    owed = nil
                 }
                 steps.append(step)
             }

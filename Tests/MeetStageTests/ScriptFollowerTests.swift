@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import Testing
 
@@ -57,6 +58,61 @@ struct ScriptFollowerTests {
         #expect(follower.isComplete)
         #expect(ScriptFollower(line: "").isComplete)
     }
+
+    @Test("The last three words heard on a line show beside it, and each new line starts empty")
+    @MainActor func heardTail() {
+        let prompter = PresenterPrompter(defaults: UserDefaults(suiteName: "prompter-\(UUID().uuidString)")!)
+        prompter.show(.step(0), text: line, heading: "", upNext: nil, position: nil)
+        prompter.listener.simulateHearing("the status")
+        #expect(prompter.heardTail == ["the", "status"])
+        prompter.listener.simulateHearing("the status tells us")
+        #expect(prompter.heardTail == ["status", "tells", "us"])
+        // A revision that changes words without adding any still shows.
+        prompter.listener.simulateHearing("the status tells you")
+        #expect(prompter.heardTail == ["status", "tells", "you"])
+        prompter.listener.simulateHearing("the status")
+        #expect(prompter.heardTail == ["the", "status"])
+        prompter.listener.simulateHearing("the status tells us")
+
+        // Words heard before a line appeared belong to the one before it.
+        prompter.show(.step(1), text: "Here are the transactions.", heading: "", upNext: nil, position: nil)
+        #expect(prompter.heardTail.isEmpty)
+        prompter.listener.simulateHearing("the status tells us here are")
+        #expect(prompter.heardTail == ["here", "are"])
+        prompter.clear()
+        #expect(prompter.heardTail.isEmpty)
+    }
+
+    @Test("A line shown again counts as a new showing, so it reads from its start")
+    @MainActor func showingAgain() {
+        let prompter = PresenterPrompter(defaults: UserDefaults(suiteName: "prompter-\(UUID().uuidString)")!)
+        prompter.show(.opening, text: line, heading: "Opening", upNext: nil, position: nil)
+        let first = prompter.showCount
+        prompter.listener.simulateHearing("the status tells us")
+        #expect(prompter.follower.spoken > 0)
+        prompter.show(.opening, text: line, heading: "Opening", upNext: nil, position: nil)
+        #expect(prompter.showCount == first + 1)
+        #expect(prompter.follower.spoken == 0)
+    }
+
+    @Test("Words that change nothing on screen don't redraw the teleprompter")
+    @MainActor func quietWhenUnchanged() {
+        let prompter = PresenterPrompter(defaults: UserDefaults(suiteName: "prompter-\(UUID().uuidString)")!)
+        prompter.show(.step(0), text: line, heading: "", upNext: nil, position: nil)
+        prompter.listener.simulateHearing("um um um")
+        var changes = 0
+        let subscription = prompter.objectWillChange.sink { changes += 1 }
+        // The recognizer re-sends the same words.
+        prompter.listener.simulateHearing("um um um")
+        prompter.listener.simulateHearing("um um um", isFinal: true)
+        #expect(changes == 0)
+        // A filler moves neither the line nor the last three words.
+        prompter.listener.simulateHearing("um")
+        #expect(changes == 0)
+        prompter.listener.simulateHearing("the status")
+        #expect(changes > 0)
+        subscription.cancel()
+    }
 }
 
 @Suite("Presenter pacing")
@@ -75,7 +131,8 @@ struct PresenterPacingTests {
         let defaults = UserDefaults(suiteName: "prompter-\(UUID().uuidString)")!
         let prompter = PresenterPrompter(defaults: defaults)
         #expect(prompter.followsVoice)
-        prompter.show(.step(0), text: "Here are the transactions for this account.", heading: "", upNext: nil, position: nil)
+        prompter.show(
+            .step(0), text: "Here are the transactions for this account.", heading: "", upNext: nil, position: nil)
         let started = ContinuousClock.now
         try await prompter.hold(seconds: 0.2)
         #expect(ContinuousClock.now - started < .seconds(1))
@@ -102,12 +159,17 @@ struct PresenterPacingTests {
     func voiceHoldsHaveNoTimer() async throws {
         let prompter = PresenterPrompter(defaults: UserDefaults(suiteName: "prompter-\(UUID().uuidString)")!)
         prompter.listener.simulateHearing("")
-        prompter.show(.step(0), text: "Here are the transactions for this account.", heading: "", upNext: nil, position: nil)
-        let holding = Task { try await prompter.hold(seconds: 0.1) }
+        prompter.show(
+            .step(0), text: "Here are the transactions for this account.", heading: "", upNext: nil, position: nil)
+        let holding = Task { () -> ContinuousClock.Instant in
+            try await prompter.hold(seconds: 0.1)
+            return .now
+        }
         try await Task.sleep(for: .milliseconds(400))
-        #expect(prompter.isWaitingForVoice)
+        #expect(prompter.hold == nil)
+        let said = ContinuousClock.now
         prompter.listener.simulateHearing("here are the transactions for this", isFinal: true)
-        try await holding.value
+        #expect(try await holding.value >= said)
     }
 
     @Test("A step without a line moves on by itself after a short beat")
@@ -125,10 +187,12 @@ struct PresenterPacingTests {
         let prompter = PresenterPrompter(defaults: UserDefaults(suiteName: "prompter-\(UUID().uuidString)")!)
         prompter.listener.simulateHearing("")
         prompter.show(
-            .step(0), text: "The status tells us whether it's confirmed on-chain, so you don't have to check an explorer.",
+            .step(0),
+            text: "The status tells us whether it's confirmed on-chain, so you don't have to check an explorer.",
             heading: "", upNext: nil, position: nil)
         let holding = Task { try await prompter.hold(seconds: 30) }
-        prompter.listener.simulateHearing("and the status shows it's confirmed on chain so no need to check the explorer")
+        prompter.listener.simulateHearing(
+            "and the status shows it's confirmed on chain so no need to check the explorer")
         #expect(prompter.follower.coverage >= PresenterPrompter.gistCoverage)
         let started = ContinuousClock.now
         try await holding.value
@@ -140,27 +204,35 @@ struct PresenterPacingTests {
         let prompter = PresenterPrompter(defaults: UserDefaults(suiteName: "prompter-\(UUID().uuidString)")!)
         prompter.listener.simulateHearing("")
         prompter.show(
-            .step(0), text: "The status tells us whether it's confirmed on-chain, so you don't have to check an explorer.",
+            .step(0),
+            text: "The status tells us whether it's confirmed on-chain, so you don't have to check an explorer.",
             heading: "", upNext: nil, position: nil)
-        let holding = Task { try await prompter.hold(seconds: 30) }
+        let holding = Task { () -> ContinuousClock.Instant in
+            try await prompter.hold(seconds: 30)
+            return .now
+        }
         prompter.listener.simulateHearing("let me just mention the status quickly")
         try await Task.sleep(for: .milliseconds(1_600))
-        #expect(prompter.isWaitingForVoice)
+        let skipped = ContinuousClock.now
         prompter.skipLine()
-        try await holding.value
+        #expect(try await holding.value >= skipped)
     }
 
     @Test("“Next” as a word of the line is reading, not a command")
     func nextInsideTheLine() async throws {
         let prompter = PresenterPrompter(defaults: UserDefaults(suiteName: "prompter-\(UUID().uuidString)")!)
         prompter.listener.simulateHearing("")
-        prompter.show(.step(2), text: "Next we open the details panel for this row.", heading: "", upNext: nil, position: nil)
-        let holding = Task { try await prompter.hold(seconds: 0.1) }
+        prompter.show(
+            .step(2), text: "Next we open the details panel for this row.", heading: "", upNext: nil, position: nil)
+        let holding = Task { () -> ContinuousClock.Instant in
+            try await prompter.hold(seconds: 0.1)
+            return .now
+        }
         prompter.listener.simulateHearing("next", isFinal: true)
         try await Task.sleep(for: .milliseconds(900))
-        #expect(prompter.isWaitingForVoice)
         #expect(prompter.follower.nextWord == 1)
+        let skipped = ContinuousClock.now
         prompter.skipLine()
-        try await holding.value
+        #expect(try await holding.value >= skipped)
     }
 }

@@ -34,6 +34,38 @@ enum DemoInput: Sendable {
     case scrollToVisible(ElementHandle)
     /// Scroll-wheel steps over a region; needs the app in front, so it's a fallback.
     case wheel(around: NormRect?, down: Bool, increments: Int)
+    /// Scrolls the content over a region by an exact distance in points; positive
+    /// moves it up. Also needs the app in front, so framing uses it last.
+    case scrollBy(around: NormRect?, points: Double)
+}
+
+/// A BetterMeets window that floats over the source app, like the teleprompter,
+/// and must not catch the real clicks and scrolls a demo posts.
+@MainActor
+protocol DemoInputObstruction: AnyObject {
+    /// Gets out of the way of a real click or scroll at `point` (global CG coordinates). Returns a
+    /// restore to call once the input is delivered, or nil when nothing was in the way.
+    func stepAside(at point: CGPoint) async -> (@MainActor () -> Void)?
+}
+
+/// Several floating windows, like the teleprompter and the demo notice, each
+/// stepping aside for the same input.
+@MainActor
+final class DemoInputObstructions: DemoInputObstruction {
+    private let obstructions: [any DemoInputObstruction]
+
+    init(_ obstructions: [any DemoInputObstruction]) {
+        self.obstructions = obstructions
+    }
+
+    func stepAside(at point: CGPoint) async -> (@MainActor () -> Void)? {
+        var restores: [@MainActor () -> Void] = []
+        for obstruction in obstructions {
+            if let restore = await obstruction.stepAside(at: point) { restores.append(restore) }
+        }
+        guard !restores.isEmpty else { return nil }
+        return { for restore in restores { restore() } }
+    }
 }
 
 /// The seam between demo logic and the real app. Tests drive the scout and
@@ -42,8 +74,16 @@ enum DemoInput: Sendable {
 protocol DemoDriving: AnyObject {
     var selectedSource: DemoSource? { get }
     var source: DemoSource? { get }
+    /// Steps aside for real pointer input, so it lands on the app and not on a floating window.
+    var inputObstruction: (any DemoInputObstruction)? { get set }
+    /// The presenter paused the stage, so nothing is live.
+    var isStagePaused: Bool { get }
     func appInfo(for source: DemoSource) throws -> DemoAppInfo
     func snapshot(_ source: DemoSource, waitForContent: Bool) async throws -> AXSnapshot
+    /// The IDs elements of an earlier snapshot have in `snapshot`, matched by
+    /// identity rather than description, so scrolling never loses them. Nil for an
+    /// element that's gone or whose snapshot is too old.
+    func follow(_ handles: [ElementHandle], into snapshot: AXSnapshot) async -> [Int?]
     func screenshot(_ source: DemoSource) async throws -> DemoWindowScreenshot.Capture
     /// Performs `input`. `commit` runs, and may veto by throwing, immediately
     /// before the input becomes irreversible, so a cancelled run never repeats it.
@@ -75,8 +115,11 @@ final class DemoDriver: DemoDriving {
     private let input = DemoInputSynthesizer()
     private let ax = AccessibilityService.shared
     private var engines: [URL: AppEngine] = [:]
+    weak var inputObstruction: (any DemoInputObstruction)?
 
     init(manager: CaptureManager) { self.manager = manager }
+
+    var isStagePaused: Bool { manager?.state == .paused }
 
     var selectedSource: DemoSource? {
         guard let manager,
@@ -132,6 +175,10 @@ final class DemoDriver: DemoDriving {
         return snapshot
     }
 
+    func follow(_ handles: [ElementHandle], into snapshot: AXSnapshot) async -> [Int?] {
+        await ax.follow(handles, into: snapshot.generation)
+    }
+
     func screenshot(_ source: DemoSource) async throws -> DemoWindowScreenshot.Capture {
         let window = try window(for: source)
         guard let capture = await DemoWindowScreenshot.capture(source: window) else { throw DemoError.screenshot }
@@ -164,18 +211,34 @@ final class DemoDriver: DemoDriving {
             try commit()
             try await ax.scrollToVisible(handle)
         case .wheel(let around, let down, let increments):
-            try await inForeground(window, source: source) {
-                let frame = WindowFrameResolver.currentFrame(for: window.id, fallback: window.window.frame)
-                let center = around?.clampedToWindow.center ?? NormalizedWindowPoint(x: 0.5, y: 0.55)
-                let point = CGPoint(x: frame.minX + center.x * frame.width, y: frame.minY + center.y * frame.height)
-                try await self.input.moveCursor(to: point, duration: .milliseconds(80)) {
-                    try self.checkFrontmost(source)
-                }
-                try commit()
+            try await wheel(around: around, window: window, source: source, commit: commit) { point in
                 try await self.input.scroll(at: point, down: down, increments: increments) {
                     try self.checkFrontmost(source)
                 }
             }
+        case .scrollBy(let around, let points):
+            try await wheel(around: around, window: window, source: source, commit: commit) { point in
+                try await self.input.scroll(at: point, points: points) { try self.checkFrontmost(source) }
+            }
+        }
+    }
+
+    /// Real scroll-wheel input over a region, with the app briefly in front.
+    private func wheel(
+        around: NormRect?, window: WindowSource, source: DemoSource, commit: @escaping @MainActor () throws -> Void,
+        scroll: @MainActor (CGPoint) async throws -> Void
+    ) async throws {
+        try await inForeground(window, source: source) {
+            let frame = WindowFrameResolver.currentFrame(for: window.id, fallback: window.window.frame)
+            let center = around?.clampedToWindow.center ?? NormalizedWindowPoint(x: 0.5, y: 0.55)
+            let point = CGPoint(x: frame.minX + center.x * frame.width, y: frame.minY + center.y * frame.height)
+            let restore = await self.inputObstruction?.stepAside(at: point)
+            defer { restore?() }
+            try await self.input.moveCursor(to: point, duration: .milliseconds(80)) {
+                try self.checkFrontmost(source)
+            }
+            try commit()
+            try await scroll(point)
         }
     }
 
@@ -257,6 +320,9 @@ final class DemoDriver: DemoDriving {
         do {
             try await inForeground(window, source: source) {
                 let point = try await self.aimPoint(for: handle, window: window, name: name)
+                // The hit test is system-wide, so a floating window over the point would fail it.
+                let restore = await self.inputObstruction?.stepAside(at: point)
+                defer { restore?() }
                 try await self.input.moveCursor(to: point, duration: .milliseconds(120)) {
                     try self.checkFrontmost(source)
                 }
