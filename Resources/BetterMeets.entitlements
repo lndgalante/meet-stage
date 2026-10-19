@@ -10,5 +10,14 @@
     -->
     <key>com.apple.security.device.audio-input</key>
     <true/>
+    <!--
+      Real-time demos drive browsers in the background through their own
+      scripting: opening a page in the demo tab and running demo steps in it.
+      The hardened runtime blocks Apple Events without this entitlement. Keep it
+      in sync with BetterMeetsDevelopment.entitlements and
+      NSAppleEventsUsageDescription in Info.plist.
+    -->
+    <key>com.apple.security.automation.apple-events</key>
+    <true/>
 </dict>
 </plist>

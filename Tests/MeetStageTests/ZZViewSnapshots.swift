@@ -270,7 +270,7 @@ struct ZZViewSnapshots {
         try notice("20b-notice-test-stopped", .offTrack(.verify, index: 2, .wrongScreen(onStep: 3)))
         let approval = PendingApproval(
             action: open.steps[1].action, title: "Create the task", script: "",
-            message: "Click “Create” in this dialog?", rect: nil)
+            message: "Click “Create” in this dialog?", kind: .dialogButton, rect: nil)
         try notice("20c-notice-build-paused", .scoutPaused(.needsApproval(approval)))
         try notice("20d-notice-ready-no-notch", .ready, screen: Self.external)
         cannes.start?.description =
@@ -337,7 +337,7 @@ struct ZZViewSnapshots {
         try render(bar(), name: "02-building")
         let approval = PendingApproval(
             action: built.steps[1].action, title: "Create the task", script: "",
-            message: "Click “Create” in this dialog?", rect: nil)
+            message: "Click “Create” in this dialog?", kind: .dialogButton, rect: nil)
         main.showForTesting(
             draft(built, id: draftID, title: "Schedule a daily briefing", recorded: 3),
             in: .scoutPaused(.needsApproval(approval)))
@@ -376,6 +376,12 @@ struct ZZViewSnapshots {
         try render(bar(), name: "12-needs-start")
         main.showForTesting(open, in: .running(.verify, next: 2, current: 2))
         try render(bar(), name: "13-testing")
+        main.showForTesting(open, in: .running(.verify, next: 2, current: 2), waitingForPause: true)
+        try render(bar(), name: "13b-testing-waiting")
+        main.showForTesting(
+            open, in: .ready,
+            browserTip: DemoBrowserTip(kind: .javaScript, browser: "Dia", bundleID: "company.thebrowser.dia"))
+        try render(bar(), name: "13c-ready-browser-tip")
         main.showForTesting(open, in: .finished)
         try render(bar(), name: "14-finished")
 

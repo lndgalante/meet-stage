@@ -1,3 +1,4 @@
+import AppKit
 import Combine
 import Foundation
 import Testing
@@ -20,7 +21,11 @@ struct DemoSessionTests {
     }
 
     private func searchModel() -> ScriptedModel {
-        ScriptedModel([
+        ScriptedModel(searchModelReplies)
+    }
+
+    private var searchModelReplies: [Result<ScoutReply, Error>] {
+        [
             reply(.typeText(elementID: 1, text: "The Matrix", submit: true, title: "Search The Matrix", script: "")),
             reply(.click(elementID: 2, title: "Open the first result", script: "")),
             reply(
@@ -28,16 +33,19 @@ struct DemoSessionTests {
                     ScoutBeat(effect: .draw, elementIDs: [2], title: "Point at download", script: "Grab it here.")
                 ])),
             reply(.finish(title: "Find The Matrix", startDescription: "Subtis home", startLabel: "", closingScript: ""))
-        ])
+        ]
     }
 
-    private func session(_ app: FakeApp, _ model: ScriptedModel, _ defaults: UserDefaults) -> DemoSession {
+    private func session(
+        _ app: FakeApp, _ model: ScriptedModel, _ defaults: UserDefaults, workspace: NotificationCenter = .init()
+    ) -> DemoSession {
         var limits = fastScoutLimits()
         limits.beatPreview = .milliseconds(1)
         let session = DemoSession(
             driver: app, defaults: defaults, model: model, keyStore: TestKeyStore(), observesUserInput: false,
-            scoutLimits: limits, opensWindows: false)
+            scoutLimits: limits, opensWindows: false, workspaceNotifications: workspace)
         session.replayTuning = (0.001, .milliseconds(300))
+        session.isSecureInputOn = { false }
         return session
     }
 
@@ -47,6 +55,30 @@ struct DemoSessionTests {
             try await Task.sleep(for: .milliseconds(10))
         }
         Issue.record("Timed out waiting")
+    }
+
+    @Test("A click the test run had to click again keeps the route that worked once the test passes")
+    func testKeepsTheRouteAClickNeeded() async throws {
+        let app = subtisApp()
+        app.runsPageScripts = true
+        var clicks = 0
+        app.beforeInput = { input in
+            guard case .click = input else { return }
+            clicks += 1
+            // Building's press worked; from the test run on, the result ignores Accessibility's press.
+            if clicks == 2 { app.screens["results"]?.elements[2].ignoresPress = true }
+        }
+        let session = session(app, searchModel(), defaults())
+        session.prompt = "Search for The Matrix and open the result"
+        session.build()
+        try await waitUntil { session.phase == .ready && !session.isWritingScript }
+        #expect(session.isChecked)
+        #expect(
+            app.log == [
+                "type The Matrix ⏎", "click The Matrix (1999)", "open https://subtis.io/", "type The Matrix ⏎",
+                "press The Matrix (1999) (ignored)", "page click The Matrix (1999)", "open https://subtis.io/"
+            ])
+        #expect(session.demo?.steps.map(\.route) == [.accessibility, .pageScript, .accessibility])
     }
 
     @Test("Build explores the app, returns to the start, checks the demo and leaves it ready to play")
@@ -63,6 +95,9 @@ struct DemoSessionTests {
         #expect(app.current == "home")
         let pass = ["type The Matrix ⏎", "click The Matrix (1999)", "open https://subtis.io/"]
         #expect(app.log == pass + pass)
+        // The draft is kept as the scout made it, so the demo can be compiled again without pruning.
+        let compiledFrom = try #require(session.demo?.compiledFrom)
+        #expect(ScoutCompaction.compact(compiledFrom).map(\.id) == session.demo?.steps.map(\.id))
         // The script written during the check is kept, and words don't undo the check.
         #expect(session.demo?.openingScript == "Let's find a movie.")
         #expect(session.demo?.steps.first?.title == "Polished Search The Matrix")
@@ -88,6 +123,113 @@ struct DemoSessionTests {
         session.play()
         try await waitUntil { app.broughtToFront > 0 }
         try await waitUntil { session.phase == .finished }
+    }
+
+    @Test("Building and testing drive the window in the background, playing in front, and every run ends it")
+    func driveModes() async throws {
+        let app = subtisApp()
+        let session = session(app, searchModel(), defaults())
+        session.prompt = "Search for The Matrix and open the result"
+        session.build()
+        try await waitUntil { session.phase == .ready && !session.isWritingScript }
+        #expect(
+            app.driveModes == [
+                .background(.building), .background(.returning), .background(.testing), .background(.returning), nil
+            ])
+        session.play()
+        try await waitUntil { session.phase == .finished }
+        #expect(app.driveModes.suffix(2) == [.foreground, nil])
+    }
+
+    @Test("A step waiting for a pause shows in the panel, and a browser's tip shows once, until the next run")
+    func waitingAndTips() async throws {
+        let app = subtisApp()
+        let defaults = defaults()
+        let session = session(app, searchModel(), defaults)
+        let tip = DemoBrowserTip(kind: .javaScript, browser: "Example", bundleID: "com.example.app")
+        app.onWaitingForPause?(true)
+        #expect(!session.isWaitingForPause)
+        var waited = false
+        app.beforeInput = { _ in
+            guard !waited else { return }
+            waited = true
+            app.onWaitingForPause?(true)
+            #expect(session.isWaitingForPause)
+            let panel = DemoPanelContent.make(DemoPanelInputs(session: session, stagePaused: false))
+            #expect(panel.glyph == .symbol("hourglass", .secondary))
+            app.onWaitingForPause?(false)
+            app.onBrowserTip?(tip)
+        }
+        session.prompt = "Search for The Matrix and open the result"
+        session.build()
+        try await waitUntil { session.phase == .ready && !session.isWritingScript }
+        #expect(!session.isWaitingForPause)
+        #expect(session.browserTip == tip)
+        let ready = DemoPanelContent.make(DemoPanelInputs(session: session, stagePaused: false))
+        #expect(ready.subline == .init(text: tip.message, kind: .tip))
+        try await waitUntil { defaults.stringArray(forKey: DemoSession.browserTipsKey) == [tip.key] }
+
+        // A new test run puts it away, and the same browser's tip never comes back.
+        session.checkAgain()
+        #expect(session.browserTip == nil)
+        app.beforeInput = { _ in app.onBrowserTip?(tip) }
+        try await waitUntil { session.phase == .ready }
+        #expect(session.browserTip == nil)
+        #expect(defaults.stringArray(forKey: DemoSession.browserTipsKey) == [tip.key])
+    }
+
+    @Test("A tip a notice covered is offered again by the next run, and remembered once it shows")
+    func coveredTipComesBack() async throws {
+        let app = subtisApp()
+        let defaults = defaults()
+        let session = session(app, searchModel(), defaults)
+        session.prompt = "Search for The Matrix and open the result"
+        session.build()
+        try await waitUntil { session.phase == .ready && !session.isWritingScript }
+        let demo = try #require(session.demo)
+        let tip = DemoBrowserTip(kind: .javaScript, browser: "Example", bundleID: "com.example.app")
+
+        session.showForTesting(demo, in: .ready, notice: "The test run didn’t reach every step.", browserTip: tip)
+        let covered = DemoPanelContent.make(DemoPanelInputs(session: session, stagePaused: false))
+        #expect(covered.subline?.kind == .notice)
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(defaults.stringArray(forKey: DemoSession.browserTipsKey) == nil)
+
+        // The next run puts it away unseen, offers it again, and the ready panel shows it.
+        session.checkAgain()
+        #expect(session.browserTip == nil)
+        app.beforeInput = { _ in app.onBrowserTip?(tip) }
+        try await waitUntil { session.phase == .ready }
+        #expect(session.browserTip == tip)
+        try await waitUntil { defaults.stringArray(forKey: DemoSession.browserTipsKey) == [tip.key] }
+    }
+
+    @Test("While building and testing, only keys in the demo window itself pause the run")
+    func keysInTheDemoWindow() {
+        let frame = CGRect(x: 0, y: 0, width: 800, height: 600)
+        func inSource(_ input: DemoUserInput, frontmost: Bool = true, background: Bool, focused: Bool) -> Bool {
+            input.isInSource(windowID: 42, frame: frame, appIsFrontmost: frontmost, background: background) {
+                focused
+            }
+        }
+        let key = DemoUserInput(windowNumber: 0, location: nil, isKey: true, plainKeyCode: 0)
+        // Typing in another window of the same browser while it builds or tests.
+        #expect(!inSource(key, background: true, focused: false))
+        #expect(inSource(key, background: true, focused: true))
+        #expect(!inSource(key, frontmost: false, background: true, focused: true))
+        // Presenting, any key in the app counts, as before.
+        #expect(inSource(key, background: false, focused: false))
+        #expect(!inSource(key, frontmost: false, background: false, focused: false))
+
+        // Clicks and scrolls count by the window under them.
+        let point = CGPoint(x: 10, y: 10)
+        let click = DemoUserInput(windowNumber: 42, location: point, isKey: false, plainKeyCode: nil)
+        #expect(inSource(click, frontmost: false, background: true, focused: false))
+        let elsewhere = DemoUserInput(windowNumber: 7, location: point, isKey: false, plainKeyCode: nil)
+        #expect(!inSource(elsewhere, background: true, focused: true))
+        let unlisted = DemoUserInput(windowNumber: 0, location: point, isKey: false, plainKeyCode: nil)
+        #expect(inSource(unlisted, background: true, focused: false))
+        #expect(!inSource(unlisted, frontmost: false, background: true, focused: false))
     }
 
     @Test("A build that finishes in the background leaves a ready notice; only Open BetterMeets brings it forward")
@@ -573,6 +715,229 @@ struct DemoSessionTests {
         #expect(label("Settings window on the General tab", label: " Settings ") == "Settings")
         #expect(label("", label: "") == "the starting screen")
         #expect(label("Supercalifragilisticexpialidocious-dashboard-overview-page") == "the starting screen")
+    }
+
+    @Test("Always Allow answers the question and keeps building, and the app stays trusted until removed")
+    func alwaysAllowInApp() async throws {
+        let app = subtisApp()
+        let suite = "demo-session-trust-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(true, forKey: DemoSession.consentKey)
+        let search = reply(.typeText(elementID: 1, text: "Inception", submit: true, title: "Search", script: ""))
+        let finish = reply(.finish(title: "Search", startDescription: "Subtis home", startLabel: "", closingScript: ""))
+        // Nothing is highlighted, though the request asks to show something, so each build's first finish is turned back.
+        let session = session(app, ScriptedModel([search, finish, finish, search, finish, finish]), defaults)
+        session.prompt = "Show how search works"
+        session.build()
+        try await waitUntil {
+            if case .scoutPaused(.needsApproval) = session.phase { true } else { false }
+        }
+        #expect(app.log.isEmpty)
+        let card = DemoPanelContent.make(DemoPanelInputs(session: session, stagePaused: false))
+        #expect(card.secondaries.map(\.title) == ["Skip", "Always Allow in Example"])
+
+        PanelActionID.alwaysAllow("Example").perform(on: session)
+        #expect(session.alwaysAllowedApps == ["com.example.app"])
+        try await waitUntil { session.phase == .ready && !session.isWritingScript }
+        #expect(session.isChecked)
+        let step = try #require(session.demo?.steps.first)
+        #expect(step.approved)
+        #expect(step.approvedReason == "Type “Inception” into “Buscar película”?")
+
+        // The next build in the app doesn't ask.
+        session.newDemo()
+        session.prompt = "Show search again"
+        session.build()
+        try await waitUntil { session.phase == .ready && !session.isWritingScript }
+
+        let relaunched = self.session(app, ScriptedModel([]), defaults)
+        #expect(relaunched.isAlwaysAllowed("com.example.app"))
+        relaunched.removeAlwaysAllowed("com.example.app")
+        #expect(!relaunched.isAlwaysAllowed("com.example.app"))
+        #expect(self.session(app, ScriptedModel([]), defaults).alwaysAllowedApps.isEmpty)
+        // What was already approved stays approved.
+        #expect(relaunched.demo?.steps.first?.approved == true)
+    }
+
+    // MARK: Sleep and user switching
+
+    @Test("A build pauses before its next action while the Mac sleeps, and goes on by itself once it wakes")
+    func buildPausesWhileAsleep() async throws {
+        let app = subtisApp()
+        let workspace = NotificationCenter()
+        // The first look's typing is interrupted before it reaches the app, so Claude is asked again.
+        let model = ScriptedModel(
+            [reply(.typeText(elementID: 1, text: "The Matrix", submit: true, title: "Search The Matrix", script: ""))]
+                + searchModelReplies)
+        let session = session(app, model, defaults(), workspace: workspace)
+        session.awayResumeDelay = .milliseconds(150)
+        var slept = false
+        app.beforeInput = { _ in
+            guard !slept else { return }
+            slept = true
+            workspace.post(name: NSWorkspace.screensDidSleepNotification, object: nil)
+        }
+        session.prompt = "Search for The Matrix and open the result"
+        session.build()
+        try await waitUntil { session.phase == .scoutPaused(.away(.displaySleep)) }
+        #expect(app.log.isEmpty)
+        #expect(model.requests.count == 1)
+        #expect(
+            DemoNoticeContent.make(phase: session.phase, demo: session.demo, isChecked: false) == nil,
+            "It goes on by itself, so it never calls the presenter back")
+
+        workspace.post(name: NSWorkspace.screensDidWakeNotification, object: nil)
+        try await Task.sleep(for: .milliseconds(50))
+        #expect(session.phase == .scoutPaused(.away(.displaySleep)), "Waits for the Mac to be back a moment")
+        try await waitUntil { session.phase == .ready && !session.isWritingScript }
+        #expect(session.isChecked)
+        let pass = ["type The Matrix ⏎", "click The Matrix (1999)", "open https://subtis.io/"]
+        #expect(app.log == pass + pass)
+    }
+
+    @Test("Displays that wake to the lock screen leave a build paused until secure input ends, as signing in does")
+    func wakingToTheLockScreenWaits() async throws {
+        let app = subtisApp()
+        let workspace = NotificationCenter()
+        let model = ScriptedModel(
+            [reply(.typeText(elementID: 1, text: "The Matrix", submit: true, title: "Search The Matrix", script: ""))]
+                + searchModelReplies)
+        let session = session(app, model, defaults(), workspace: workspace)
+        session.awayResumeDelay = .milliseconds(20)
+        var locked = true
+        session.isSecureInputOn = { locked }
+        var slept = false
+        app.beforeInput = { _ in
+            guard !slept else { return }
+            slept = true
+            workspace.post(name: NSWorkspace.screensDidSleepNotification, object: nil)
+        }
+        session.prompt = "Search for The Matrix and open the result"
+        session.build()
+        try await waitUntil { session.phase == .scoutPaused(.away(.displaySleep)) }
+
+        // The password field holds secure input, so nothing runs behind the lock screen.
+        workspace.post(name: NSWorkspace.screensDidWakeNotification, object: nil)
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(session.phase == .scoutPaused(.away(.displaySleep)))
+        #expect(model.requests.count == 1)
+        #expect(app.log.isEmpty)
+
+        locked = false
+        try await waitUntil { session.phase == .ready && !session.isWritingScript }
+        #expect(session.isChecked)
+    }
+
+    @Test("Secure input that never ends after a wake leaves an ordinary pause for the presenter")
+    func endlessSecureInputPausesForThePresenter() async throws {
+        let app = subtisApp()
+        let workspace = NotificationCenter()
+        let model = searchModel()
+        let session = session(app, model, defaults(), workspace: workspace)
+        session.awayResumeDelay = .milliseconds(20)
+        session.awaySignInLimit = .milliseconds(100)
+        session.isSecureInputOn = { true }
+        app.beforeInput = { _ in workspace.post(name: NSWorkspace.screensDidSleepNotification, object: nil) }
+        session.prompt = "Search for The Matrix"
+        session.build()
+        try await waitUntil { session.phase == .scoutPaused(.away(.displaySleep)) }
+        app.beforeInput = nil
+        workspace.post(name: NSWorkspace.screensDidWakeNotification, object: nil)
+        try await waitUntil { session.phase == .scoutPaused(.user) }
+        #expect(model.requests.count == 1)
+    }
+
+    @Test("A test paused by a switch to another user waits for the displays too, then goes on from its step")
+    func testPausesWhileSwitchedAway() async throws {
+        let app = subtisApp()
+        let workspace = NotificationCenter()
+        let session = session(app, searchModel(), defaults(), workspace: workspace)
+        session.awayResumeDelay = .milliseconds(20)
+        var inputs = 0
+        app.beforeInput = { _ in
+            inputs += 1
+            // Inputs: scout type, scout click, return to start, check type, check click.
+            if inputs == 5 { workspace.post(name: NSWorkspace.sessionDidResignActiveNotification, object: nil) }
+        }
+        session.prompt = "Search for The Matrix and open the result"
+        session.build()
+        try await waitUntil { if case .paused(.verify, _, _, .away) = session.phase { true } else { false } }
+        #expect(session.phase.nextStep == 1)
+        #expect(session.phase == .paused(.verify, next: 1, current: 1, reason: .away(.sessionInactive)))
+        #expect(app.log.count == 4)
+
+        // Back in the session with the displays asleep: still away, for the other reason.
+        workspace.post(name: NSWorkspace.screensDidSleepNotification, object: nil)
+        workspace.post(name: NSWorkspace.sessionDidBecomeActiveNotification, object: nil)
+        #expect(session.phase == .paused(.verify, next: 1, current: 1, reason: .away(.displaySleep)))
+        try await Task.sleep(for: .milliseconds(100))
+        #expect(app.log.count == 4)
+
+        workspace.post(name: NSWorkspace.screensDidWakeNotification, object: nil)
+        try await waitUntil { session.phase == .ready }
+        #expect(session.isChecked)
+        #expect(app.log.suffix(2) == ["click The Matrix (1999)", "open https://subtis.io/"])
+    }
+
+    @Test("A return to the start the Mac's sleep interrupted goes again once it wakes, then tests")
+    func returnGoesAgainAfterSleep() async throws {
+        let app = subtisApp()
+        let workspace = NotificationCenter()
+        let session = session(app, searchModel(), defaults(), workspace: workspace)
+        session.awayResumeDelay = .milliseconds(20)
+        var inputs = 0
+        app.beforeInput = { _ in
+            inputs += 1
+            // Inputs: scout type, scout click, return to start.
+            if inputs == 3 { workspace.post(name: NSWorkspace.screensDidSleepNotification, object: nil) }
+        }
+        session.prompt = "Search for The Matrix and open the result"
+        session.build()
+        try await waitUntil { inputs == 3 }
+        try await Task.sleep(for: .milliseconds(100))
+        // Still on the way, with nothing running.
+        #expect(session.phase == .returning(then: .verify))
+        #expect(app.log.count <= 3)
+
+        workspace.post(name: NSWorkspace.screensDidWakeNotification, object: nil)
+        try await waitUntil { session.phase == .ready }
+        #expect(session.isChecked)
+    }
+
+    @Test("A build the presenter paused stays paused through the Mac sleeping and waking")
+    func presenterPauseOutlastsSleep() async throws {
+        let app = subtisApp()
+        let workspace = NotificationCenter()
+        let model = searchModel()
+        let session = session(app, model, defaults(), workspace: workspace)
+        session.awayResumeDelay = .milliseconds(20)
+        app.beforeInput = { _ in session.pause() }
+        session.prompt = "Search for The Matrix"
+        session.build()
+        try await waitUntil { session.phase == .scoutPaused(.user) }
+        app.beforeInput = nil
+
+        workspace.post(name: NSWorkspace.screensDidSleepNotification, object: nil)
+        #expect(session.phase == .scoutPaused(.user))
+        workspace.post(name: NSWorkspace.screensDidWakeNotification, object: nil)
+        try await Task.sleep(for: .milliseconds(150))
+        #expect(session.phase == .scoutPaused(.user))
+        #expect(model.requests.count == 1)
+    }
+
+    @Test("Presenting carries on while the Mac sleeps")
+    func playIgnoresSleep() async throws {
+        let app = subtisApp()
+        let workspace = NotificationCenter()
+        let session = session(app, searchModel(), defaults(), workspace: workspace)
+        session.prompt = "Search for The Matrix and open the result"
+        session.build()
+        try await waitUntil { session.phase == .ready && !session.isWritingScript }
+        app.beforeInput = { _ in workspace.post(name: NSWorkspace.screensDidSleepNotification, object: nil) }
+        session.play()
+        try await waitUntil { session.phase == .finished }
+        #expect(app.log.suffix(2) == ["type The Matrix ⏎", "click The Matrix (1999)"])
     }
 
     @Test("Claude access is asked once, on first open, for every app, before touching any")

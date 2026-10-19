@@ -1,11 +1,14 @@
 import AppKit
 import Combine
+import MeetStageCore
 
 /// What happens once the app is back at its start.
 enum AfterReturn: Equatable, Sendable { case verify, ready, compose, play }
 
 enum PauseReason: Equatable, Sendable {
     case user, userInput, sourceChanged
+    /// The Mac's displays slept or the person switched users; the test goes on once they're back.
+    case away(DemoAwayReason)
     case error(DemoError)
 
     var message: String? {
@@ -13,6 +16,7 @@ enum PauseReason: Equatable, Sendable {
         case .user: nil
         case .userInput: "Paused because you clicked or typed in the app."
         case .sourceChanged: "Paused because the shared window changed."
+        case .away(let reason): reason.message(resuming: "test")
         case .error(let error): error.localizedDescription
         }
     }
@@ -74,7 +78,7 @@ extension ScoutStop {
     /// Stops that simply interrupted the build, so building can continue.
     var canKeepBuilding: Bool {
         switch self {
-        case .user, .userInput, .focusLost, .relaunched, .leftScope, .error: true
+        case .user, .userInput, .focusLost, .relaunched, .away, .leftScope, .error: true
         case .needsApproval, .blocked, .limit: false
         }
     }
@@ -93,12 +97,27 @@ enum DemoPanelRequest: Sendable {
     case new, edit, rename, delete
 }
 
-private struct DemoUserInput: Sendable {
+/// A click, scroll or key from the presenter outside BetterMeets, as a run sees it.
+struct DemoUserInput: Sendable {
     var windowNumber: Int64
     var location: CGPoint?
     var isKey: Bool
     /// The key pressed without Command, Control or Option, if it was a key.
     var plainKeyCode: UInt16?
+
+    /// Whether this went to the source window `windowID` at `frame`. A click or
+    /// scroll counts by the window under it. A key counts by focus: while
+    /// presenting, the source app in front is enough; while building and
+    /// testing, the presenter may keep using the app's other windows, so only the
+    /// source window itself having focus counts.
+    func isInSource(
+        windowID: CGWindowID, frame: CGRect?, appIsFrontmost: Bool, background: Bool,
+        windowHasFocus: () -> Bool
+    ) -> Bool {
+        if isKey { return appIsFrontmost && (!background || windowHasFocus()) }
+        if windowNumber != 0 { return windowNumber == Int64(windowID) }
+        return appIsFrontmost && location.map { frame?.contains($0) ?? false } ?? false
+    }
 }
 
 /// What presentation remotes send: Right, Page Down or Space to go on; Left or Page Up to go back.
@@ -129,9 +148,15 @@ final class DemoSession: ObservableObject {
     }
     @Published private(set) var activity = ""
     @Published private(set) var selectedSource: DemoSource?
-    @Published private var liveSource: DemoSource?
-    @Published private(set) var notice: String?
-    @Published private(set) var recheckSuggested = false
+    @Published private var liveSource: DemoSource? {
+        didSet { noteBrowserTipIfShown() }
+    }
+    @Published private(set) var notice: String? {
+        didSet { noteBrowserTipIfShown() }
+    }
+    @Published private(set) var recheckSuggested = false {
+        didSet { noteBrowserTipIfShown() }
+    }
     /// What Build is waiting for before it can start.
     @Published private(set) var buildSetup: BuildSetup?
     /// Claude's demo ideas for the selected app, built on its own features.
@@ -152,6 +177,10 @@ final class DemoSession: ObservableObject {
             defaults.set(allowsAI, forKey: Self.consentKey)
             if !allowsAI, phase == .scouting { stopBuilding(.error(.missingConsent)) }
         }
+    }
+    /// Bundle IDs of the apps the presenter chose Always Allow in, in the order chosen.
+    @Published private(set) var alwaysAllowedApps: [String] {
+        didSet { defaults.set(alwaysAllowedApps, forKey: Self.alwaysAllowedAppsKey) }
     }
     @Published private(set) var hasKey: Bool
     /// The demo whose narration Claude is rewriting as one story.
@@ -177,12 +206,20 @@ final class DemoSession: ObservableObject {
     @Published private(set) var stagePaused = false
     /// Set by the Demo menu; the panel handles it and sets it back to nil.
     @Published var panelRequest: DemoPanelRequest?
+    /// A building or testing step waits for the presenter to pause before it borrows the app's window.
+    @Published private(set) var isWaitingForPause = false
+    /// A browser setting that would have kept web steps in the background, shown once per browser.
+    @Published private(set) var browserTip: DemoBrowserTip? {
+        didSet { noteBrowserTipIfShown() }
+    }
     @Published var opensTeleprompter: Bool {
         didSet { defaults.set(opensTeleprompter, forKey: "demo.opensNotes") }
     }
     let prompter: PresenterPrompter
 
     static let consentKey = "demo.allowsAIControl.v2"
+    static let alwaysAllowedAppsKey = "demo.alwaysAllowedApps"
+    static let browserTipsKey = "demo.browserTipsShown"
 
     private let defaults: UserDefaults
     @Published private var library: DemoLibrary
@@ -211,9 +248,13 @@ final class DemoSession: ObservableObject {
     private var cueFadeTask: Task<Void, Never>?
     /// How long a finished run's last highlight stays before it fades.
     var finalCueHold = Duration.seconds(2)
+    /// Remembers the browser tip as shown once the change in progress settles.
+    private var browserTipCheck: Task<Void, Never>?
     /// Ideas already found, by app and site, so the request field fills at once.
     private var ideasCache: [String: [DemoIdea]]
     private var interactionMonitor: GlobalLocalEventMonitor<DemoUserInput>?
+    /// When the presenter last clicked, scrolled or typed outside BetterMeets during a run.
+    private var lastPresenterInput: ContinuousClock.Instant?
     private var scriptTask: Task<Void, Never>?
     private var prompterChanges: AnyCancellable?
     /// Catches a presentation remote's keys in BetterMeets' own windows while presenting.
@@ -248,11 +289,25 @@ final class DemoSession: ObservableObject {
     private lazy var inputObstructions = DemoInputObstructions([teleprompter, demoNotice])
     /// Test hook: fixed holds and gate timeouts for replays.
     var replayTuning: (holdOverride: Double?, gateTimeout: Duration?) = (nil, nil)
+    /// Follows the displays sleeping and the person switching users, which pause a background run.
+    private let awayMonitor: DemoAwayMonitor
+    /// The phase a background run was left in when the Mac's sleep or a user switch
+    /// paused it, until anything else changes the phase. Only a run still in it goes on by itself.
+    private var awayPaused: DemoPhase?
+    private var awayResume: Task<Void, Never>?
+    /// How long the Mac must be back before a run it paused goes on.
+    var awayResumeDelay = Duration.seconds(2)
+    /// Test hook: whether an app holds secure keyboard entry, as the lock screen's password field does.
+    var isSecureInputOn: () -> Bool = DemoAwayMonitor.isSecureInputOn
+    /// How long a run the Mac's sleep paused waits for secure keyboard entry to end
+    /// once the displays wake, before it stays paused for the presenter instead.
+    var awaySignInLimit = Duration.seconds(120)
 
     init(
         driver: any DemoDriving, defaults: UserDefaults = .standard, model: any DemoModeling = DemoModelClient(),
         keyStore: any DemoKeyStore = DemoSession.keyStore, observesUserInput: Bool = true,
-        scoutLimits: DemoScout.Limits = DemoScout.Limits(), opensWindows: Bool = true
+        scoutLimits: DemoScout.Limits = DemoScout.Limits(), opensWindows: Bool = true,
+        workspaceNotifications: NotificationCenter = NSWorkspace.shared.notificationCenter
     ) {
         self.driver = driver
         self.defaults = defaults
@@ -263,12 +318,14 @@ final class DemoSession: ObservableObject {
         self.scoutLimits = scoutLimits
         self.opensWindows = opensWindows
         prompter = PresenterPrompter(defaults: defaults)
+        awayMonitor = DemoAwayMonitor(center: workspaceNotifications)
         scriptTone = ScriptTone(rawValue: defaults.string(forKey: "demo.scriptTone") ?? "") ?? .conversational
         scriptLanguage = ScriptLanguage(rawValue: defaults.string(forKey: "demo.scriptLanguage") ?? "") ?? .automatic
         scriptAudience = defaults.string(forKey: "demo.scriptAudience") ?? ""
         opensTeleprompter = defaults.object(forKey: "demo.opensNotes") as? Bool ?? true
         hasKey = keyStore.hasKey
         allowsAI = defaults.bool(forKey: Self.consentKey)
+        alwaysAllowedApps = defaults.stringArray(forKey: Self.alwaysAllowedAppsKey) ?? []
         consentAnswered = defaults.bool(forKey: "demo.consentAnswered")
         ideasCache =
             defaults.data(forKey: Self.ideasCacheKey).flatMap {
@@ -284,6 +341,12 @@ final class DemoSession: ObservableObject {
         prompterChanges = prompter.$followsVoice.map { _ in () }.merge(with: prompter.$line.map { _ in () })
             .sink { [weak self] in self?.objectWillChange.send() }
         if opensWindows { driver.inputObstruction = inputObstructions }
+        driver.onWaitingForPause = { [weak self] waiting in
+            guard let self else { return }
+            self.isWaitingForPause = waiting && self.phase.isActuating
+        }
+        driver.onBrowserTip = { [weak self] tip in self?.offer(tip) }
+        awayMonitor.onChange = { [weak self] reason in self?.awayChanged(reason) }
     }
 
     static let keyStore = KeychainSecret(
@@ -294,6 +357,7 @@ final class DemoSession: ObservableObject {
     deinit {
         task?.cancel()
         scriptTask?.cancel()
+        awayResume?.cancel()
     }
 
     // MARK: Derived state
@@ -342,7 +406,7 @@ final class DemoSession: ObservableObject {
 
     var scoutedSteps: Int {
         guard let draft = demo?.draft else { return demo?.steps.count ?? 0 }
-        return ScoutCompaction.compact(draft.records).count
+        return ScoutCompaction.compact(draft).count
     }
 
     /// The scout's outline, with a beat counted as covered for each batch of
@@ -402,6 +466,23 @@ final class DemoSession: ObservableObject {
         buildSetup = nil
     }
 
+    // MARK: Always Allow
+
+    /// Whether builds and runs in this app skip the questions trust covers.
+    func isAlwaysAllowed(_ bundleID: String) -> Bool {
+        !bundleID.isEmpty && alwaysAllowedApps.contains(bundleID)
+    }
+
+    func alwaysAllow(_ bundleID: String) {
+        guard !bundleID.isEmpty, !alwaysAllowedApps.contains(bundleID) else { return }
+        alwaysAllowedApps.append(bundleID)
+    }
+
+    /// Builds and runs from now on ask again; steps already approved stay approved.
+    func removeAlwaysAllowed(_ bundleID: String) {
+        alwaysAllowedApps.removeAll { $0 == bundleID }
+    }
+
     // MARK: Building
 
     func build() {
@@ -447,6 +528,15 @@ final class DemoSession: ObservableObject {
         resumeScout(approved: pending)
     }
 
+    /// Allows the pending action, and from now on every question trust covers in this app.
+    func alwaysAllowPending() {
+        guard case .scoutPaused(.needsApproval(let pending)) = phase, pending.kind.isCoveredByTrust,
+            let bundleID = driver.source?.bundleID, !bundleID.isEmpty, isLiveSourceSelected
+        else { return }
+        alwaysAllow(bundleID)
+        resumeScout(approved: pending)
+    }
+
     func skipPending() {
         guard case .scoutPaused(.needsApproval(let pending)) = phase else { return }
         resumeScout(skipped: pending)
@@ -470,9 +560,10 @@ final class DemoSession: ObservableObject {
         guard case .scoutPaused = phase, isLiveSourceSelected, driver.source != nil, var demo,
             let draft = demo.draft, demo.start != nil
         else { return }
-        let steps = ScoutCompaction.compact(draft.records)
+        let steps = ScoutCompaction.compact(draft)
         guard !steps.isEmpty else { return }
         demo.steps = steps
+        demo.compiledFrom = draft
         demo.status = .recorded
         demo.revision += 1
         self.demo = demo
@@ -514,7 +605,8 @@ final class DemoSession: ObservableObject {
         do {
             scout = try DemoScout(
                 demo: demo, source: source, driver: driver, model: model, key: key, limits: scoutLimits,
-                language: scriptLanguage,
+                language: scriptLanguage, trustsApp: isAlwaysAllowed(source.bundleID),
+                lastPresenterInput: { [weak self] in self?.lastPresenterInput },
                 check: { [weak self] in
                     guard let self else { throw CancellationError() }
                     try self.checkRun(id, source: source)
@@ -541,7 +633,8 @@ final class DemoSession: ObservableObject {
                 switch result {
                 case .finished:
                     var demo = scout.demo
-                    demo.steps = ScoutCompaction.compact(demo.draft?.records ?? [])
+                    demo.compiledFrom = demo.draft
+                    demo.steps = ScoutCompaction.compact(demo.draft ?? ScoutDraft())
                     demo.status = .recorded
                     demo.revision += 1
                     self.demo = demo
@@ -663,7 +756,8 @@ final class DemoSession: ObservableObject {
             guard let self else { return }
             do {
                 let engine = makeEngine(demo: demo, source: source, mode: .present, id: id)
-                let mismatch = try await engine.returnToStart()
+                // Going back to play drives the app in front, as playing does; any other return is in the background.
+                let mismatch = try await engine.returnToStart(inBackground: then != .play)
                 try checkRun(id, source: source)
                 stopMonitoring()
                 task = nil
@@ -997,7 +1091,8 @@ final class DemoSession: ObservableObject {
             options: .init(
                 mode: mode, speed: playbackSpeed.rawValue,
                 pausesAfterEachStep: mode == .present && pausesAfterEachStep, singleStep: singleStep,
-                rewindTo: rewindTo, holdOverride: replayTuning.holdOverride, gateTimeout: replayTuning.gateTimeout),
+                rewindTo: rewindTo, holdOverride: replayTuning.holdOverride, gateTimeout: replayTuning.gateTimeout,
+                trustsApp: isAlwaysAllowed(source.bundleID)),
             hooks: hooks(
                 id: id, source: source, steps: demo.steps.count, playsOpening: playsOpening, rewindTo: rewindTo))
     }
@@ -1011,11 +1106,12 @@ final class DemoSession: ObservableObject {
             phase = .ready
             return
         }
-        // Take what the check learned (confirmed screens, healed targets, the
-        // start) onto the current demo, keeping any script written meanwhile.
+        // Take what the check learned (confirmed screens, healed targets, learned
+        // routes, the start) onto the current demo, keeping any script written meanwhile.
         for index in checked.steps.indices {
             checked.steps[index].pre = engine.demo.steps[index].pre
             checked.steps[index].action = engine.demo.steps[index].action
+            checked.steps[index].route = engine.demo.steps[index].route
         }
         if let signature = engine.demo.start?.signature { checked.start?.signature = signature }
         checked.revision += 1
@@ -1209,10 +1305,16 @@ final class DemoSession: ObservableObject {
     }
 
     private func phaseChanged(from old: DemoPhase) {
+        // Any other phase change, the presenter's included, means a run the Mac paused no longer goes on by itself.
+        if phase != awayPaused { awayPaused = nil }
         fadeFinalCueIfRunEnded(from: old)
+        // Building and testing drive the bound window in the background, presenting in front.
+        driver.setDriveMode(phase.driveMode, for: boundSource)
+        if !phase.isActuating { isWaitingForPause = false }
         switch phase {
         case .running(.present, _, _):
             if old.replayMode != .present, opensTeleprompter { showTeleprompter() }
+            browserTip = nil
         case .finished:
             if let closing = demo?.closingScript, !closing.isEmpty {
                 prompter.show(.closing, text: closing, heading: "Wrap up", upNext: nil, position: nil)
@@ -1232,6 +1334,7 @@ final class DemoSession: ObservableObject {
             updateRemoteKeys()
         }
         announceIfAway()
+        noteBrowserTipIfShown()
     }
 
     /// Asks for the microphone and fetches the speech model now, not in front of an audience.
@@ -1261,6 +1364,32 @@ final class DemoSession: ObservableObject {
     private func startAnnouncing() {
         announcesResult = true
         demoNoticeState.forgetDismissed()
+        browserTip = nil
+    }
+
+    /// Keeps a browser's tip until the next build or test, unless it was shown before.
+    private func offer(_ tip: DemoBrowserTip) {
+        let shown = defaults.stringArray(forKey: Self.browserTipsKey) ?? []
+        guard phase.isActuating, !shown.contains(tip.key) else { return }
+        browserTip = tip
+    }
+
+    /// Remembers the browser tip as shown once a ready demo's panel shows it, with
+    /// no notice or moved step in its place, so a tip that was covered, or put away
+    /// before it showed, comes back after a later run. It looks once the change in
+    /// progress is done, as the panel draws it.
+    private func noteBrowserTipIfShown() {
+        guard browserTip != nil, browserTipCheck == nil else { return }
+        browserTipCheck = Task { [weak self] in
+            guard let self else { return }
+            self.browserTipCheck = nil
+            guard let tip = self.browserTip, self.phase == .ready, self.isLiveSourceSelected, self.notice == nil,
+                !self.recheckSuggested
+            else { return }
+            var shown = Set(self.defaults.stringArray(forKey: Self.browserTipsKey) ?? [])
+            guard shown.insert(tip.key).inserted else { return }
+            self.defaults.set(shown.sorted(), forKey: Self.browserTipsKey)
+        }
     }
 
     /// Keeps the notice over the presenter's app in step with the session: while
@@ -1470,6 +1599,7 @@ final class DemoSession: ObservableObject {
         demo = nil
         recheckSuggested = false
         notice = nil
+        browserTip = nil
         driver.show(nil)
         driver.movePointer(to: nil, duration: 0)
     }
@@ -1521,6 +1651,7 @@ final class DemoSession: ObservableObject {
         self.demo = demo
         prompt = demo?.prompt ?? selectedSource.map { library.prompt(for: $0) } ?? ""
         notice = nil
+        browserTip = nil
         recheckSuggested = false
         buildSetup = nil
         verifyEngine = nil
@@ -1598,16 +1729,18 @@ final class DemoSession: ObservableObject {
     }
 
     private func handleUserInput(_ input: DemoUserInput) {
-        guard phase.isActuating, let source = boundSource, let info = try? driver.appInfo(for: source) else { return }
-        let sourceIsFrontmost = NSWorkspace.shared.frontmostApplication?.processIdentifier == info.pid
-        let isInSource: Bool
-        if input.isKey {
-            isInSource = sourceIsFrontmost
-        } else if input.windowNumber != 0 {
-            isInSource = input.windowNumber == Int64(source.windowID)
-        } else {
-            let frame = WindowFrameResolver.currentSnapshot(for: source.windowID)?.frame
-            isInSource = sourceIsFrontmost && input.location.map { frame?.contains($0) ?? false } ?? false
+        lastPresenterInput = .now
+        // A borrowed moment puts the app under the presenter's hands while they work
+        // elsewhere; the step puts things back and runs again, so that's no request to pause.
+        guard phase.isActuating, !driver.isBorrowingScreen, let source = boundSource,
+            let info = try? driver.appInfo(for: source)
+        else { return }
+        let isInSource = input.isInSource(
+            windowID: source.windowID, frame: WindowFrameResolver.currentSnapshot(for: source.windowID)?.frame,
+            appIsFrontmost: NSWorkspace.shared.frontmostApplication?.processIdentifier == info.pid,
+            background: phase.driveMode?.isBackground == true
+        ) {
+            SourceWindowFocusValidator.isExactlyFocused(windowID: source.windowID, pid: info.pid, logsFailure: false)
         }
         guard isInSource else { return }
         // Presenting from the app itself, a remote's keys reach the app: they move the demo, not stop it.
@@ -1625,12 +1758,117 @@ final class DemoSession: ObservableObject {
         }
     }
 
+    // MARK: Sleep and user switching
+
+    /// Pauses a build, test or return to the start running in the background
+    /// while the Mac sleeps or the person is switched to another user, and picks
+    /// it up again once they're back. Presenting is left alone.
+    private func awayChanged(_ reason: DemoAwayReason?) {
+        awayResume?.cancel()
+        awayResume = nil
+        if let reason {
+            pauseWhileAway(reason)
+        } else if awayPaused != nil {
+            resumeOnceBack()
+        }
+    }
+
+    /// Stops between actions as the presenter's Pause does, so the step in flight
+    /// is kept and never runs twice.
+    private func pauseWhileAway(_ reason: DemoAwayReason) {
+        switch phase {
+        case .scouting:
+            awayPaused = .scoutPaused(.away(reason))
+            stopBuilding(.away(reason))
+        case .running(.verify, let next, let current):
+            cancelWork()
+            let paused = DemoPhase.paused(.verify, next: next, current: current, reason: .away(reason))
+            awayPaused = paused
+            phase = paused
+            activity = ""
+        case .returning where phase.driveMode?.isBackground == true:
+            // Stays on the way to the start, and goes again from wherever the app is.
+            cancelWork()
+            awayPaused = phase
+        case .scoutPaused(.away) where phase == awayPaused:
+            // Still away, for another reason: say the right one.
+            awayPaused = .scoutPaused(.away(reason))
+            phase = .scoutPaused(.away(reason))
+        case .paused(.verify, let next, let current, .away) where phase == awayPaused:
+            let paused = DemoPhase.paused(.verify, next: next, current: current, reason: .away(reason))
+            awayPaused = paused
+            phase = paused
+        default:
+            return
+        }
+        AppLog.demoMode.info("Demo run paused while the Mac is asleep or switched to another user")
+    }
+
+    /// Goes on once the Mac has been back for a moment, from a fresh look at the
+    /// app. Displays can wake to the lock screen, which posts nothing, so it first
+    /// waits while an app holds secure keyboard entry, as the password field there
+    /// does, and the moment only starts once that ends. The shared window can take
+    /// longer to come back after a wake, so it waits a little for that too; failing
+    /// either, the run stays paused for the presenter.
+    private func resumeOnceBack() {
+        awayResume = Task { [weak self] in
+            let woke = ContinuousClock.now
+            while self?.isSecureInputOn() == true {
+                guard let self, !Task.isCancelled else { return }
+                if ContinuousClock.now - woke >= self.awaySignInLimit {
+                    self.keepPausedForPresenter()
+                    return
+                }
+                try? await Task.sleep(for: .milliseconds(250))
+            }
+            try? await Task.sleep(for: self?.awayResumeDelay ?? .zero)
+            for _ in 0..<20 {
+                guard let self, !Task.isCancelled, self.awayMonitor.reason == nil, let left = self.awayPaused,
+                    self.phase == left
+                else { return }
+                if self.isLiveSourceSelected, self.driver.source == self.boundSource {
+                    self.awayResume = nil
+                    self.resume(left)
+                    return
+                }
+                try? await Task.sleep(for: .milliseconds(500))
+            }
+            guard !Task.isCancelled else { return }
+            self?.keepPausedForPresenter()
+        }
+    }
+
+    private func resume(_ left: DemoPhase) {
+        awayPaused = nil
+        AppLog.demoMode.info("Demo run resumed after the Mac came back")
+        switch left {
+        case .scoutPaused: resumeScout()
+        case .paused(.verify, let next, _, _): startReplay(mode: .verify, from: next)
+        case .returning(let then): returnToStart(then: then)
+        default: break
+        }
+    }
+
+    /// The person or the window didn't come back in time: an ordinary pause, which the presenter resumes.
+    private func keepPausedForPresenter() {
+        guard awayMonitor.reason == nil, let left = awayPaused, phase == left else { return }
+        awayResume = nil
+        awayPaused = nil
+        switch left {
+        case .scoutPaused: phase = .scoutPaused(.user)
+        case .paused(.verify, let next, let current, _):
+            phase = .paused(.verify, next: next, current: current, reason: .user)
+        case .returning(let then): stopReturning(then: then)
+        default: break
+        }
+    }
+
     // MARK: Testing
 
     /// Test hook: opens `demo` in `phase` without running anything, so snapshots can draw any state.
     func showForTesting(
         _ demo: RealTimeDemo, in phase: DemoPhase, activity: String = "", notice: String? = nil,
-        teleprompterVisible: Bool = false
+        teleprompterVisible: Bool = false, waitingForPause: Bool = false, browserTip: DemoBrowserTip? = nil
     ) {
         cancelWork()
         self.demo = demo
@@ -1639,6 +1877,8 @@ final class DemoSession: ObservableObject {
         self.activity = activity
         self.notice = notice
         self.teleprompterVisible = teleprompterVisible
+        isWaitingForPause = waitingForPause
+        self.browserTip = browserTip
         if phase.replayMode == .present, let step = phase.currentStep { showLine(for: step, in: demo) }
     }
 }

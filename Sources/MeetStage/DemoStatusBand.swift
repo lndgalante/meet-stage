@@ -119,8 +119,8 @@ private struct PipelineHeadline: View {
     }
 }
 
-/// The band's second line. Facts drop parts to fit; a cut reason or notice gets
-/// a More link that opens it in full.
+/// The band's second line. Facts drop parts to fit; a cut reason, notice, or tip
+/// gets a More link that opens it in full.
 private struct SublineRow: View {
     let subline: DemoPanelContent.Subline
     let details: String?
@@ -137,7 +137,7 @@ private struct SublineRow: View {
                 }
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
-            case .reason, .notice:
+            case .reason, .notice, .tip:
                 ViewThatFits(in: .horizontal) {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         noticeGlyph
@@ -167,10 +167,17 @@ private struct SublineRow: View {
     }
 
     @ViewBuilder private var noticeGlyph: some View {
-        if subline.kind == .notice {
+        switch subline.kind {
+        case .notice:
             Image(systemName: "exclamationmark.circle.fill")
                 .foregroundStyle(.orange)
                 .accessibilityHidden(true)
+        case .tip:
+            Image(systemName: "lightbulb")
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+        default:
+            EmptyView()
         }
     }
 }
@@ -235,19 +242,25 @@ struct CopyDetailsButton: View {
 }
 
 /// The band's trailing cluster: the transport, the secondaries and the one
-/// primary. Narrow widths fold the secondaries into a split-button primary.
+/// primary. Narrow widths fold the secondaries into a split-button primary,
+/// the last first.
 private struct BandActions: View {
     let transport: [PanelAction]
     let secondaries: [PanelAction]
     let primary: PanelAction?
     let perform: (PanelActionID) -> Void
 
-    private enum Rung: Hashable { case full, split, splitShort }
+    private struct Rung: Hashable {
+        /// How many secondaries stay beside the primary; the rest are in its menu.
+        var inline: Int
+        var short = false
+    }
 
     /// Widest first; the transport and the primary are never dropped.
     private var rungs: [Rung] {
-        guard let primary, !secondaries.isEmpty else { return [.full] }
-        return primary.shortTitle == nil ? [.full, .split] : [.full, .split, .splitShort]
+        guard let primary, !secondaries.isEmpty else { return [Rung(inline: secondaries.count)] }
+        let folding = (0...secondaries.count).reversed().map { Rung(inline: $0) }
+        return primary.shortTitle == nil ? folding : folding + [Rung(inline: 0, short: true)]
     }
 
     /// The bezel of a large button adds about 12 pt a side to its label.
@@ -264,9 +277,9 @@ private struct BandActions: View {
     private func cluster(_ rung: Rung) -> some View {
         HStack(spacing: 12) {
             if !transport.isEmpty { transportGroup }
-            if rung == .full, !secondaries.isEmpty {
+            if rung.inline > 0 {
                 HStack(spacing: 8) {
-                    ForEach(secondaries) { action in
+                    ForEach(Array(secondaries.prefix(rung.inline))) { action in
                         Button(action.title) { perform(action.id) }
                             .buttonStyle(.bordered)
                             .controlSize(.regular)
@@ -276,10 +289,10 @@ private struct BandActions: View {
                 }
             }
             if let primary {
-                if rung == .full {
+                if rung.inline == secondaries.count {
                     primaryButton(primary)
                 } else {
-                    splitButton(primary, short: rung == .splitShort)
+                    splitButton(primary, folded: Array(secondaries.dropFirst(rung.inline)), short: rung.short)
                 }
             }
         }
@@ -323,9 +336,9 @@ private struct BandActions: View {
         }
     }
 
-    private func splitButton(_ action: PanelAction, short: Bool) -> some View {
+    private func splitButton(_ action: PanelAction, folded: [PanelAction], short: Bool) -> some View {
         Menu {
-            ForEach(secondaries) { secondary in
+            ForEach(folded) { secondary in
                 Button(secondary.title) { perform(secondary.id) }
                     .disabled(!secondary.isEnabled)
             }
@@ -337,7 +350,7 @@ private struct BandActions: View {
         .menuStyle(.button)
         .buttonStyle(.borderedProminent)
         .controlSize(.large)
-        .disabled(!action.isEnabled && !secondaries.contains(where: \.isEnabled))
+        .disabled(!action.isEnabled && !folded.contains(where: \.isEnabled))
         .help(action.help)
         .accessibilityLabel(action.title)
     }

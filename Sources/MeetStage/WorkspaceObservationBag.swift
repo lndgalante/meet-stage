@@ -1,9 +1,9 @@
 import AppKit
 import Foundation
 
-/// Owns non-Sendable Objective-C notification tokens so `CaptureManager` does
-/// not access them from its nonisolated deinitializer.
-private final class WorkspaceObservationBag: @unchecked Sendable {
+/// Owns non-Sendable Objective-C notification tokens and removes them on deinit,
+/// so a main-actor owner never touches them from its nonisolated deinitializer.
+final class WorkspaceObservationBag: @unchecked Sendable {
     private let center: NotificationCenter
     private var tokens: [NSObjectProtocol] = []
 

@@ -66,6 +66,9 @@ final class DemoInputSynthesizer {
         postMouse(.leftMouseUp, at: point)
     }
 
+    /// How far one scroll-wheel step moves the content, in points.
+    nonisolated static let wheelIncrement: Double = 160
+
     func scroll(at point: CGPoint, down: Bool, increments: Int, check: () throws -> Void) async throws {
         postMouse(.mouseMoved, at: point)
         for _ in 0..<increments {
@@ -73,8 +76,8 @@ final class DemoInputSynthesizer {
             try check()
             guard
                 let event = CGEvent(
-                    scrollWheelEvent2Source: eventSource, units: .pixel, wheelCount: 1, wheel1: down ? -160 : 160,
-                    wheel2: 0, wheel3: 0)
+                    scrollWheelEvent2Source: eventSource, units: .pixel, wheelCount: 1,
+                    wheel1: Int32(down ? -Self.wheelIncrement : Self.wheelIncrement), wheel2: 0, wheel3: 0)
             else { return }
             tag(event)
             event.flags = []

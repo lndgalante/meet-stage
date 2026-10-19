@@ -9,7 +9,7 @@ struct DemoGlow: View {
     var turns = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private static let colors: [Color] = [.accentColor, .purple, .pink, .orange, .accentColor]
+    static let colors: [Color] = [.accentColor, .purple, .pink, .orange, .accentColor]
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1 / 30, paused: !turns || reduceMotion)) { context in

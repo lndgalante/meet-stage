@@ -13,4 +13,6 @@ enum AppLog {
     static let preferences = Logger(subsystem: subsystem, category: "preferences")
     static let shortcuts = Logger(subsystem: subsystem, category: "shortcuts")
     static let demoMode = Logger(subsystem: subsystem, category: "demos")
+    /// Per-turn timings of builds and replays: numbers and route names only.
+    static let demoTimings = Logger(subsystem: subsystem, category: "demo-timings")
 }

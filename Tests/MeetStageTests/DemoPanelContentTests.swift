@@ -184,6 +184,9 @@ struct DemoPanelContentTests {
             make(.scoutPaused(.userInput), demo: demo).subline?.text
                 == "You clicked or typed in ChatGPT, so the build paused.")
         #expect(make(.scoutPaused(.focusLost), demo: demo).subline?.text == "ChatGPT lost focus, so the build paused.")
+        let asleep = make(.scoutPaused(.away(.displaySleep)), demo: demo)
+        #expect(asleep.subline?.text == "Paused while your Mac sleeps. The build goes on once it wakes.")
+        #expect(asleep.primary?.title == "Resume Build")
         #expect(
             make(.scoutPaused(.relaunched), demo: demo).subline?.text
                 == "This build was interrupted. Resume it from the current screen, or use the steps so far.")
@@ -194,7 +197,14 @@ struct DemoPanelContentTests {
         #expect(
             leftScope.subline?.text
                 == "ChatGPT opened a settings window. Close it and come back to ChatGPT to resume.")
-        for content in [make(.scoutPaused(.userInput), demo: demo), leftScope] {
+        // A step that needed the app in front never got a pause from the presenter.
+        let noPause = make(.scoutPaused(.error(.noPause("ChatGPT"))), demo: demo)
+        #expect(
+            noPause.subline?.text
+                == "This step needs ChatGPT in front for a moment. Resume when you can leave the keyboard and "
+                + "pointer alone for a second.")
+        #expect(noPause.glyph == .paused)
+        for content in [make(.scoutPaused(.userInput), demo: demo), leftScope, noPause] {
             #expect(content.headline == .text("Build paused"))
             #expect(titles(content.secondaries) == ["Use 2 Steps", "Edit Request"])
             #expect(content.primary?.title == "Resume Build")
@@ -216,16 +226,40 @@ struct DemoPanelContentTests {
     @Test("14: An approval asks the policy question verbatim, with Skip and Allow")
     func needsApproval() {
         let pending = PendingApproval(
-            action: .press(.tab), title: "Create the task", script: "", message: "Click “Create” in this dialog?")
+            action: .press(.tab), title: "Create the task", script: "", message: "Click “Delete” in this dialog?",
+            kind: .riskyDialogButton)
         let content = make(.scoutPaused(.needsApproval(pending)), demo: draft(recorded: 3))
         #expect(content.glyph == .symbol("hand.raised.fill", .orange))
         #expect(content.headline == .text("Needs your approval"))
-        #expect(content.subline?.text == "Click “Create” in this dialog?")
+        #expect(content.subline?.text == "Click “Delete” in this dialog?")
+        // Trusting the app never answers a destructive dialog, so there's no Always Allow.
         #expect(titles(content.secondaries) == ["Skip"])
         #expect(content.primary?.title == "Allow")
         #expect(content.primary?.role == .forward)
         #expect(content.cells.map(\.state) == [.recorded, .recorded, .recorded, .needsApproval, .planned, .planned])
         #expect(content.cells[3].title == "Create the task")
+    }
+
+    @Test("14b: A question trust covers adds Always Allow in the app, beside Skip, with Allow still primary")
+    func alwaysAllow() {
+        let pending = PendingApproval(
+            action: .press(.tab), title: "Search", script: "", message: "Type “Inception” into “Search”?",
+            kind: .unrequestedText)
+        var inputs = inputs(.scoutPaused(.needsApproval(pending)), demo: draft(recorded: 1))
+        let content = make(inputs)
+        #expect(titles(content.secondaries) == ["Skip", "Always Allow in ChatGPT"])
+        #expect(content.secondaries[1].id == .alwaysAllow("ChatGPT"))
+        #expect(content.secondaries[1].help.contains("Settings › Demos"))
+        #expect(content.primary?.title == "Allow")
+
+        // Not live: offered, but disabled like Allow.
+        inputs.isLiveSourceSelected = false
+        #expect(enabled(make(inputs).secondaries) == [false, false])
+
+        // An app without a bundle ID can't be remembered.
+        inputs.isLiveSourceSelected = true
+        inputs.canAlwaysAllow = false
+        #expect(titles(make(inputs).secondaries) == ["Skip"])
     }
 
     @Test("15: A blocked request offers the alternative Claude found")
@@ -530,6 +564,9 @@ struct DemoPanelContentTests {
         #expect(
             make(.paused(.verify, next: 2, current: 2, reason: .sourceChanged)).subline?.text
                 == "The shared window changed, so the test paused.")
+        #expect(
+            make(.paused(.verify, next: 2, current: 2, reason: .away(.sessionInactive))).subline?.text
+                == "Paused while you’re switched to another user. The test goes on once you’re back.")
         let error = make(.paused(.verify, next: 2, current: 2, reason: .error(.screenshot)))
         #expect(error.glyph == .symbol("exclamationmark.triangle.fill", .orange))
         #expect(error.headline == .text("Test paused at step 3 of 9"))
@@ -709,7 +746,7 @@ struct DemoPanelContentTests {
 
     @Test("The Demo menu's first item names what ⌃⌘↩ does in each phase")
     func menuPrimary() {
-        let pending = PendingApproval(action: .press(.tab), title: "t", script: "", message: "m")
+        let pending = PendingApproval(action: .press(.tab), title: "t", script: "", message: "m", kind: .unknownHost)
         let cases: [(DemoPhase, String)] = [
             (.scouting, "Pause Build"),
             (.returning(then: .verify), "Pause Test"),
@@ -738,7 +775,7 @@ struct DemoPanelContentTests {
 
     @Test("The floating demo button follows the menu, except while paused building or away from the start")
     func floatingPrimary() {
-        let pending = PendingApproval(action: .press(.tab), title: "t", script: "", message: "m")
+        let pending = PendingApproval(action: .press(.tab), title: "t", script: "", message: "m", kind: .unknownHost)
         #expect(PanelActionID.floatingPrimary(in: .scoutPaused(.needsApproval(pending))).menuTitle == "Resume Build")
         #expect(PanelActionID.floatingPrimary(in: .needsStart(.wrongScreen, then: .play)).menuTitle == "Go to Start")
         #expect(PanelActionID.floatingPrimary(in: .needsStart(.noAutomaticReturn, then: .verify)) == .goToStart)
@@ -764,6 +801,45 @@ struct DemoPanelContentTests {
         saved.status = .checked(DemoVerification(checkedAt: Date(), fingerprint: "f"))
         #expect(LibraryRowStatus.saved(saved) == .tested)
         #expect(LibraryRowStatus.saved(draft(recorded: 1)) == .buildPaused)
+    }
+
+    // MARK: Background driving
+
+    @Test("Waiting for a pause swaps the spinner for an hourglass and says why, after the progress")
+    func waitingForPause() {
+        var building = inputs(.scouting, demo: draft(recorded: 2))
+        building.activity = "Opening the schedule picker"
+        building.isWaitingForPause = true
+        let build = make(building)
+        #expect(build.glyph == .symbol("hourglass", .secondary))
+        #expect(build.subline?.text == "2 steps so far · Waiting for a pause to bring ChatGPT forward…")
+        #expect(build.subline?.shorter == ["2 steps so far · Waiting for a pause…", "Waiting for a pause…"])
+        #expect(build.subline?.help?.hasSuffix("then puts your window and pointer back.") == true)
+        #expect(build.primary?.id == .pauseBuild)
+        building.isWaitingForPause = false
+        #expect(make(building).glyph == .spinner)
+
+        var testing = inputs(.running(.verify, next: 2, current: 2))
+        testing.isWaitingForPause = true
+        #expect(make(testing).subline?.text == "Testing step 3 of 9 · Waiting for a pause to bring ChatGPT forward…")
+        #expect(make(testing).primary?.id == .pauseTest)
+
+        var returning = inputs(.returning(then: .verify))
+        returning.isWaitingForPause = true
+        #expect(make(returning).subline?.text == "Waiting for a pause to bring ChatGPT forward…")
+        #expect(make(returning).subline?.shorter == ["Waiting for a pause…"])
+        #expect(make(returning).primary?.id == .pauseTest)
+    }
+
+    @Test("A browser tip takes the ready facts' place, below a notice or a moved step")
+    func browserTip() {
+        var ready = inputs(.ready)
+        ready.browserTip = "Dia had to come forward for some steps."
+        #expect(make(ready).subline == .init(text: "Dia had to come forward for some steps.", kind: .tip))
+        ready.recheckSuggested = true
+        #expect(make(ready).subline?.kind == .reason)
+        ready.notice = "Skipped “Intro”; couldn’t find it."
+        #expect(make(ready).subline?.kind == .notice)
     }
 
     // MARK: Grid
@@ -797,7 +873,8 @@ struct DemoPanelContentTests {
 
     @Test("A build announces starting, stopping and needing approval")
     func buildAnnouncements() {
-        let pending = PendingApproval(action: .press(.tab), title: "t", script: "", message: "Open example.com?")
+        let pending = PendingApproval(
+            action: .press(.tab), title: "t", script: "", message: "Open example.com?", kind: .unknownHost)
         #expect(announcement(from: .composing, to: .scouting) == "Building the demo.")
         #expect(
             announcement(from: .scouting, to: .scoutPaused(.needsApproval(pending)))
@@ -812,6 +889,9 @@ struct DemoPanelContentTests {
             announcement(from: .scouting, to: .scoutPaused(.error(.screenshot)))
                 == "Build stopped. \(DemoError.screenshot.localizedDescription)")
         #expect(announcement(from: .scouting, to: .scoutPaused(.user)) == "Build paused.")
+        #expect(
+            announcement(from: .scouting, to: .scoutPaused(.error(.noPause("ChatGPT"))))
+                == "Build paused. \(DemoError.noPause("ChatGPT").localizedDescription)")
         #expect(announcement(from: .scoutPaused(.user), to: .scoutPaused(.userInput)) == nil)
     }
 

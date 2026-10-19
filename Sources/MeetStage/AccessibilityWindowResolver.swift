@@ -1,3 +1,4 @@
+import AppKit
 import ApplicationServices
 import CoreGraphics
 import Foundation
@@ -96,6 +97,43 @@ enum AccessibilityWindowResolver {
         var size = CGSize.zero
         guard AXValueGetValue(axValue, .cgSize, &size) else { return nil }
         return size
+    }
+}
+
+/// Brings one window of an app to the front.
+enum WindowRaiser {
+    private static let messagingTimeout: Float = 0.25
+
+    /// Activates the app and raises its window `windowID` above the app's others.
+    /// False when the app is no longer running.
+    @MainActor
+    @discardableResult
+    static func raise(windowID: CGWindowID, pid: pid_t) -> Bool {
+        guard let application = NSRunningApplication(processIdentifier: pid), !application.isTerminated else {
+            return false
+        }
+        if NSApp.isActive { NSApp.yieldActivation(to: application) }
+        application.activate()
+        let app = element(pid)
+        let window = WindowFrameResolver.currentSnapshot(for: windowID).flatMap {
+            AccessibilityWindowResolver.uniqueMatchingWindow(in: app, sourceFrame: $0.frame)
+        }
+        activate(app, raising: window)
+        return true
+    }
+
+    /// Raises `window` within its app, then makes the app frontmost. Accessibility does
+    /// this even while BetterMeets isn't active, when cooperative activation would refuse.
+    static func activate(_ app: AXUIElement, raising window: AXUIElement?) {
+        if let window { AXUIElementPerformAction(window, kAXRaiseAction as CFString) }
+        AXUIElementSetAttributeValue(app, kAXFrontmostAttribute as CFString, kCFBooleanTrue)
+    }
+
+    /// The app's Accessibility element, with a short timeout so a busy app can't stall the caller.
+    static func element(_ pid: pid_t) -> AXUIElement {
+        let app = AXUIElementCreateApplication(pid)
+        AXUIElementSetMessagingTimeout(app, messagingTimeout)
+        return app
     }
 }
 

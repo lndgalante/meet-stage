@@ -108,7 +108,11 @@ to follow while keeping the parts that do not require macOS services testable.
   window.
 - `AppLog` owns unified-log categories. Recoverable background failures are
   logged with privacy annotations; user-actionable capture failures also move
-  `CaptureState` to `.failed` so the Demo Stage explains what happened.
+  `CaptureState` to `.failed` so the Demo Stage explains what happened. The
+  `demo-timings` category (`AppLog.demoTimings`) carries one line per scout turn
+  and replay step and one when each run ends, built from `DemoTurnTimings` and
+  `DemoRunTimings` (`DemoTimings.swift`), which hold only numbers, route names,
+  and action kinds, so the lines are logged public.
 
 ## Capture lifecycle
 
@@ -197,11 +201,11 @@ and EdDSA public key at packaging time; local builds leave updating inert.
 ## Real-time demos
 
 `DemoSession` owns the selected app's open `RealTimeDemo` and every `DemoPhase` transition:
-`composing`, `scouting`, `scoutPaused` (stop, presenter input, focus loss during
-a foreground fallback, relaunch, leaving scope, needs approval, blocked with the
-closest alternative, limits, and errors), `returning`, `needsStart`, `ready`,
-`running` and `paused` in `verify` or `present` mode, `offTrack` (wrong screen, target not found, or
-blocked), and `finished`. A run ID, task cancellation, and the bound source
+`composing`, `scouting`, `scoutPaused` (stop, presenter input, focus loss while
+the app is in front for a step, the Mac sleeping or switched to another user, relaunch, leaving
+scope, needs approval, blocked with the closest alternative, limits, and errors), `returning`,
+`needsStart`, `ready`, `running` and `paused` in `verify` or `present` mode (a test also pauses
+while the Mac is away), `offTrack` (wrong screen, target not found, or blocked), and `finished`. A run ID, task cancellation, and the bound source
 reject late work after a pause, source change, or new run. The interface calls
 a verify run a test run (Tested, Test Again); the code keeps the check names
 (`checkAgain`, `isChecked`, `DemoStatus.checked`). `DemoLibrary` stores any
@@ -241,8 +245,8 @@ for setup inline through `buildSetup`: `.key` when no API key is stored, then
 `.consent` while access is off. `saveKey` resumes the build. After Build or Test Again,
 phase changes are announced until the demo is ready or presenting. On each,
 `DemoNoticeContent.make(phase:demo:isChecked:)` says what the phase calls for (a
-ready demo; a build paused for anything but the presenter; a test waiting at the
-start; a test stopped), and the pure `DemoNoticeState.update(to:isActive:)` decides
+ready demo; a build paused for anything but the presenter or the Mac being away; a
+test waiting at the start; a test stopped), and the pure `DemoNoticeState.update(to:isActive:)` decides
 whether `DemoNoticeController` (`DemoNotice.swift`) shows it, replaces what it
 says, or hides it: nothing while BetterMeets is active, and nothing the presenter
 already put away (Open BetterMeets, Dismiss, or switching to BetterMeets) while
@@ -285,7 +289,7 @@ cancels a pending request, and a failure is only logged.
 app's demos with inline rename, the row context menus, Delete, and the
 New Demo and − bar; the detail stacks `DemoStatusBand` (glyph, headline, subline,
 More and Copy Details, and `BandActions`, whose `ViewThatFits` ladder folds
-secondaries into a split-button primary), `DemoStepGrid` (three rows, column-major,
+secondaries, the last first, into a split-button primary), `DemoStepGrid` (three rows, column-major,
 never scrolling; `StepGridLayout` sizes it and `StepOverflowPopover` lists steps
 that don't fit), and `DemoActionBar` (Edit Demo…, Test Again, Writing lines…, the
 Teleprompter toggle, and `PacingMenu`), or `DemoComposer` while composing.
@@ -306,6 +310,22 @@ disabled in Stage Only, where the panel isn't on screen.
 `DemoDriving` is the seam between demo logic and the app. `DemoDriver`
 implements it; tests drive the scout, replay engine, and session through
 `FakeApp` and `ScriptedModel`, without network access or synthesized input.
+`FakeApp` follows `DemoInputRoute.routes` for clicks, keys, and wheel scrolling,
+so tests see which route each input took; it can also show a spinner for a set
+number of looks (`busyLooks`), keep showing the screen a click left for a set
+number of looks, like an app slow to respond (`opensAfterLooks`), mark a label as
+borrowed (`borrowsLabel`), give an element help text (`help`), put an element in
+the screen's dialog (`inDialog`), say what Accessibility's press and stand-ins
+delivered (`accessibilityDelivery`), and have a stand-in commit, deliver nothing,
+and hand the commit back before the real key goes out (`whileHandedBack`).
+Besides input, it carries the window's current frame (`windowFrame(_:)`), how
+the current run drives the app (`setDriveMode(_:for:)`), whether the window is
+borrowed right now (`isBorrowingScreen`), how long background steps have waited
+for the person to pause in all (`waitedForPause`, which a test can advance), and
+two callbacks the session sets: `onWaitingForPause`,
+which publishes `isWaitingForPause` while a run is actuating, and
+`onBrowserTip`, which sets `browserTip` once per browser and kind until the next
+Build or Test Again, a presentation, or another demo clears it.
 
 ### Accessibility and matching
 
@@ -313,11 +333,25 @@ implements it; tests drive the scout, replay engine, and session through
 live `AXUIElement`s. It returns Sendable `AXSnapshot`s and generation-scoped
 `ElementHandle`s, so an element from an older snapshot can't be acted on, and
 performs the background actions: `AXPress`, focusing and setting a field's
-value, `AXScrollToVisible`, and app-level and system-wide hit tests.
+value or replacing its selected text, `AXScrollToVisible`, Accessibility's
+stand-ins for keys and scrolling (below), and app-level and system-wide hit tests.
 `AXSnapshotBuilder` walks the window chrome under a capped budget, then web
 areas largest first, within a 2.5-second deadline. It synthesizes labels for
 rows, cells, headings, and unlabelled links from descendant text, and records a
-field's text length but never its value. A node in a web area or scroll area
+field's text length but never its value. A control still without a label
+borrows one (`AXNode.labelIsBorrowed`): its help text (`AXHelp`), then the
+description or title of an image inside it, then the text of its
+`kAXTitleUIElementAttribute` element, which is read only for such a control and
+within the walk's budget (a static text's words or another element's title, never
+a field's value). A borrowed label names only the control: the row or heading
+around it keeps the label its own text gives it. The walk also counts visible
+spinners (`AXBusyIndicator`), progress bars short of their `AXMaxValue` or with
+no value, and elements reporting `AXElementBusy` in the window as
+`AXSnapshot.busyIndicators`; they never become elements the model sees. Nodes in an open dialog, sheet, or
+alert record which one (`AXNode.dialog`), and `AXSnapshot.dialogTexts` keeps each
+dialog's title, accessible name, and static text, long lines included, for the
+action policy only: it is never encoded for the model, and a dialog the walk's
+limits cut off keeps none. A node in a web area or scroll area
 also records its viewport, the part of that area inside the window; nodes
 outside scrolling content have none. `isVisible` stays a center test. `AppEngine.detect` classifies native,
 Electron, Chromium, Gecko, and WebKit apps from the bundle. Electron and
@@ -352,39 +386,165 @@ that spot, never by another caption. Reading order groups elements into visual
 rows (vertical centers within half the smaller height), top to bottom, each row
 left to right. The matcher returns a result only when exactly one element
 qualifies; for labelled elements the recorded rectangle is only a tiebreaker.
-`ScreenSignatures` capture the URL host and path, selected items, headings, and
+Demos saved before controls borrowed labels recorded those controls unlabelled.
+A recorded empty label never constrains a match, so such a locator still finds
+its control by position once the control borrows a name. A control's own label
+outranks the same words another control borrows, and a control whose borrowed
+name another one owns is recorded by position, as before.
+`ScreenSignatures` capture the URL host and path, selected items (leaving
+borrowed labels out, so screens read as they did before), headings, and
 dialog state; only the URL is enforced until a check confirms the rest. Step
 gates ignore headings, which can sit below the fold; headings still count when
 recognizing another step's screen or the start.
 `ScoutCompaction` drops rejected, undispatched, and unobserved records,
 ineffective attempts that were retried, and toggles switched back with nothing
-shown between, then turns scrolls into reveal hints for the next step.
+shown between, then turns scrolls into reveal hints for the next step. It also
+prunes what would only waste time live: a click that showed nothing and wasn't
+tried again, and detours, the steps i..<j when step j began on the screen step i
+did and every one of them is a click on a tab, link, button, or menu item that
+changed the screen, with nothing highlighted, scrolled, typed, toggled, approved,
+or framed between. Each record keeps the screen its turn began on
+(`ScoutRecord.screen`, `AXSnapshot.screenKey`: a SHA-256 of what the digest
+covers, the visible elements' roles, words, and selection, switch states, dialog
+state, and the full URL, so it reads the same after a relaunch). When Claude
+called one of those clicks a wrong turn, the two steps' screen signatures matching
+in full also counts, given an address or a selected item to go by; the verdict
+never cuts anything on its own. Turns Claude's finish cites in its coverage
+(below) are never cut. Each compiled action records whether its record changed
+the screen (`DemoStep.changedScreen`). Compaction never edits records: the draft
+keeps every one, and when the demo is compiled `RealTimeDemo.compiledFrom` keeps
+that draft, so `ScoutCompaction.compact(_:pruning: false)` can compile the demo
+again without pruning; the test run stays the final check either way.
 
 ### Building
 
 `DemoScout` builds a demo by operating the app. Each turn takes a ready snapshot
-and a window screenshot, asks the model for exactly one tool call, and requires
-the chosen element ID to be listed and to yield a reproducible locator. A click
-on text or an icon inside a link or button resolves to that control. It then
+(or the one the last action settled on, below) and a window screenshot, asks
+the model for exactly one tool call, and requires the chosen element ID to be
+listed and to yield a reproducible locator. A click on text or an icon inside a
+link or button resolves to that control. It then
 evaluates `DemoActionPolicy`, records a pending step, performs it through the
-driver, waits until two consecutive snapshots agree, and records a
-code-generated fact such as `#3 clicked tab “Transactions” → screen changed`.
+driver, waits until two consecutive snapshots agree and show no more spinners or
+progress bars than the look before the action (up to 10 seconds after opening an
+address, 8 after a submitted search, 4 after a click, 2 after a key or plain
+typing, and 1.5 after a scroll; an indicator that was already there never holds
+it up), and records a code-generated fact such as `#3 clicked tab “Transactions” →
+expected: the transactions list opens / observed: tab “Home” → “Transactions”;
+heading “Transactions”; 14 elements added, 9 removed`. The expectation is
+Claude's `expect` on click, type_text, press_key, and open_url (at most 12
+words, kept as `ScoutRecord.expected`); `ScoutObservation.summary(from:to:)`
+(`ScoutObservation.swift`, beside `ScoutNote`, which cleans Claude's notes)
+writes the observation from the framed look before the action and the one it
+settled on, with no further Accessibility read: a page that changed, dialogs
+or sheets that opened or closed (by title, else their first heading), the
+selected tab, option, or row from and to, switches that flipped, new headings
+other than a dialog's title, the focused field, and how many elements came and
+went (text with numbers left out, as the digest does), as one line of at most
+200 characters cut between clauses. The fact is stored with the demo, so it
+quotes a label only when `LabelStability.isStable` says it names UI: a row,
+and a tab, option, heading, dialog, switch, or field whose label reads as data,
+goes by its place among those showing (`row 1 → row 2`) or by its kind alone. A change it can't name reads “the screen
+changed in place”, and no change still reads “no visible change; don’t repeat
+it”. Every tool also carries `previous`, Claude's verdict on its last action
+(`ScoutVerdict`: none, as_expected, partly, wrong_turn, or no_effect), and
+`previousReason`, at most 15 words on why, both flat strings, kept on that action's record as
+`ScoutRecord.judgement` (`ScoutNote.expectation` and `ScoutNote.reason` clean
+both). A wrong turn on a click,
+typing, key, address, or scroll that changed the screen counts toward the
+stuck limit as if it had changed nothing (`ScoutProgress.wentWrong()`); the
+verdict never decides which steps compaction keeps.
+The next turn takes that settled look as its own instead of walking the tree
+again (`DemoScout.reuses(_:lastPresenterInput:scope:windowFrame:)`) while the
+presenter hasn't clicked, scrolled, or typed outside BetterMeets since the first
+of the two agreeing looks began, no window of the app opened or closed, and the
+window's frame is unchanged. It's the newest snapshot, so its element handles
+still resolve. A settle that reached its cap, a window the scout closed, or a
+resumed run takes a fresh look. Each turn logs a `demo-timings` line
+(`build turn=3 action=click total=… model=… calls=… in=… out=… think=…
+cacheRead=… cacheWrite=… walk=… walks=… nodes=… reused=… screenshot=… settle=…
+polls=… unsettled=… pauseWait=… routes=accessibility,browser`): time waiting for
+Claude and the tokens it reported, Accessibility reads and the elements the last
+kept, whether the settled look stood in, the screenshot, settling and its looks
+(and settles that hit their cap), the lease's wait for a pause, and the route of
+each input, `none` for nothing to do. When the run ends, however it ends,
+`DemoScout.timings` adds them up into `build ended turns=… model=… settle=…
+pauseWait=… reused=… routes=accessibility:3,borrowedScreen:1`. Replay logs the
+same per step (`test step=2 action=click outcome=done …`, or `play`), its gate
+standing for settling and a heal for the model, and `test ended …` after.
 The model sees the request, its turn-1 outline, these facts, and the current
 window; it never sees its own earlier prose. A record becomes `unobserved` at
 the commit boundary and then `changed`, `noEffect`, or `contaminated`, so an
 interrupted build keeps dispatched actions and drops undispatched ones.
 Repeating an action that just had no effect is rejected, and so is finishing
-while a privacy, theme, or similar switch is left flipped. A build stops after 24
-turns, 40 compacted steps, 240 seconds, $2 of estimated spend (including failed
-calls), or three turns without change. When an action opens another standard
-window of the app, `DemoDriver.closeWindows` closes the windows opened since the
+while a privacy, theme, or similar switch is left flipped. `finish` carries
+`coverage` (`ScoutBeatCoverage`): for each outline beat, the # numbers of the
+facts whose actions or highlights show it. The scout compiles the demo as it
+would be, keeping the cited turns, and turns the build's first finish back
+(`ScoutCoverage.gap`, with a fact such as `#7 rejected finish: beat 3 “Show the
+page” has no step in the demo that shows it. Show what’s missing, or call finish
+again if it can’t be shown.`) when a beat cites no step the demo keeps, or when
+nothing is highlighted although the request asks to show something
+(`ScoutCoverage.asksToShow`: show, highlight, point out, where, and their
+counterparts in the languages demos are written in). It does so once per build
+(`ScoutDraft.finishTurnedBack`), counts toward neither stop, and never on a turn
+that would leave none to act on it, so the next finish is accepted; a finish
+that gives no coverage leaves the beats unjudged. The latest finish's coverage
+stays on the draft (`ScoutDraft.coverage`). A reply that names an
+element that isn't listed or can't be found again reliably, typing other than
+1–80 characters without line breaks into a text field, or an address that can't
+open (`DemoScout.problem(with:in:listed:)`) is asked again once about the same look
+and screenshot, with what was wrong as the request's correction; it spends no
+turn and never counts toward the stuck limit, the set-aside reply's cost still
+counts toward the budget, and a turn-1 outline it carried is kept. That retry
+and the one for a reply without a tool call share one per turn, so a second
+unusable reply is rejected and spends the turn, and a reply with no tool call
+after a correction rejects the reply it corrected the same way, rather than
+ending the build as blocked. `ScoutProgress` keeps two
+counts: turns in a row that changed nothing, were rejected, or changed what
+Claude called a wrong turn, and actions in a row the policy denied, at
+`DemoScout.perform` or in the driver's own check, which reset only once an
+action, scroll, or highlight is carried out. A build stops after 24 turns, 40
+compacted steps, 240 seconds, $2 of estimated spend (including failed calls),
+three turns without change (`ScoutLimit.stuck`), or three denials
+(`ScoutLimit.denied`). When an action opens another standard
+window of the app (one at least 48 points across, `DemoScopeBaseline.counts`, so
+a toolbar pill like the one ChatGPT shows at its window's corner, a tooltip, or
+a title strip never counts), `DemoDriver.closeWindows` closes the windows opened since the
 turn's baseline with their close buttons through
 `AccessibilityService.closeWindows`; the record becomes `rejected` with a fact
 telling Claude it opened a separate window that BetterMeets closed, and the
 build continues, up to three times per build. A window without a close button,
 a fourth window, or the demo window itself closing pauses the build as leaving
-scope. A click that changed nothing is retried once with a real pointer click,
-except when it opened a window.
+scope. Since the presenter keeps using their Mac during a build, a new window
+that appeared after their own click, scroll, or key outside BetterMeets since
+the scout's last look (or a second before it; `DemoSession` passes
+`lastPresenterInput`) may be theirs: it joins the baseline and is never closed.
+The driver returns the route that carried each input, and `lastDelivery` what
+is known of it (`DemoDelivery`): `.confirmed` when Accessibility read its
+stand-in's effect back (the scroll bar or the list's selection moved), which
+counts as a change even when the elements read the same, as a text view's do
+after a scroll; `.uncertain` when the app may or may not have acted
+(Accessibility's press or stand-in timed out, or a page script failed after
+touching the page); else `.sent`. A `.sent` click Accessibility pressed that
+changed nothing is retried with the page's own click (the driver gives a real
+click where page scripts can't run), and, if that changed nothing either, with
+a real click (`DemoScout.retryRoute(after:for:)`); a key Accessibility stood in
+for without reading anything back (Escape's cancel) that changed nothing is
+retried once with the real key, and a scroll likewise once with real scrolling.
+Before each retry the input gets `Limits.effectWindow` (1.2 seconds) from when
+it went out, then a fresh settled look, so a slow app's effect counts for the
+try that caused it. A retry that changes the screen records its route on the
+step (`DemoStep.route`: `.pageScript`, `.pointer`, or `.realKey`) or the
+scroll's reveal hint (`RevealHint.route`, `.realWheel`), and the fact says so
+(“needed a real click”). A retry that can't reach its target, as when what the
+first try opened late now covers it, ends the retries with a fresh look rather
+than the build. Nothing is retried after real input, a confirmed or uncertain
+delivery, or once any new window of the app showed, the presenter's
+or not (the scout adopts the presenter's windows only after the retries), nor a
+click the presenter approved or one a second click could do twice
+(`DemoScout.triesAgain`, `DemoElementLocator.clickingAgainCouldRepeat(node:)`: a
+switch or a button named like one, or words that save, submit, or add, the
+words testing checks too).
 Before a highlight is shown, and before a click or typing once the policy
 allows it, the scout frames the target (below). It records the step's locators
 and screen signature from the screen before framing, which is what replay
@@ -393,13 +553,23 @@ resolves them on, and records how far framing moved the content
 earlier ones' scrolling and recorded where it left them, each saved as soon as
 it's framed, a fact notes a highlight that was scrolled into view, and a
 click's effect is judged against the framed screen, so the scroll never counts
-as what the click did; its real-click retry and a checkbox's recorded state look
+as what the click did; its retries and a checkbox's recorded state look
 for the target where framing moved it. A step left out of the demo after its
 framing scrolled (rejected, never dispatched, or dropped by compaction) keeps
 that scroll on a record compaction leaves out, and compaction adds it to the
 next step on the same page as `DemoStep.priorFraming`.
-Policy questions stop it with a `PendingApproval` that the presenter allows or
-skips. The start point records the screen signature, the full start URL for
+Policy questions (`DemoApproval`: a kind and the question shown) stop it with a
+`PendingApproval` that the presenter allows, skips, or always allows in the app.
+`DemoApproval.Kind.isCoveredByTrust` is the one list of kinds Always Allow
+answers, and `DemoActionPolicy.evaluate(_:prompt:startHost:approved:appTrusted:)`
+the one decision the scout, replay, and the driver's denial check share. The
+session keeps always-allowed apps by bundle ID (`alwaysAllowedApps`, stored as
+`demo.alwaysAllowedApps`; `alwaysAllowPending()` adds one and resumes, and
+Settings › Demos calls `removeAlwaysAllowed`), and a scout built for one of them
+(`trustsApp`) performs a covered action without stopping, recording `approved`
+and `approvedReason` on the step as Allow would. A control in a dialog is
+judged with that dialog's own text (`DemoPolicyElement.dialogText`), which only
+decides whether trust may answer for it. The start point records the screen signature, the full start URL for
 browsers, a selected start anchor for other apps, and visible toggles; `finish`
 adds the start description, which start checks and the model read, and a short
 `label` that reads after "Starts on". Demos without a label fall back to
@@ -408,22 +578,45 @@ titles and the label are capped at 32 characters.
 
 `DemoModelClient` calls the Messages API over raw HTTPS. Scout turns use
 `claude-opus-5-5` with automatic tool choice and parallel tool use disabled,
-strict tool schemas, server-side fallbacks (`fallbacks: default` behind the
+strict tool schemas for every tool but `finish` and `blocked`, server-side fallbacks (`fallbacks: default` behind the
 `server-side-fallback-2026-07-01` beta header), and prompt caching on the system
 prompt and request block. Effort starts at medium and retries at low after a
 `max_tokens` stop. The scout gives prose without a tool call one corrective
-retry, then treats it as `blocked`. Relocation uses `claude-haiku-5-5` with a
+retry, then treats it as `blocked`; a correction is the request's last block,
+so the cached prefix still matches. Relocation uses `claude-haiku-5-5` with a
 forced strict tool, and so do ideas: `suggest_demos` returns three label and
 request pairs built on the core features the window shows, never paying,
 sending, deleting, signing in or out, or changing account settings. Labels are
 capped at 24 characters, requests at 240, and requests with control characters
-are dropped. Window content is wrapped in `<untrusted_window_content>`.
+are dropped. Window content is wrapped in `<untrusted_window_content>`, and in
+scout turns so is the list of executed facts, which quotes the window's labels
+and Claude's notes; text inside that spells out the tag loses its `<`
+(`DemoModelClient.untrusted`). The system prompt says the facts' `#N` verdicts
+(rejected, rejected finish, no visible change, Presenter declined) are
+BetterMeets' own record, to act on, while the labels and notes they quote stay
+data and no verdict authorizes an action, and that a first finish may come back
+once as a `rejected finish:` fact. The API compiles strict tools into one
+grammar with a size limit, which nested objects and every extra strict tool
+grow, so the strict tools nest nothing but the highlight beats, and `finish` and
+`blocked`, which end the build and are read tolerantly, aren't strict. If the
+API still refuses to compile them (a 400 saying the grammar is too large or the
+schema too complex, `DemoRequestFailureSummary.isSchemaTooComplex`), the turn is
+sent again at once with no strict tool, and `DemoModelClient.scoutToolsStrict`
+keeps them that way until BetterMeets quits. Every tool's fields are required,
+so `expect` and `target` are strings that may be empty; a reply missing either,
+or `previous`, still decodes, and so does a finish without `coverage`.
 Timeouts, lost connections, and 408, 429, 500, 502–504, and 529 responses retry
 up to twice, honoring `retry-after` up to 20 seconds. Requests share an
 ephemeral URLSession with cookies and caching disabled and redirects rejected.
 Spend is computed from reported token usage, billing each server-side fallback
 attempt at its own model's rates; a failed scout call throws `DemoModelFailure`
-with what it cost, so the scout still counts it. Script writing, described
+with what it cost, so the scout still counts it. `DemoTokenUsage(usage:)` reads
+the same usage into input, output, cache-read, and cache-write tokens, with
+thinking tokens only when the response itemizes them
+(`output_tokens_details.thinking_tokens`), summing every attempt in
+`usage.iterations` since the top level covers only the one that answered.
+`ScoutReply`, `DemoModelFailure`, and `relocate`'s result carry it, and each
+request's log line adds it to the latency and cost. Script writing, described
 below, uses the same transport.
 
 ### Input
@@ -442,23 +635,197 @@ settled value when it equals the text or only appends a completion, then
 commits before an optional Return. Scrolling performs `AXScrollToVisible` on the
 target or, for a recorded scroll, on the next element past the fold;
 `scrollBy` scrolls by an exact distance with precise (pixel) wheel events.
+Hit tests and web-area lookups are scoped to the demo window, found by frame
+(`AccessibilityWindowResolver.uniqueMatchingWindow`): another of the app's
+standard windows over the point, like one the presenter is using, doesn't
+occlude a background press, which reaches the element itself, and the page
+under a point, or holding focus, is the demo window's own (searched breadth
+first through the browser's views when another window covers the point; a
+key with focus in another window has no page and borrows the screen).
 
-Input that macOS delivers only to the frontmost app runs in a foreground
-fallback: key steps, Return after typing, ⌘L navigation, wheel and exact scrolling, and
-clicks or typing that a control refuses through Accessibility. The driver
-yields activation to the source app, raises its window, waits until
-`SourceWindowFocusValidator` reports exact focus, checks that the app is still
-frontmost before each event, and reactivates BetterMeets afterwards if it was
-active. Fallback clicks move the real pointer and must hit the source process
-in a system-wide hit test, so the teleprompter steps aside for them and for
-wheel scrolls under it (`DemoInputObstruction`). `DemoInputSynthesizer` posts
-these events from a private event source with explicit modifier flags and an
-event tag, so
-presenter-held keys never mix in and the presenter-input monitor ignores
-BetterMeets' own events. Keyboard events go to the source process with
-`postToPid`. Fallback typing switches to an ASCII-capable input source when
-needed, selects the field's text, types it while the field keeps focus, and
-verifies the value. Return goes only to the field the step typed into. Browser
+How a run drives the app depends on `DemoPhase.driveMode`, which `DemoSession`
+passes to `setDriveMode(_:for:)` on every phase change: `.background(activity)`
+while building (`scouting`), testing (`running(.verify)`), and going back to the
+start for anything but Play, `.foreground` while presenting (`running(.present)`
+and `returning(then: .play)`), and nil otherwise. The phase decides, not the
+pace, because presenting also passes `.scout` for its helper steps. For each
+input, the pure `DemoInputRoute.routes(for:background:inWebArea:browser:)`
+lists the routes to try in order, each falling to the next when nothing reached
+the app: `.accessibility`, `.browser` (the browser's own scripting), and
+`.borrowedScreen` while building and testing, or `.foreground` while presenting.
+Presenting keeps the paths it always had: Accessibility first, then real input
+with the app in front. In the background, a refused press tries a page click,
+then a real click; a field that ignores its Accessibility value (by the settled
+value) takes the text from a page script in a page, then, unless it's secure, as
+its selected text (`.selectedText`: when `kAXSelectedTextAttribute` is settable,
+it selects all of the field's text and sets the selection to the text, verified
+by the settled value again, never through the clipboard), then real keys;
+Return in a native field tries the field's `AXConfirm` when it advertises one,
+Return in a page's field (in any app, scriptable or not) never does and submits
+through the page's script, then real Return; Tab, Shift-Tab, Escape, Page Up,
+and Page Down over a page and scrolling over a page use page scripts
+(`DemoKey.pageScriptActsLikeTheKey`; a script's arrow keys move no caret,
+select, or radio group, so arrows over a page always use the real key);
+elsewhere, Escape, Up, Down, Page Up, and Page Down
+(`DemoKey.accessibilityActsLikeTheKey`) and wheel and exact scrolling try
+Accessibility's stand-ins first (below), and other keys, and whatever the
+stand-ins can't do, borrow the screen; and navigation sets the tab's address,
+then falls back to ⌘L. A step's recorded `route` trims the start of its list
+(`DemoStepRoute.allows`): one that needed the page's click starts there and gets
+a real click where page scripts can't run, and one that needed a real click,
+key, or wheel goes straight to it; presenting is left with real input either
+way. Demos saved before routes were recorded decode `usesPointer: true` as
+`.pointer`.
+
+Accessibility's stand-ins (`AccessibilityService.canStandIn(for:pid:windowFrame:)`
+and `standIn(for:pid:windowFrame:)`) act only in the demo window or a sheet on
+it, found by frame, never in a page (an element with an `AXWebArea` among its
+ancestors) or another of the app's windows, and only through actions an element
+lists (`AXUIElementCopyActionNames`) and attributes it reports settable
+(`AXUIElementIsAttributeSettable`). Keys start from the app's focused element
+and scrolling from a hit test at the region's center. Escape performs
+`AXCancel` on the focused element or its enclosing sheet or dialog, else presses
+the sheet's or window's `kAXCancelButtonAttribute` button, whose label the
+policy's denials judge first. Up and Down, when focus is in or is a table,
+outline, or list (not a text field) whose `AXSelectedRows` is settable, select
+the row below the last selected or above the first, staying inside the list
+(`DemoAccessibilityMotion.row(after:count:down:)`), and scroll it into view.
+Page Up and Page Down, and wheel and exact scrolling, set the vertical scroll
+bar's `AXValue` of the nearest `AXScrollArea`, converting points to the bar's
+0…1 range with the scroll area's height and its contents' height
+(`DemoAccessibilityMotion.scrollValue(from:by:visible:content:)`); a page key
+moves 0.875 of the visible height, a wheel increment
+`DemoInputSynthesizer.wheelIncrement`. The driver commits only once a stand-in
+was found. A stand-in already at the edge it moves toward (the last row, a bar
+at 0 or 1, content that fits) has nothing to do and returns no route; one the
+app refuses, or ignores (a selection or bar that reads back unchanged), falls to
+the real key or wheel; one it performed is never followed by real input, so the
+input never lands twice. A selection or bar that reads back moved is
+`AXStandInResult.confirmed`, and one that timed out `.uncertain`, which the
+driver reports as `lastDelivery`. Each input's routes share a `RouteCommit`:
+while building and testing, a route that committed and then delivered nothing
+(a refused press or confirm, an ignored stand-in, a page script that touched
+nothing) hands the commit back through `perform`'s `uncommit` before the next
+route tries, and a Return after typing hands back the typing's too, since the
+step isn't done until Return is, so a run paused while a borrowed route waits for the person never counts
+the input as sent. The scout puts the record back to pending, which an
+interruption drops, and replay moves the phase's next step back to it.
+Presenting never waits between routes, so it hands nothing back.
+
+`DemoScreenLease` (`DemoScreenLease.swift`) is the background run's way to get
+the app in front. A borrow watches the person's real input with
+`GlobalLocalEventMonitor` (key and pointer kinds and timestamps only, ignoring
+`DemoInputSynthesizer.isSynthetic` events) and the window server's idle time
+from `CGEventSource.secondsSinceLastEventType`, and waits until the person has
+left the keyboard and pointer alone for 1.5 seconds (`onWaitingChanged`). It then
+records the front app with its focused AX window and the pointer, brings the
+demo window forward (`WindowRaiser`, which Play's `inForeground` shares:
+`yieldActivation` when BetterMeets is active and `activate`, then
+`kAXRaiseAction` on the window and `kAXFrontmostAttribute` on the app, since
+cooperative activation refuses a background app), and waits for
+`SourceWindowFocusValidator` to report exact focus. A pause never counts while
+Carbon's `IsSecureEventInputEnabled()` is true, since the rest of a password
+would go to the demo window. The step's body runs with a
+`DemoLeaseToken`: `check()` throws once the person comes back or another app
+takes the front, and `commit(_:)` runs the step's own commit only if neither
+happened. Afterwards the lease warps the pointer back unless the person moved
+it, and gives the front back to their app unless they already switched
+elsewhere, `onBorrowingChanged` bracketing the moment. When the person comes
+back while the window is still coming forward, the lease waits up to 1.5
+seconds for that raise to land and undoes it inside the moment, so their next
+keys never reach the demo window. An interruption before the
+commit puts things back and retries the body at the next pause (bodies are
+written to be repeatable until they commit), up to eight tries before
+`DemoError.noPause`, which pauses the run and asks the presenter to leave the
+Mac alone for a second; after the commit nothing is retried. Borrows run one at
+a time. The lease adds up how long its borrows waited for a pause (`waited`),
+which the driver reports as `waitedForPause` for the timings log. Its `DemoScreenLeaseEnvironment` is injected, so tests stand in a clock,
+a person, and the window server. `DemoDriver.withAppInFront` hands every body a
+`DemoFrontTurn`, which wraps the lease's token while building and testing and is
+inert while presenting, where `inForeground` brings the app forward at once: it
+yields activation to the source app, raises its window, waits for exact focus,
+and reactivates BetterMeets afterwards if it was active. Either way the body
+checks that the app is still frontmost before each event.
+While a borrow waits, `DemoSession.isWaitingForPause` drives the status band;
+while one runs, `isBorrowingScreen` (true for 0.3 seconds after, since monitors
+deliver late) keeps the presenter-input monitor from pausing the run for input
+the person meant for another app.
+
+`BrowserScripting` (`BrowserScripting.swift`) drives a browser tab through the
+browser's own public scripting, with no private API. It reads the browser's
+scripting definition with `OSACopyScriptingDefinitionFromURL` and recognizes
+the Chromium dialect (`execute … javascript`, `CrSu`/`ExJa`, with an
+`active tab`) or Safari's (`do JavaScript`, `sfri`/`dojs`, with a
+`current tab`), and whether windows have bounds; Dia's don't. It sends hand-built
+object specifiers with `NSAppleEventDescriptor.sendEvent` on one serial queue,
+five seconds each, and never prompts; `automationPermission(pid:askIfNeeded:)`
+asks through `AEDeterminePermissionToAutomateTarget`, which the driver does once
+when a background run starts in a browser and BetterMeets is active, so the
+question comes when the presenter chose Build or Test. The captured window is
+matched to a scripting window by bounds within 4 points, then by title, then by
+z-order (`BrowserWindowMatcher`, pure), and its tab's URL must match the AX web
+area's `AXURL` (scheme, host, port, and path) before any script runs.
+`navigate(_:to:commit:)` sets the tab's URL property, which needs only
+Automation. `perform(_:in:commit:)` runs one fixed script
+(`BrowserPageScripts.swift`) whose only inputs are a JSON-encoded
+`BrowserPageOperation` (inspect, click, insert text, submit, key, or scroll, at
+a point given as fractions of the web area) and the verified page's address,
+which the script checks again before it acts; it refuses password, payment, and
+one-time-code fields, reaches into open shadow roots and same-origin frames, and
+reports cross-origin frames instead of guessing. A probe (`1+1`) per browser per
+run says whether Allow JavaScript from Apple Events is on; only the browser's
+own “turned off” answer counts as off (`BrowserJavaScriptState.probed`), while a
+page that runs no scripts, like a browser's own page, leaves it unknown and the
+next page probes again. The driver tracks what each run learned (`BrowserRun`):
+JavaScript off drops page scripts for the rest of the run while addresses still
+open through the tab's URL; Automation denied, at the setup's question or by a
+later event, drops every browser route; a browser that times out or isn't
+answering stops scripting altogether; and errors before the commit fall to the
+next route while a failure after it counts as done, so a step never runs twice.
+A page click aims at the target again and needs Accessibility to find the target
+itself at the point, inspects the control there, and clicks only one the policy
+allows outright by its role (or the target's AX role) and label, judged as a
+dialog's control when the target has an `AXSheet`, `AXDialog`, or `…Dialog`
+subrole among its ancestors, as snapshots tell dialogs
+(`DemoInputRoute.pageClickAllowed`, `AccessibilityService.isInDialog`): one the
+policy would ask about, as a dialog's button other than a dismissal, falls to
+the real click, and a denied one stops the step. It then clicks only while that
+label is still there. Page typing also aims again and needs the field itself at
+the point. When a web step borrows the screen because JavaScript is off or
+Automation was denied (`DemoBrowserTip.Kind.missing(in:needsJavaScript:)`, from
+the step's own access), `onBrowserTip` reports a `DemoBrowserTip` once per run.
+The session keeps it until the next build or test and remembers it as shown
+(`demo.browserTipsShown`) only once a ready demo's panel shows it with no notice
+or moved step over it, so a tip that was covered or put away comes back after a
+later run.
+
+`DemoWindowOverlay` (`DemoWindowOverlay.swift`) marks the window a background
+run drives: an accent badge over its top-left corner and the stage's arrow and
+click ripple inside it, mirrored from `movePointer` and the driver's ripples. It
+uses two borderless, nonactivating panels at the window's own level, ordered
+just above it with `order(.above, relativeTo:)` so the person's other windows
+still cover them (above a sheet, find bar, or bubble of the app stacked on it,
+which is smaller and inside its frame, but never above another of the app's
+document windows, `DemoWindowStacking.isAttached`), following its frame and z-order from
+`CGWindowListCopyWindowInfo` every 60 ms and hiding while the window is
+minimized, hidden, on another Space, or gone. The arrow's panel ignores mouse
+events; the badge's takes a click, which shows BetterMeets
+(`BetterMeetsWindowActions.showStage()`), and expands on hover with
+`.activeAlways` tracking. The driver attaches it for `.background` drive modes
+and detaches it otherwise, suspends it while the lease borrows the window, and
+shows the badge's waiting state while a borrow waits.
+
+`DemoInputSynthesizer` posts the real events from a private event source with
+explicit modifier flags and an event tag, so presenter-held keys never mix in
+and the input monitors ignore BetterMeets' own events. Keyboard events go to the
+source process with `postToPid`. Real clicks move the real pointer, only while
+the app is in front, and must hit the target in a system-wide hit test, whose
+element the policy's denials are checked against again right before the click,
+so the teleprompter steps aside for them and for wheel scrolls under it
+(`DemoInputObstruction`; the window overlay hides for the whole borrowed moment
+instead). Real typing switches to an ASCII-capable input source
+when needed, selects the field's text, types it while the field keeps focus, and
+verifies the value. Return goes only to the field the step typed into. ⌘L
 navigation presses a layout-aware ⌘L, waits until a text field outside the web
 area has focus, types the URL, confirms the host is in the field, and presses
 Return in the same tab. Text with line breaks, tabs, or control characters is
@@ -506,12 +873,36 @@ anything.
 `DemoReplayEngine` replays steps in `verify` or `present` mode. Each step waits
 for its recorded screen, loaded web content, and unique, visible targets; after
 an action it also waits for two consecutive snapshots to agree, so a screen
-still redrawing isn't matched. A step's recorded scroll replays first, up to
+still redrawing isn't matched, and for spinners and progress bars the last
+step's look didn't show to go, for at most half the gate's time, so one that
+never stops can't fail the step. An engine that hasn't acted yet, as a resumed
+presentation, Next Step, or Continue from Step N is, takes the gate's first look
+instead, so an indicator already there never holds the step up. A step's recorded scroll replays first, up to
 once per scroll turn the scout took, whenever a target is missing or matched by
 position, since such targets were recorded after that scroll. An off-screen
 target is revealed with `AXScrollToVisible`, then the scroll wheel, and recorded
-scrolls replay the same way. After the policy check, a step with targets is
-framed and its highlight, click, or typing uses the framed screen. The engine
+scrolls replay the same way, a hint recorded with `.realWheel` going straight to
+real scrolling. After the policy check, a step with targets is
+framed and its highlight, click, or typing uses the framed screen. Clicks and
+keys pass the step's recorded `route`, so testing starts from the route that
+worked while building; presenting keeps real input with the app in front.
+Testing also checks a click that changed the screen while building
+(`DemoStep.changedScreen`) right after it: when nothing shows within
+`Options.effectWindow` (1.2 seconds; a changed digest, address, or focused field,
+a spinner or progress bar the look before didn't have, or a new window of the
+app), it clicks once more on the next route (`DemoStepRoute.afterSilentClick`: the
+page's own click after Accessibility's press, where page scripts run, else a
+borrowed real click, and a real click after the page's). The target is found
+again on the latest look and the policy checked again on it, and the driver
+hit-tests it and checks its denials again. It never does so for a switch or a
+button named like one, a control whose words save, submit, add, search, or go on
+(Save, Create, Add, Search, Next, and their counterparts), an approved step, or a
+step built before `changedScreen`, never after a first click that may have acted
+(`DemoDelivery.uncertain`), and never more than once, so an app too slow
+to show the first click in time gets two at most. The step was committed at the
+first click, so a pause never repeats either. A second click that showed keeps
+its route (`learnedRoutes`), which a passing test saves on the step, where
+replay starts from it. Presenting never checks or clicks again. The engine
 keeps a drift, how much higher the content sits than when the remaining steps
 were recorded: each step adds what its framing moved minus its recorded
 `framing` (all of it for steps built before framing), and a highlight skipped
@@ -525,11 +916,25 @@ seconds, since its line showed before the scrolling. The gate allows 10 seconds 
 submitted search, 4 for actions, and 3 for highlights. The policy is evaluated
 again against the live element. A step's approval applies only to the exact
 question the presenter approved (`approvedReason`); steps approved before
-questions were stored keep their approval. A checkbox already in its recorded
+questions were stored keep their approval, and a control that has since borrowed
+a label also accepts the question asked of it unnamed, which is what demos saved
+before borrowed labels approved. Denials are always judged with the borrowed label. In an app the presenter always
+allows (`Options.trustsApp`), a question trust covers passes whatever the step
+recorded, so a renamed control doesn't stop a tested demo; any other question
+stops the run as `policyDenied`. A checkbox already in its recorded
 post-click state is not clicked again. When a target is missing on the right screen, `relocate` may heal it, and
 the healed locator must find the element again on a fresh snapshot; healing
 needs Claude access and a saved key, and sends one screenshot and the element
-list. Present mode never heals actions; it may heal a highlight, skips one it
+list, with the target's note when it has one (`RelocateRequest.note`) quoted
+inside the untrusted block. The note is Claude's `target` from building, on a
+click, typing, or each present beat: what the element looks like and where it
+sits, cleaned by `ScoutNote.target` to one line of at most 120 characters
+without words holding a digit or an @, angle brackets, or straight quotes, and
+kept as `DemoElementLocator.note` (a beat's on its first target). It is never
+part of `DemoLocatorFactory.identity`, locator equality and hashing, matching,
+the policy, or the fingerprint (`DemoAction.withoutNotes`); demos saved
+before it load without one, and a healed locator keeps it. Present mode never
+heals actions; it may heal a highlight, skips one it
 still can't find, and afterwards suggests a test run. If the live screen matches
 another step's confirmed signature, the run reports `wrongScreen` so the
 presenter can continue from that step. Verify holds are capped at 0.3 seconds
@@ -543,7 +948,11 @@ shortens pauses and silent steps, never the time a line takes to say.
 background, until the start URL shows, and open it in the same tab only if that
 fails; other apps close unexpected dialogs with their Close or Cancel button or
 Escape, click the recorded start anchor, and restore start toggles, each anchor
-and toggle click subject to the policy. `readiness` then compares the start
+and toggle click subject to the policy. In the background (any return but the
+one before playing, `returnToStart(inBackground:)`), a Close button, or an anchor
+that wasn't selected, that showed nothing is clicked once more on the next route
+the way testing does, and a Close button that never showed gives way to Escape on
+the second pass. `readiness` then compares the start
 signature, toggles, and the first action's target. While in `needsStart`, the
 session polls for up to two minutes so a presenter can reach the start by hand.
 A verify run from the first step records the start screen as it finds it.
@@ -559,8 +968,9 @@ holds, and highlights are excluded, so word and timing edits and script
 rewrites keep `DemoStatus.checked` valid while app updates, resizing into
 another step, or action changes invalidate it. A passing check is saved only
 while the live demo has the same steps; `finishVerification` merges what the
-check learned (confirmed screen signatures, healed targets, and the start
-signature) onto the live demo, keeping any script written meanwhile.
+check learned (confirmed screen signatures, healed targets, routes clicks
+needed, and the start signature) onto the live demo, keeping any script written
+meanwhile.
 
 The cursor advances at each action's commit boundary (the press or mouse-down,
 completed typing, the key press, or the URL's Return) before yielding, so
@@ -569,9 +979,38 @@ drives the app, `DemoSession` watches mouse-down, key-down, and scroll events,
 ignores events delivered to BetterMeets' own windows and tagged synthetic
 events, and pauses only for clicks or scrolls whose window under the pointer is
 the source window (or, without one, that land in the source frame while the
-source app is frontmost) and for keys while the source app is frontmost. Focus
-changes never pause a demo, and input to other apps, including the meeting,
-is ignored.
+source app is frontmost) and for keys while the source app is frontmost
+(`DemoUserInput.isInSource`). While building and testing, a key counts only when
+the source window itself has focus, so the presenter can keep typing in the
+app's other windows. Focus changes never pause a demo, and input to other apps,
+including the meeting, is ignored.
+
+Nobody watches a build or test run while the Mac's displays sleep or the person
+is switched to another user, so it pauses rather than spend model turns,
+screenshots, and actions. `DemoAwayMonitor` (`DemoAwayMonitor.swift`) follows
+`NSWorkspace`'s `screensDidSleepNotification`, `screensDidWakeNotification`,
+`sessionDidResignActiveNotification`, and `sessionDidBecomeActiveNotification` on
+the notification center `DemoSession` is given (`workspaceNotifications`, the
+workspace's by default, a private one in tests) and reports a `DemoAwayReason`,
+`.sessionInactive` outranking `.displaySleep`, or nil once both are back. The
+screen locking has no public notification and isn't watched; it counts once its
+displays sleep. On a reason, `scouting` stops as the presenter's Pause does
+(`.scoutPaused(.away)`, the in-flight record interrupted so nothing dispatched
+runs twice), `running(.verify)` becomes `.paused(.verify, …, reason: .away)` at the
+step its commits reached, and a background return to the start is cancelled in
+place, staying `returning`. `awayPaused` keeps the phase it left, and any other
+phase change clears it, so a run the presenter paused or that stopped for another
+reason never goes on by itself. A new reason while away updates the paused
+phase's. Displays can wake to the lock screen, which posts nothing, so once
+both are back the session first waits while an app holds secure keyboard entry
+(`isSecureInputOn`, Carbon's `IsSecureEventInputEnabled()`), as the lock
+screen's password field does, and after `awaySignInLimit` (2 minutes) of it the
+run becomes an ordinary pause for the presenter. Once it's off for
+`awayResumeDelay` (2 seconds), the session resumes from a fresh look: `resumeScout()`, `startReplay(mode: .verify, from:)` on
+the same engine, or `returnToStart(then:)` again. If the shared window isn't live
+again within 10 seconds more, the run becomes an ordinary pause for the presenter
+(`.user`, or Not at the Start for a return). Presenting, and returning to play,
+carry on. An away pause raises no notice, since it needs nothing.
 
 Each step's `script` is its read-aloud presenter line; script writing gives
 every step one, with a short transition for navigation steps. Holds come from
@@ -818,6 +1257,8 @@ gliding to each target (without animation under Reduce Motion) while the real
 cursor stays with the presenter. Pausing demo playback retains the cue;
 resetting or changing capture clears it and the pointer. Stage Only hides the
 demo panel, while the floating source widget keeps playback controls available.
+While building and testing, `DemoWindowOverlay` draws the same arrow and
+ripples over the source window itself, under its badge (see Input).
 `DemoDrivingGlow` overlays the workspace stage with `DemoGlow`, an angular
 multi-hue edge that turns while the phase is `scouting`, `returning`, or a
 `verify` run, and holds still under Reduce Motion; it ignores hits, is hidden from

@@ -517,7 +517,7 @@ struct DemoFramingReplayTests {
         var kept = highlight(chart, framing: 0)
         kept.title = "The chart"
         let records = [
-            ScoutRecord(turn: 1, steps: [dropped], outcome: .noEffect, fact: ""),
+            ScoutRecord(turn: 1, steps: [dropped], outcome: .changed, fact: ""),
             ScoutRecord(turn: 2, steps: [dropped], outcome: .rejected, fact: ""),
             ScoutRecord(turn: 3, steps: [kept], outcome: .changed, fact: "")
         ]
@@ -686,19 +686,22 @@ struct DemoFramingReplayTests {
                     url: "https://gasti.app/",
                     elements: [
                         FakeElement(role: "AXLink", label: "Pricing", rect: rect(0.1, 0.1, 0.1, 0.03)),
-                        FakeElement(role: "AXButton", label: "Join the waitlist", rect: rect(0.4, 0.95, 0.2, 0.08))
+                        FakeElement(role: "AXButton", label: "See the plans", rect: rect(0.4, 0.95, 0.2, 0.08))
                     ], viewport: page)
             ], start: "home")
         // WebKit's frames aren't clipped, so the link leaving the view changes what shows.
         app.engine = .webkit
         let model = ScriptedModel([
-            reply(.click(elementID: 1, title: "Join", script: "")),
-            reply(.finish(title: "Join", startDescription: "Gasti home", startLabel: "", closingScript: ""))
+            reply(.click(elementID: 1, title: "Plans", script: "")),
+            reply(.finish(title: "Plans", startDescription: "Gasti home", startLabel: "", closingScript: ""))
         ])
         let scout = try scout(app, model)
-        #expect(try await scout.run() == .finished)
+        // A click that showed nothing is no step, so there's nothing to finish with.
+        #expect(
+            try await scout.run()
+                == .stopped(.blocked(reason: "Claude finished without recording any steps.", alternative: "")))
         // The click changed nothing, so it's retried with a real click, not counted as working.
-        #expect(app.log == ["scroll into view Join the waitlist", "click Join the waitlist", "click Join the waitlist"])
+        #expect(app.log == ["scroll into view See the plans", "click See the plans", "click See the plans"])
         #expect(model.facts[1].last?.contains("no visible change") == true)
         let step = try #require(scout.demo.draft?.records.first?.steps.first)
         #expect(abs((step.framing ?? 0) - 0.03) < 1e-9)
@@ -706,30 +709,44 @@ struct DemoFramingReplayTests {
 
     @Test("Building looks for a clicked icon where scrolling it into view moved it, to retry with a real click")
     func retriesFramedClicks() async throws {
-        let app = FakeApp(
-            screens: [
-                "home": FakeScreen(
-                    url: "https://gasti.app/",
-                    elements: [
-                        FakeElement(role: "AXLink", label: "Pricing", rect: rect(0.1, 0.1, 0.1, 0.03)),
-                        FakeElement(
-                            role: "AXButton", label: "", rect: rect(0.45, 0.94, 0.05, 0.1), pointerOnly: true)
-                    ], viewport: page)
-            ], start: "home")
-        app.engine = .webkit
-        let model = ScriptedModel([
-            reply(.click(elementID: 1, title: "Open the menu", script: "")),
-            reply(.finish(title: "Menu", startDescription: "Gasti home", startLabel: "", closingScript: ""))
-        ])
-        let scout = try scout(app, model)
-        // An unlabelled control needs the presenter's approval first.
+        func app(help: String?) -> FakeApp {
+            let app = FakeApp(
+                screens: [
+                    "home": FakeScreen(
+                        url: "https://gasti.app/",
+                        elements: [
+                            FakeElement(role: "AXLink", label: "Pricing", rect: rect(0.1, 0.1, 0.1, 0.03)),
+                            FakeElement(
+                                role: "AXButton", label: "", rect: rect(0.45, 0.94, 0.05, 0.1), help: help,
+                                pointerOnly: true)
+                        ], viewport: page)
+                ], start: "home")
+            app.engine = .webkit
+            return app
+        }
+        func model() -> ScriptedModel {
+            ScriptedModel([
+                reply(.click(elementID: 1, title: "Open the menu", script: "")),
+                reply(.finish(title: "Menu", startDescription: "Gasti home", startLabel: "", closingScript: ""))
+            ])
+        }
+        let noRecording = ScoutResult.stopped(
+            .blocked(reason: "Claude finished without recording any steps.", alternative: ""))
+        // Its tooltip names it, so it's clicked without asking, and found by position.
+        let named = app(help: "Menu")
+        #expect(try await scout(named, model()).run() == noRecording)
+        // Scrolled up by 32 points, past where the icon was found by position.
+        #expect(named.log == ["scroll into view ", "press  (ignored)", "click "])
+
+        // With no name at all the presenter approves one click, so it's never sent again.
+        let unnamed = app(help: nil)
+        let scout = try scout(unnamed, model())
         guard case .stopped(.needsApproval(let pending)) = try await scout.run() else {
             Issue.record("Expected an approval")
             return
         }
-        #expect(try await scout.run(approved: pending) == .finished)
-        // Scrolled up by 32 points, past where the icon was found by position.
-        #expect(app.log == ["scroll into view ", "press  (ignored)", "click "])
+        #expect(try await scout.run(approved: pending) == noRecording)
+        #expect(unnamed.log == ["scroll into view ", "press  (ignored)"])
     }
 }
 

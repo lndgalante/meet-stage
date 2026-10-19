@@ -49,6 +49,13 @@ final class DemoReplayEngine {
         /// Presenting: how long a highlight that had to be scrolled into view stays up at
         /// least, since its line showed first and may already have been said.
         var framedCueMinimum = Duration.milliseconds(1_200)
+        /// The presenter always allows the app, so a question trust covers passes
+        /// even when the step's approval no longer matches it, as after a rename.
+        var trustsApp = false
+        /// Testing and going back to the start in the background: how long to wait
+        /// for a click that should change the screen to show before clicking once
+        /// more on the next route.
+        var effectWindow = Duration.milliseconds(1_200)
     }
 
     /// How much higher, in window fractions, the content sits now than when the
@@ -75,10 +82,23 @@ final class DemoReplayEngine {
     private(set) var skippedBeats: [String] = []
     /// Steps that passed during this verification, across pauses.
     private(set) var passedSteps: Set<UUID> = []
+    /// By step, the route a second click took when the first showed nothing and the
+    /// second did. A passing test saves it on the step.
+    private(set) var learnedRoutes: [UUID: DemoStepRoute] = [:]
     private var livePre: [UUID: ScreenSignature] = [:]
     private var liveStart: ScreenSignature?
+    /// The look the last step acted on, so the next gate knows which spinners its action started.
+    private var actedOn: AXSnapshot?
     /// Carried from one run of a presentation to the next, since each resume is a new engine.
     var drift = Drift()
+    /// This run's steps so far, for the line logged when it ends.
+    private(set) var timings = DemoRunTimings()
+    /// Where the step in progress spends its time, since when, how it ended, and
+    /// the driver's pause waits before it.
+    private var stepTimings = DemoTurnTimings()
+    private var stepBegan: (index: Int, at: ContinuousClock.Instant)?
+    private var stepOutcome = "interrupted"
+    private var waitedBeforeStep = Duration.zero
     private let source: DemoSource
     private let driver: any DemoDriving
     private let model: any DemoModeling
@@ -138,7 +158,10 @@ final class DemoReplayEngine {
     /// Returns the app to the start without asking a model. Browsers go Back
     /// through their history (or open the start address in the same tab);
     /// other apps close dialogs, click the recorded start anchor and restore toggles.
-    func returnToStart() async throws -> StartMismatch? {
+    /// In the background, it clicks a dialog's close button or the anchor once more
+    /// on the next route when the first click showed nothing, and presses Escape
+    /// rather than a close button that never showed.
+    func returnToStart(inBackground background: Bool = false) async throws -> StartMismatch? {
         guard let start = demo.start else { return .noAutomaticReturn }
         driver.show(nil)
         if let url = start.url {
@@ -151,10 +174,12 @@ final class DemoReplayEngine {
         } else {
             var snapshot = try await driver.snapshot(source, waitForContent: true)
             var escapes = 0
+            var closeShowed = true
             while snapshot.dialogOpen, !start.signature.dialogOpen, escapes < 2 {
                 escapes += 1
-                if let close = closeButton(in: snapshot) {
-                    try await press(close, in: snapshot, name: "Close")
+                if closeShowed, let close = closeButton(in: snapshot) {
+                    closeShowed = try await press(
+                        close, in: snapshot, name: "Close", again: background ? { self.closeButton(in: $0) } : nil)
                 } else {
                     try await driver.perform(.press(.escape), on: source, pace: .scout) {}
                 }
@@ -162,13 +187,13 @@ final class DemoReplayEngine {
                 try check()
                 snapshot = try await driver.snapshot(source, waitForContent: true)
             }
-            if let anchor = start.returnAnchor, let id = DemoLocatorMatcher.match(anchor, in: snapshot).nodeID,
-                let node = snapshot.node(id),
-                DemoScout.policy(
-                    for: .click(anchor), node: node, snapshot: snapshot, prompt: "", startHost: nil, approved: false)
-                    == .allow
+            if let anchor = start.returnAnchor, let id = anchorTarget(anchor, in: snapshot),
+                let node = snapshot.node(id)
             {
-                try await press(id, in: snapshot, name: anchor.displayName)
+                // Already selected, the anchor may well show nothing, so it's never clicked twice.
+                try await press(
+                    id, in: snapshot, name: anchor.displayName,
+                    again: background && !node.isSelected ? { self.anchorTarget(anchor, in: $0) } : nil)
                 try await Task.sleep(for: .milliseconds(600))
                 try check()
                 snapshot = try await driver.snapshot(source, waitForContent: true)
@@ -233,16 +258,40 @@ final class DemoReplayEngine {
         }?.id
     }
 
-    private func press(_ id: Int, in snapshot: AXSnapshot, name: String) async throws {
-        try await driver.perform(
+    /// The start anchor, while the policy allows clicking it without asking.
+    private func anchorTarget(_ anchor: DemoElementLocator, in snapshot: AXSnapshot) -> Int? {
+        guard let id = DemoLocatorMatcher.match(anchor, in: snapshot).nodeID, let node = snapshot.node(id),
+            DemoScout.policy(
+                for: .click(anchor), node: node, snapshot: snapshot, prompt: "", startHost: nil, approved: false)
+                == .allow
+        else { return nil }
+        return id
+    }
+
+    /// Clicks `id` on the way back to the start. With `again`, which finds the
+    /// target on a later look, clicks once more on the next route when the first
+    /// click showed nothing. False only when it checked and nothing showed.
+    @discardableResult
+    private func press(
+        _ id: Int, in snapshot: AXSnapshot, name: String, again target: ((AXSnapshot) -> Int?)? = nil
+    ) async throws -> Bool {
+        let windows = driver.scopeBaseline(source)
+        let used = try await driver.perform(
             .click(ElementHandle(generation: snapshot.generation, id: id), name: name), on: source, pace: .scout
         ) {}
+        guard let target else { return true }
+        let outcome = try await clickAgainIfSilent(
+            after: used, delivery: driver.lastDelivery, on: snapshot, windows: windows, name: name, pace: .scout,
+            target: target)
+        return outcome != .showedNothing
     }
 
     // MARK: Steps
 
     func run(from index: Int) async throws -> ReplayEnd {
         var index = index
+        timings = DemoRunTimings()
+        defer { endTimings() }
         if options.mode == .verify, index == 0 {
             // The start screen as the check found it, to confirm the start signature.
             liveStart = ScreenSignatures.make(try await driver.snapshot(source, waitForContent: true))
@@ -252,6 +301,7 @@ final class DemoReplayEngine {
             try check()
         }
         while index < demo.steps.count {
+            endStep()
             try check()
             let step = demo.steps[index]
             scrolledBefore(step)
@@ -261,6 +311,7 @@ final class DemoReplayEngine {
                 index += 1
                 continue
             }
+            beginStep(index)
             hooks.onStep(index, step.title)
             let previous = index > 0 ? demo.steps[index - 1].action : nil
             let gate = try await self.gate(index, after: previous)
@@ -270,16 +321,22 @@ final class DemoReplayEngine {
             case .failure(let mismatch):
                 if case .present = step.action, options.mode == .present {
                     // Never stop a live demo for a highlight: skip it and keep the previous view.
+                    stepOutcome = "skipped"
                     skippedBeats.append(step.title)
                     unframed(step)
                     hooks.onCommit(index + 1)
                     index += 1
                     continue
                 }
+                stepOutcome = "offTrack"
                 return .offTrack(index: index, mismatch)
             case .resolved(let snapshot, let ids):
                 if options.mode == .verify { livePre[step.id] = ScreenSignatures.make(snapshot) }
-                if let end = try await perform(index, snapshot: snapshot, ids: ids) { return end }
+                if let end = try await perform(index, snapshot: snapshot, ids: ids) {
+                    stepOutcome = "offTrack"
+                    return end
+                }
+                stepOutcome = "done"
                 if options.mode == .verify { passedSteps.insert(step.id) }
             }
 
@@ -298,8 +355,9 @@ final class DemoReplayEngine {
         case failure(Mismatch)
     }
 
-    /// Waits for the step's screen to settle and for every target to be present
-    /// and unique, revealing off-screen targets and healing renamed ones.
+    /// Waits for the step's screen to settle, for any work the last step started to
+    /// finish, and for every target to be present and unique, revealing off-screen
+    /// targets and healing renamed ones.
     private func gate(_ index: Int, after previous: DemoAction?) async throws -> Gate {
         let step = demo.steps[index]
         let locators = heals[step.id] ?? step.action.locators
@@ -319,18 +377,29 @@ final class DemoReplayEngine {
         var revealedTarget = false
         var lastDigest: Int?
         var lastSnapshot: AXSnapshot?
+        // The look the last step acted on, or else, in an engine that hasn't acted yet
+        // (a resumed presentation, the next step played on its own), this gate's first
+        // look, so an indicator that was already there never holds the step up.
+        var busyBaseline = actedOn
 
         while true {
-            let snapshot = try await driver.snapshot(source, waitForContent: false)
+            let snapshot = try await settleLook()
+            stepTimings.nodes = snapshot.nodes.count
             try check()
             lastSnapshot = snapshot
             if ScreenSignatures.urlKey(snapshot.webURL) != drift.page { drift = Drift() }
+            if busyBaseline == nil { busyBaseline = snapshot }
             let settled = !needsSettle || snapshot.digest == lastDigest
             lastDigest = snapshot.digest
+            // A spinner or progress bar the last step's look didn't show means the app is
+            // still working on that step: wait for it, but for at most half the timeout,
+            // so one that never stops still leaves time to find the targets.
+            let working =
+                needsSettle && snapshot.isBusier(than: busyBaseline) && ContinuousClock.now - started < timeout / 2
             let live = ScreenSignatures.make(snapshot)
             // Headings can be below the fold, so they only identify the screen in diagnostics.
             let onScreen = ScreenSignatures.matches(step.pre, live: live, includeHeadings: false)
-            if onScreen, settled, snapshot.webContent.map(\.isReady) ?? true {
+            if onScreen, settled, !working, snapshot.webContent.map(\.isReady) ?? true {
                 let ids = locators.map { resolve($0, in: snapshot) }
                 // Targets found by position were recorded after the scout's scroll,
                 // so repeat that scroll before trusting what sits in that spot now.
@@ -345,6 +414,7 @@ final class DemoReplayEngine {
                 if ids.allSatisfy({ $0 != nil }) {
                     let nodes = ids.compactMap { $0 }
                     if nodes.allSatisfy({ snapshot.node($0)?.isVisible == true }) {
+                        stepTimings.settle += ContinuousClock.now - started
                         return .resolved(snapshot, nodes)
                     }
                     if !revealedTarget, let first = nodes.first(where: { snapshot.node($0)?.isVisible != true }) {
@@ -355,7 +425,11 @@ final class DemoReplayEngine {
                     }
                 }
             }
-            if ContinuousClock.now - started >= timeout { break }
+            if ContinuousClock.now - started >= timeout {
+                stepTimings.settle += ContinuousClock.now - started
+                stepTimings.unsettled += 1
+                break
+            }
             try await Task.sleep(for: .milliseconds(150))
         }
 
@@ -378,6 +452,15 @@ final class DemoReplayEngine {
             .targetNotFound(locators.first(where: { resolve($0, in: snapshot) == nil })?.displayName ?? step.title))
     }
 
+    /// One look while waiting for the app to settle, counted in the step's timings.
+    private func settleLook() async throws -> AXSnapshot {
+        let started = ContinuousClock.now
+        let look = try await driver.snapshot(source, waitForContent: false)
+        stepTimings.walk += ContinuousClock.now - started
+        stepTimings.settlePolls += 1
+        return look
+    }
+
     /// Finds a recorded target where the content sits now, moved by the drift,
     /// or else where it was recorded.
     private func resolve(_ locator: DemoElementLocator, in snapshot: AXSnapshot) -> Int? {
@@ -395,9 +478,11 @@ final class DemoReplayEngine {
         guard let node = snapshot.node(nodeID), let locator = DemoLocatorFactory.locator(for: nodeID, in: snapshot)
         else { return }
         do {
-            try await driver.perform(
-                .scrollToVisible(ElementHandle(generation: snapshot.generation, id: nodeID)), on: source, pace: .scout
-            ) {}
+            stepTimings.routes.append(
+                try await driver.perform(
+                    .scrollToVisible(ElementHandle(generation: snapshot.generation, id: nodeID)), on: source,
+                    pace: .scout
+                ) {})
         } catch DemoError.targetNotFound {
             return
         }
@@ -408,10 +493,11 @@ final class DemoReplayEngine {
 
         let down = hint?.directionDown ?? (node.rect.midY > 0.5)
         let container = hint.flatMap { containerRect(for: $0, in: latest) } ?? latest.containerNode(of: node)?.rect
+        // Real at once where the scout found Accessibility's scrolling moved nothing.
+        let wheel = DemoInput.wheel(around: container, down: down, increments: 1, from: hint?.route ?? .accessibility)
         for _ in 0..<8 {
             do {
-                try await driver.perform(.wheel(around: container, down: down, increments: 1), on: source, pace: .scout)
-                {}
+                stepTimings.routes.append(try await driver.perform(wheel, on: source, pace: .scout) {})
             } catch DemoError.inputNotDelivered {
                 return
             }
@@ -425,7 +511,8 @@ final class DemoReplayEngine {
     }
 
     /// Repeats one of the scout's scrolls: the next element past the fold is
-    /// scrolled into view, falling back to the scroll wheel.
+    /// scrolled into view, falling back to the scroll wheel, real at once when the
+    /// scout found Accessibility's scrolling moved nothing.
     private func scroll(hint: RevealHint, in snapshot: AXSnapshot) async throws {
         let container = hint.container.flatMap { key in
             snapshot.nodes.first { $0.isContainer && AXSnapshot.key(for: $0) == key }
@@ -433,9 +520,10 @@ final class DemoReplayEngine {
         let input: DemoInput =
             DemoScout.scrollTarget(in: snapshot, container: container, down: hint.directionDown)
             .map { .scrollToVisible(ElementHandle(generation: snapshot.generation, id: $0)) }
-            ?? .wheel(around: container?.rect, down: hint.directionDown, increments: 4)
+            ?? .wheel(
+                around: container?.rect, down: hint.directionDown, increments: 4, from: hint.route ?? .accessibility)
         do {
-            try await driver.perform(input, on: source, pace: .scout) {}
+            stepTimings.routes.append(try await driver.perform(input, on: source, pace: .scout) {})
         } catch DemoError.inputNotDelivered {
             return
         }
@@ -462,6 +550,9 @@ final class DemoReplayEngine {
             try hooks.check()
             hooks.onCommit(index + 1)
         }
+        // A route that committed and reached nothing hands the step back, so a pause
+        // before the next route delivers resumes at this step.
+        let uncommit: @MainActor () -> Void = { hooks.onCommit(index) }
 
         let action: DemoAction =
             switch step.action {
@@ -470,13 +561,15 @@ final class DemoReplayEngine {
             case .present(let beat): .present(DemoBeat(effect: beat.effect, targets: locators))
             default: step.action
             }
-        switch DemoScout.policy(
-            for: action, node: nodes.first, snapshot: snapshot, prompt: demo.prompt, startHost: demo.start?.url?.host,
-            approved: step.approved, approvedReason: step.approvedReason)
-        {
+        func policy(for node: AXNode?, in look: AXSnapshot) -> DemoPolicyDecision {
+            DemoScout.policy(
+                for: action, node: node, snapshot: look, prompt: demo.prompt, startHost: demo.start?.url?.host,
+                approved: step.approved, approvedReason: step.approvedReason, trusted: options.trustsApp)
+        }
+        switch policy(for: nodes.first, in: snapshot) {
         case .allow: break
-        case .deny(let reason), .needsApproval(let reason):
-            return .offTrack(index: index, .blocked(.policyDenied(reason)))
+        case .deny(let reason): return .offTrack(index: index, .blocked(.policyDenied(reason)))
+        case .needsApproval(let approval): return .offTrack(index: index, .blocked(.policyDenied(approval.message)))
         }
 
         if !ids.isEmpty {
@@ -502,6 +595,7 @@ final class DemoReplayEngine {
             }
         }
 
+        actedOn = snapshot
         do {
             switch action {
             case .present(let beat):
@@ -524,26 +618,47 @@ final class DemoReplayEngine {
                     // Already in the state this click produced; clicking again would undo it.
                     try commit()
                 } else {
-                    try await driver.perform(
+                    let windows = driver.scopeBaseline(source)
+                    // In the background, from the route building found worked; presenting keeps real input.
+                    let used = try await driver.perform(
                         .click(
                             ElementHandle(generation: snapshot.generation, id: ids[0]), name: locator.displayName,
-                            pointer: step.usesPointer == true),
-                        on: source, pace: pace, commit: commit)
+                            from: step.route),
+                        on: source, pace: pace, commit: commit, uncommit: uncommit)
+                    let delivery = driver.lastDelivery
+                    stepTimings.routes.append(used)
+                    if options.mode == .verify, Self.mayClickAgain(step, locator: locator, node: nodes.first) {
+                        // Found again where the content sits now: framing moved it from where it was recorded.
+                        let moved = locator.shifted(by: -(step.framing ?? 0))
+                        let outcome = try await clickAgainIfSilent(
+                            after: used, delivery: delivery, on: snapshot, windows: windows,
+                            name: locator.displayName, pace: pace, progress: index
+                        ) { look in
+                            guard let id = self.resolve(moved, in: look), policy(for: look.node(id), in: look) == .allow
+                            else { return nil }
+                            return id
+                        }
+                        if case .retried(let route) = outcome { learnedRoutes[step.id] = route }
+                    }
                 }
 
             case .typeText(let field, let text, let submit):
                 driver.show(nil)
-                try await driver.perform(
-                    .type(
-                        ElementHandle(generation: snapshot.generation, id: ids[0]), name: field.displayName, text: text,
-                        submit: submit), on: source, pace: pace, commit: commit)
+                stepTimings.routes.append(
+                    try await driver.perform(
+                        .type(
+                            ElementHandle(generation: snapshot.generation, id: ids[0]), name: field.displayName,
+                            text: text, submit: submit), on: source, pace: pace, commit: commit, uncommit: uncommit))
 
             case .press(let key):
-                try await driver.perform(.press(key), on: source, pace: pace, commit: commit)
+                stepTimings.routes.append(
+                    try await driver.perform(
+                        .press(key, from: step.route), on: source, pace: pace, commit: commit, uncommit: uncommit))
 
             case .navigate(let url):
                 driver.show(nil)
-                try await driver.perform(.navigate(url), on: source, pace: pace, commit: commit)
+                stepTimings.routes.append(
+                    try await driver.perform(.navigate(url), on: source, pace: pace, commit: commit))
             }
         } catch let error as DemoError {
             switch error {
@@ -557,6 +672,79 @@ final class DemoReplayEngine {
         try await hold(index)
         if case .press = step.action { driver.show(nil) }
         return nil
+    }
+
+    // MARK: Checking clicks
+
+    /// What a checked click came to.
+    private enum ClickOutcome: Equatable {
+        /// It showed, or it went through real input and no route is left to try.
+        case showed
+        /// It showed nothing, and clicking once more through this route did show.
+        case retried(DemoStepRoute)
+        /// Neither click showed anything, or the target couldn't be clicked again.
+        case showedNothing
+    }
+
+    /// Whether testing checks this step's click right after it and clicks once more,
+    /// on the next route, when nothing shows: only a click that changed the screen
+    /// while building, and never a switch, a control that saves, submits, adds or
+    /// searches, or one the presenter approved, which a second click could do twice.
+    private static func mayClickAgain(_ step: DemoStep, locator: DemoElementLocator, node: AXNode?) -> Bool {
+        guard step.changedScreen == true, !step.approved, !locator.clickingAgainCouldRepeat(node: node) else {
+            return false
+        }
+        return !DemoActionPolicy.isSearchLike(locator.words(with: node))
+    }
+
+    /// Waits up to `Options.effectWindow` for a click that went through `used` to
+    /// show, and when nothing did, clicks once more on the next route (the page's own
+    /// click, else a borrowed real one) at the element `target` finds on the latest
+    /// look, which checks the policy again. The driver hit-tests it and checks its
+    /// denials again too. Never more than once, so even an app too slow to show the
+    /// first click in time gets at most two, and never after a click that may have
+    /// acted (`DemoDelivery.uncertain`). `progress` is the step to say so on.
+    private func clickAgainIfSilent(
+        after used: DemoInputRoute?, delivery: DemoDelivery, on before: AXSnapshot, windows: DemoScopeBaseline,
+        name: String, pace: DemoPace, progress: Int? = nil, target: (AXSnapshot) -> Int?
+    ) async throws -> ClickOutcome {
+        guard delivery != .uncertain, let next = DemoStepRoute.afterSilentClick(used) else { return .showed }
+        let first = try await awaitEffect(from: before, windows: windows)
+        if first.showed { return .showed }
+        guard let id = target(first.look), first.look.node(id)?.isVisible == true else { return .showedNothing }
+        try check()
+        AppLog.demoMode.info("A click showed nothing; clicking once more on the next route")
+        let hooks = hooks
+        if let progress { hooks.onStep(progress, DemoScout.retryActivity(clicking: name, from: next)) }
+        let again = try await driver.perform(
+            .click(ElementHandle(generation: first.look.generation, id: id), name: name, from: next), on: source,
+            pace: pace
+        ) { try hooks.check() }
+        stepTimings.routes.append(again)
+        try check()
+        let second = try await awaitEffect(from: first.look, windows: windows)
+        return second.showed ? .retried(DemoStepRoute(click: again)) : .showedNothing
+    }
+
+    /// Looks at the window until a click shows (the digest, address or focused field
+    /// changed, a spinner or progress bar `before` didn't have appeared, or the app
+    /// opened a window) or `Options.effectWindow` runs out. The last look, and whether it showed.
+    private func awaitEffect(from before: AXSnapshot, windows: DemoScopeBaseline) async throws
+        -> (look: AXSnapshot, showed: Bool)
+    {
+        let started = ContinuousClock.now
+        defer { stepTimings.settle += ContinuousClock.now - started }
+        while true {
+            let look = try await settleLook()
+            try check()
+            if DemoScout.changed(from: before, to: look) || look.isBusier(than: before)
+                || driver.scopeViolation(source, since: windows) != nil
+            {
+                return (look, true)
+            }
+            if ContinuousClock.now - started >= options.effectWindow { return (look, false) }
+            try await Task.sleep(for: min(.milliseconds(150), options.effectWindow))
+        }
     }
 
     /// A step skipped without its framing leaves the content where it was before the
@@ -617,7 +805,9 @@ final class DemoReplayEngine {
         let step = demo.steps[index]
         if options.mode == .present, step.action.isMutating { return nil }
         guard let key = key() else { return nil }
+        let shot = ContinuousClock.now
         let screenshot = try await driver.screenshot(source)
+        stepTimings.screenshot += ContinuousClock.now - shot
         let encoded = DemoSceneEncoder.encode(snapshot)
         let description = locators.map { locator in
             var parts = ["\(locator.roleClass.noun)"]
@@ -630,11 +820,18 @@ final class DemoReplayEngine {
             parts.append("last seen near \(Int(r.midX * 999)),\(Int(r.midY * 999))")
             return parts.joined(separator: " ")
         }.joined(separator: "; ")
+        // Claude's own note on the target, recorded on a beat's first one; only ever a hint for finding it.
+        let note = locators.lazy.compactMap(\.note).first
         hooks.onStep(index, "Looking for \(locators.first?.displayName ?? step.title)")
+        let asked = ContinuousClock.now
         let result = try await model.relocate(
             RelocateRequest(
-                stepTitle: step.title, description: description, screenshot: screenshot, elements: encoded.text),
+                stepTitle: step.title, description: description, screenshot: screenshot, elements: encoded.text,
+                note: note),
             key: key)
+        stepTimings.model += ContinuousClock.now - asked
+        stepTimings.modelCalls += 1
+        stepTimings.tokens += result.tokens
         try check()
         guard let ids = result.ids, ids.allSatisfy(encoded.listed.contains) else { return nil }
         let isSingle = step.action.isMutating
@@ -654,6 +851,7 @@ final class DemoReplayEngine {
             if let old = locators.first(where: { $0.roleClass == locator.roleClass }) {
                 locator.toggleValueAfter = old.toggleValueAfter
             }
+            if healed.isEmpty { locator.note = note }
             healed.append(locator)
             freshIDs.append(id)
         }
@@ -661,16 +859,47 @@ final class DemoReplayEngine {
         return (healed, fresh, freshIDs)
     }
 
+    // MARK: Timings
+
+    private func beginStep(_ index: Int) {
+        stepTimings = DemoTurnTimings()
+        stepBegan = (index, .now)
+        stepOutcome = "interrupted"
+        waitedBeforeStep = driver.waitedForPause
+    }
+
+    /// Logs the step that just ended, if one began, and adds it to the run's.
+    private func endStep() {
+        guard let began = stepBegan else { return }
+        stepBegan = nil
+        stepTimings.total = ContinuousClock.now - began.at
+        stepTimings.pauseWait = driver.waitedForPause - waitedBeforeStep
+        timings.add(stepTimings)
+        let action = demo.steps.indices.contains(began.index) ? demo.steps[began.index].action.logName : "none"
+        let line = stepTimings.line("\(runName) step=\(began.index + 1) action=\(action) outcome=\(stepOutcome)")
+        AppLog.demoTimings.info("\(line, privacy: .public)")
+    }
+
+    /// Logs the last step and the run's totals, however the run ended.
+    private func endTimings() {
+        endStep()
+        let summary = timings.summary("\(runName) ended")
+        AppLog.demoTimings.info("\(summary, privacy: .public)")
+    }
+
+    private var runName: String { options.mode == .verify ? "test" : "play" }
+
     // MARK: Verification
 
-    /// Keeps only screen evidence that held in both scouting and checking,
-    /// and folds healed targets into the steps.
+    /// Keeps only screen evidence that held in both scouting and checking, and
+    /// folds healed targets and learned routes into the steps.
     private func confirmVerification() {
         for index in demo.steps.indices {
             let id = demo.steps[index].id
             if let live = livePre[id] {
                 demo.steps[index].pre = ScreenSignatures.confirm(demo.steps[index].pre, with: live)
             }
+            if let route = learnedRoutes[id] { demo.steps[index].route = route }
             if let healed = heals[id] {
                 switch demo.steps[index].action {
                 case .click: demo.steps[index].action = .click(healed[0])

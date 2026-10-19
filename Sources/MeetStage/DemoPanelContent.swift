@@ -1,4 +1,5 @@
 import Foundation
+import MeetStageCore
 
 enum PanelActionRole: Sendable {
     /// Goes forward: prominent in the primary slot.
@@ -13,6 +14,8 @@ enum PanelActionRole: Sendable {
 enum PanelActionID: Hashable, Sendable {
     case build
     case pauseBuild, resumeBuild, allow, skip, editRequest
+    /// The app's name.
+    case alwaysAllow(String)
     case buildAlternative(String)
     case useSteps(Int)
     case pauseTest, resumeTest
@@ -38,6 +41,7 @@ enum PanelActionID: Hashable, Sendable {
         case .resumeBuild: "Resume Build"
         case .allow: "Allow"
         case .skip: "Skip"
+        case .alwaysAllow(let app): "Always Allow in \(app)"
         case .editRequest: "Edit Request"
         case .buildAlternative: "Build Alternative"
         case .useSteps(let count): count == 1 ? "Use 1 Step" : "Use \(count) Steps"
@@ -99,7 +103,7 @@ enum PanelActionID: Hashable, Sendable {
         case .testAgain: "checkmark.seal"
         case .newDemo: "plus"
         case .deleteDemo: "minus"
-        case .skip, .skipStep, .playAnyway, .renameDemo, .cancelNewDemo: nil
+        case .skip, .alwaysAllow, .skipStep, .playAnyway, .renameDemo, .cancelNewDemo: nil
         }
     }
 
@@ -119,6 +123,8 @@ enum PanelActionID: Hashable, Sendable {
         case .resumeBuild: "Keep building from the current screen (⌃⌘↩)"
         case .allow: "Let Claude do this once, then keep building"
         case .skip: "Don’t do this. Claude finds another way."
+        case .alwaysAllow(let app):
+            "Let Claude do this, and stop asking about steps like it in \(app). Change it in Settings › Demos."
         case .editRequest: "Discard this build and go back to your request. Your words stay."
         case .buildAlternative(let alternative): "Go back to the start and build a demo that shows \(alternative)"
         case .useSteps(let count):
@@ -161,6 +167,7 @@ enum PanelActionID: Hashable, Sendable {
         case .resumeBuild: session.keepBuilding()
         case .allow: session.allowPending()
         case .skip: session.skipPending()
+        case .alwaysAllow: session.alwaysAllowPending()
         case .editRequest: session.editRequest()
         case .buildAlternative(let alternative): session.buildAlternative("Show \(alternative)")
         case .useSteps: session.useRecordedSteps()
@@ -247,13 +254,19 @@ struct DemoPanelInputs {
     var asksForConsent = false
     var rewindTarget: Int?
     var canReturnAutomatically = false
+    /// The app has a bundle ID for Always Allow to remember it by.
+    var canAlwaysAllow = true
+    /// A building or testing step waits for the presenter to pause before it borrows the window.
+    var isWaitingForPause = false
+    /// What would have kept a browser's web steps in the background.
+    var browserTip: String?
 
     init(phase: DemoPhase, demo: RealTimeDemo?, appName: String) {
         self.phase = phase
         self.demo = demo
         self.appName = appName
         startLabel = demo?.startLabel ?? "the starting screen"
-        scoutedSteps = demo.map { $0.draft.map { ScoutCompaction.compact($0.records).count } ?? $0.steps.count } ?? 0
+        scoutedSteps = demo.map { $0.draft.map { ScoutCompaction.compact($0).count } ?? $0.steps.count } ?? 0
         hasSavedDemos = demo != nil
     }
 
@@ -275,6 +288,9 @@ struct DemoPanelInputs {
         asksForConsent = session.asksForConsent
         rewindTarget = session.rewindTarget
         canReturnAutomatically = session.canReturnAutomatically
+        canAlwaysAllow = session.selectedSource?.bundleID.isEmpty == false
+        isWaitingForPause = session.isWaitingForPause
+        browserTip = session.browserTip?.message
     }
 }
 
@@ -393,6 +409,8 @@ struct DemoPanelContent: Equatable {
             case notice
             /// "Next: …" while presenting.
             case next
+            /// A setting that would have kept the app in the background, with a quiet glyph.
+            case tip
         }
 
         var text: String
@@ -461,6 +479,7 @@ struct DemoPanelContent: Equatable {
             case .needsApproval(let pending): return "Needs your approval. \(pending.message)"
             case .blocked(let reason, _): return "Can’t show that in \(app). \(reason)"
             case .limit(let limit): return "Build stopped. \(limit.message)"
+            case .error(let error) where error.isNoPause: return "Build paused. \(error.localizedDescription)"
             case .error(let error): return "Build stopped. \(error.localizedDescription)"
             default: return "Build paused."
             }
@@ -576,6 +595,9 @@ private struct Mapper {
                 subline: .init(
                     text: recorded > 0 ? "\(steps(recorded)) so far · \(doing)…" : "\(doing)…", kind: .facts),
                 body: .grid(.building))
+            if inputs.isWaitingForPause {
+                showWaitingForPause(after: recorded > 0 ? "\(steps(recorded)) so far" : nil, in: &content)
+            }
             content.primary = action(.pauseBuild)
         case .scoutPaused(let stop):
             content = scoutPaused(stop)
@@ -590,6 +612,7 @@ private struct Mapper {
             content = DemoPanelContent(
                 glyph: .spinner, headline: .pipeline(.test),
                 subline: .init(text: "Testing step \(step) of \(count)…", kind: .facts), body: .grid(.test))
+            if inputs.isWaitingForPause { showWaitingForPause(after: "Testing step \(step) of \(count)", in: &content) }
             content.primary = action(.pauseTest)
         case .paused(.verify, let next, let current, let pause):
             content = pausedTest(step: position(next: next, current: current), reason: pause)
@@ -665,6 +688,8 @@ private struct Mapper {
             content.subline = reason("You clicked or typed in \(app), so the build paused.")
         case .focusLost:
             content.subline = reason("\(app) lost focus, so the build paused.")
+        case .away(let away):
+            content.subline = reason(away.message(resuming: "build"))
         case .relaunched:
             content.subline = reason(
                 recorded > 0
@@ -672,6 +697,9 @@ private struct Mapper {
                     : "This build was interrupted. Resume it from the current screen.")
         case .leftScope(let why):
             content.subline = reason("\(why) Close it and come back to \(app) to resume.")
+        case .error(let error) where error.isNoPause:
+            // Only paused: the step goes on once the presenter leaves the Mac alone for a moment.
+            content.subline = reason(error.localizedDescription)
         case .error(let error):
             content.headline = .text("Build stopped")
             showError(error, in: &content)
@@ -679,7 +707,10 @@ private struct Mapper {
             content.glyph = .symbol("hand.raised.fill", .orange)
             content.headline = .text("Needs your approval")
             content.subline = reason(pending.message)
-            content.secondaries = [action(.skip, enabled: live)]
+            // A secondary, so Allow stays the one primary; narrow bands fold both into its menu.
+            let alwaysAllow =
+                pending.kind.isCoveredByTrust && inputs.canAlwaysAllow ? [action(.alwaysAllow(app), enabled: live)] : []
+            content.secondaries = [action(.skip, enabled: live)] + alwaysAllow
             content.primary = action(.allow, enabled: live)
         case .blocked(let why, let alternative):
             content.glyph = .stopped
@@ -733,7 +764,21 @@ private struct Mapper {
             content.subline = .init(text: "Putting \(app) back on \(start)…", kind: .facts)
             content.primary = action(.stop)
         }
+        if inputs.isWaitingForPause, then != .play { showWaitingForPause(after: nil, in: &content) }
         return content
+    }
+
+    /// A step that needs the app in front for a moment waits until the presenter
+    /// pauses, and the band says so after what's already happening.
+    private func showWaitingForPause(after progress: String?, in content: inout DemoPanelContent) {
+        let waiting = "Waiting for a pause to bring \(app) forward"
+        let short = "Waiting for a pause"
+        content.glyph = .symbol("hourglass", .secondary)
+        content.subline = .init(
+            text: [progress, waiting].compactMap { $0 }.joined(separator: " · ") + "…", kind: .facts,
+            shorter: progress.map { ["\($0) · \(short)…", "\(short)…"] } ?? ["\(short)…"],
+            help: "This step needs \(app) in front for a moment. BetterMeets waits until you stop typing and "
+                + "moving the pointer, then puts your window and pointer back.")
     }
 
     private func needsStart(_ mismatch: StartMismatch, then: AfterReturn) -> DemoPanelContent {
@@ -795,6 +840,8 @@ private struct Mapper {
             content.subline = .init(text: notice, kind: .notice)
         } else if inputs.recheckSuggested {
             content.subline = reason("A step moved during the last run. Test again to keep it tested.")
+        } else if let tip = inputs.browserTip {
+            content.subline = .init(text: tip, kind: .tip)
         } else {
             content.subline = facts
         }
@@ -831,6 +878,8 @@ private struct Mapper {
             content.subline = reason("You clicked or typed in \(app), so the test paused.")
         case .sourceChanged:
             content.subline = reason("The shared window changed, so the test paused.")
+        case .away(let away):
+            content.subline = reason(away.message(resuming: "test"))
         case .error(let error):
             showError(error, in: &content)
         }
@@ -903,6 +952,8 @@ private struct Mapper {
             content.subline = reason("You clicked or typed in \(app), so the demo paused.")
         case .sourceChanged:
             content.subline = reason("The shared window changed, so the demo paused.")
+        case .away(let away):
+            content.subline = reason(away.message(resuming: "demo"))
         case .error(let error):
             showError(error, in: &content)
         }
@@ -966,7 +1017,7 @@ private struct Mapper {
                     stepID: step.id, help: help(for: step))
             }
         }
-        let recorded = ScoutCompaction.compact(draft.records)
+        let recorded = ScoutCompaction.compact(draft)
         var cells = recorded.enumerated().map { index, step in
             StepCellModel(
                 id: step.id.uuidString, number: index + 1, title: step.title, state: .recorded,

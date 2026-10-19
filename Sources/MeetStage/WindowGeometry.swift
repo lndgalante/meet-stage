@@ -93,6 +93,33 @@ enum WindowFrameResolver {
     static func currentFrame(for windowID: CGWindowID, fallback: CGRect) -> CGRect {
         currentSnapshot(for: windowID)?.frame ?? fallback
     }
+
+    /// The app's on-screen standard windows (layer 0), front to back. A window the
+    /// window server lists without bounds keeps a null frame, so it still counts.
+    static func onScreenWindows(of pid: pid_t) -> [OnScreenWindow] {
+        guard
+            let windows = CGWindowListCopyWindowInfo([.optionOnScreenOnly, .excludeDesktopElements], kCGNullWindowID)
+                as? [[String: Any]]
+        else { return [] }
+        return windows.compactMap { window in
+            guard window[kCGWindowOwnerPID as String] as? Int32 == pid,
+                window[kCGWindowLayer as String] as? Int == 0,
+                let number = window[kCGWindowNumber as String] as? CGWindowID
+            else { return nil }
+            let frame = (window[kCGWindowBounds as String] as? NSDictionary)
+                .flatMap { CGRect(dictionaryRepresentation: $0 as CFDictionary) }
+            return OnScreenWindow(
+                id: number, title: window[kCGWindowName as String] as? String ?? "", frame: frame ?? .null)
+        }
+    }
+}
+
+/// One of an app's on-screen standard windows, as the window server lists it.
+struct OnScreenWindow: Sendable, Equatable {
+    var id: CGWindowID
+    var title: String
+    /// Global, top-left origin.
+    var frame: CGRect
 }
 
 /// Converts and resolves frames shared by source-window overlay presenters.

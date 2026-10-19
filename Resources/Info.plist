@@ -30,6 +30,8 @@
     <true/>
     <key>NSScreenCaptureUsageDescription</key>
     <string>BetterMeets needs screen recording access to show the window you choose in the Demo Stage.</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>BetterMeets controls your browser to open pages and run demo steps in the background while you keep working.</string>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
 	<key>NSMicrophoneUsageDescription</key>

@@ -46,7 +46,8 @@ struct DemoNoticeTests {
     @Test("A build that needs the presenter, a test waiting at the start, and a stopped test each get a notice")
     func attentionContent() throws {
         let pending = PendingApproval(
-            action: .press(.tab), title: "Send", script: "", message: "Click “Send” in this dialog?", rect: nil)
+            action: .press(.tab), title: "Send", script: "", message: "Click “Send” in this dialog?",
+            kind: .riskyDialogButton, rect: nil)
         let approval = try #require(content(.scoutPaused(.needsApproval(pending))))
         #expect(approval.kind == .attention)
         #expect(approval.badge == "Build paused")

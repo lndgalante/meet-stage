@@ -29,12 +29,21 @@ require_stopped_app() {
 require_stopped_app
 CONTENTS_DIR="$APP_DIR/Contents"
 SIGNING_IDENTITY="${BETTERMEETS_CODESIGN_IDENTITY:-}"
+SELF_SIGNED_IDENTITY=false
 if [[ "$CONFIGURATION" == debug && -z "$SIGNING_IDENTITY" ]]; then
     SIGNING_IDENTITY="$(security find-identity -v -p codesigning | awk '/"Apple Development:/ { print $2; exit }')"
 fi
+if [[ "$CONFIGURATION" == debug && -z "$SIGNING_IDENTITY" ]]; then
+    # A self-signed "BetterMeets Development" code-signing certificate in the
+    # login keychain also keeps privacy permissions across rebuilds. It is
+    # untrusted, so it only shows up without -v, and it has no team identity.
+    SIGNING_IDENTITY="$(security find-identity -p codesigning | awk '/"BetterMeets Development"/ { print $2; exit }')"
+    [[ -n "$SIGNING_IDENTITY" ]] && SELF_SIGNED_IDENTITY=true
+fi
 if [[ -z "$SIGNING_IDENTITY" ]]; then
     echo "Local ad-hoc signing: macOS may ask for capture permission again after a rebuild." >&2
-    echo "For stable development permissions, install an Apple Development certificate in Xcode → Settings → Accounts → Manage Certificates." >&2
+    echo "For stable development permissions, install an Apple Development certificate in Xcode → Settings → Accounts → Manage Certificates," >&2
+    echo "or create a self-signed \"BetterMeets Development\" code-signing certificate in your login keychain." >&2
 fi
 UPDATE_FEED_URL="${BETTERMEETS_UPDATE_FEED_URL:-}"
 UPDATE_PUBLIC_KEY="${BETTERMEETS_UPDATE_PUBLIC_KEY:-}"
@@ -122,7 +131,12 @@ sign_sparkle_component "$SPARKLE_VERSION_DIR/Updater.app"
 sign_sparkle_component "$SPARKLE_DESTINATION"
 
 if [[ -n "$SIGNING_IDENTITY" ]]; then
-    signing_arguments=(--force --options runtime --entitlements "$ENTITLEMENTS" --sign "$SIGNING_IDENTITY")
+    app_entitlements="$ENTITLEMENTS"
+    if [[ "$SELF_SIGNED_IDENTITY" == true ]]; then
+        # Without a team identity, Sparkle only loads with the library-validation exception.
+        app_entitlements="$DEVELOPMENT_ENTITLEMENTS"
+    fi
+    signing_arguments=(--force --options runtime --entitlements "$app_entitlements" --sign "$SIGNING_IDENTITY")
     if [[ "$CONFIGURATION" == release ]]; then
         signing_arguments+=(--timestamp)
     fi

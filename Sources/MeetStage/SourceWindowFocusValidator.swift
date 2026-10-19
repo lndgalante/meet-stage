@@ -9,11 +9,18 @@ enum SourceWindowFocusValidator {
 
     @MainActor
     static func isExactlyFocused(_ source: WindowSource) -> Bool {
-        guard let snapshot = WindowFrameResolver.currentSnapshot(for: source.id) else {
+        isExactlyFocused(windowID: source.id, pid: source.processIdentifier)
+    }
+
+    /// The same for the window `windowID` of the app `pid`. `logsFailure` is off for
+    /// checks that fail all the time, like a key the presenter types in another window.
+    @MainActor
+    static func isExactlyFocused(windowID: CGWindowID, pid: pid_t, logsFailure: Bool = true) -> Bool {
+        guard let snapshot = WindowFrameResolver.currentSnapshot(for: windowID) else {
             return false
         }
 
-        let app = AXUIElementCreateApplication(source.processIdentifier)
+        let app = AXUIElementCreateApplication(pid)
         AXUIElementSetMessagingTimeout(app, messagingTimeout)
         let windows = AccessibilityWindowResolver.windows(in: app)
         let candidates = windows.map { window in
@@ -31,16 +38,16 @@ enum SourceWindowFocusValidator {
 
         let frontmostPID = NSWorkspace.shared.frontmostApplication.map { Int($0.processIdentifier) }
         let allows = ExactWindowFocusPolicy.allowsActuation(
-            sourcePID: Int(source.processIdentifier),
+            sourcePID: Int(pid),
             frontmostPID: frontmostPID,
             windowOwnerPID: Int(snapshot.ownerPID),
             windowIsOnScreen: snapshot.isOnScreen,
             matchingWindowIndex: matchingIndex,
             focusedWindowIndex: focusedIndex
         )
-        if !allows {
+        if !allows, logsFailure {
             AppLog.demoMode.error(
-                "Demo focus check failed: sourcePID=\(source.processIdentifier) frontmostPID=\(frontmostPID ?? -1) ownerPID=\(snapshot.ownerPID) onScreen=\(snapshot.isOnScreen) matching=\(matchingIndex ?? -1) focused=\(focusedIndex ?? -1)"
+                "Demo focus check failed: sourcePID=\(pid) frontmostPID=\(frontmostPID ?? -1) ownerPID=\(snapshot.ownerPID) onScreen=\(snapshot.isOnScreen) matching=\(matchingIndex ?? -1) focused=\(focusedIndex ?? -1)"
             )
         }
         return allows

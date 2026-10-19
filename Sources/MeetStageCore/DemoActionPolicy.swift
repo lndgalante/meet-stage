@@ -16,12 +16,16 @@ public struct DemoPolicyElement: Equatable, Sendable {
     public let isSearchField: Bool
     /// The element sits inside an open dialog, sheet, or alert.
     public let inDialog: Bool
+    /// That dialog's own text, such as its title and message. It only decides
+    /// whether trusting the app can answer a question about the dialog, and
+    /// never allows anything by itself.
+    public let dialogText: [String]
     /// Description, help, identifier, placeholder and container label.
     public let details: [String]
 
     public init(
         kind: Kind, label: String, labelIsData: Bool = false, isSecure: Bool = false, isSearchField: Bool = false,
-        inDialog: Bool = false, details: [String] = []
+        inDialog: Bool = false, dialogText: [String] = [], details: [String] = []
     ) {
         self.kind = kind
         self.label = label
@@ -29,10 +33,11 @@ public struct DemoPolicyElement: Equatable, Sendable {
         self.isSecure = isSecure
         self.isSearchField = isSearchField
         self.inDialog = inDialog
+        self.dialogText = dialogText
         self.details = details
     }
 
-    var texts: [String] { (labelIsData ? [] : [label]) + details }
+    var texts: [String] { (labelIsData ? [] : [label]) + details.map(DemoActionPolicy.words) }
 }
 
 public enum DemoPolicyAction: Equatable, Sendable {
@@ -42,9 +47,52 @@ public enum DemoPolicyAction: Equatable, Sendable {
     case pressKey
 }
 
+/// A question the presenter answers before a demo action runs.
+public struct DemoApproval: Equatable, Sendable {
+    public enum Kind: Equatable, Sendable {
+        /// A link that names a destructive action, such as “Delete account” or “Sign out”.
+        case riskyLink
+        /// A menu item that sounds destructive.
+        case riskyMenuItem
+        /// A control in a dialog whose own text reads as harmless.
+        case dialogButton
+        /// A control in a dialog whose text sounds destructive or sensitive, or couldn't be read.
+        case riskyDialogButton
+        /// A control with no label or details to judge it by.
+        case unlabelledControl
+        /// Return after typing into a field that isn't for searching.
+        case returnOutsideSearch
+        /// Typed text the request doesn't contain.
+        case unrequestedText
+        /// A page on a host that is neither the start host nor named in the request.
+        case unknownHost
+        /// A page on a known host with a query the request doesn't contain.
+        case unrequestedQuery
+
+        /// Whether Always Allow for the app answers this question for the
+        /// presenter. Never for what could send data to another site, submit a
+        /// form, or act at once like “Sign out”, a destructive menu item or dialog.
+        public var isCoveredByTrust: Bool {
+            switch self {
+            case .dialogButton, .unlabelledControl, .unrequestedText, .unrequestedQuery: true
+            case .riskyLink, .riskyMenuItem, .riskyDialogButton, .returnOutsideSearch, .unknownHost: false
+            }
+        }
+    }
+
+    public let kind: Kind
+    /// The question the presenter sees, which a step records when it's approved.
+    public let message: String
+
+    public init(_ kind: Kind, _ message: String) {
+        self.kind = kind
+        self.message = message
+    }
+}
+
 public enum DemoPolicyDecision: Equatable, Sendable {
     case allow
-    case needsApproval(String)
+    case needsApproval(DemoApproval)
     case deny(String)
 }
 
@@ -53,13 +101,19 @@ public enum DemoPolicyDecision: Equatable, Sendable {
 /// element, so an edited or tampered saved demo can't bypass them. Prompts to
 /// the model repeat these rules, but the model is never the boundary.
 public enum DemoActionPolicy {
-    /// Stems that end in a word boundary only where a longer word would be harmless
-    /// ("pay" but not "payroll"); the rest also catch "Resend" or "Withdrawals".
+    /// Stems match at the start of a word, so “Presets” never reads as “reset”,
+    /// and “un” or “re” in front still counts (“Unstake”, “Resubmit”). The short
+    /// ones match only as whole words (“pay” but not “payroll”). German stems
+    /// match inside words too, since German joins them to prefixes (“Absenden”).
     static let destructivePattern =
-        #"delete|remove|erase|wipe|reset|discard|trash|sign ?out|log ?out|uninstall|purchase|checkout|place order|transfer|withdraw|swap|stake|approve|confirm|submit|publish|unsubscribe|cancel subscription|\b(pay|buy|send|sign|post|share|invite)\b"#
-            + #"|eliminar|borrar|enviar|pagar|comprar|transferir|retirar|confirmar|cerrar sesi[oó]n|excluir|publicar"#
-            + #"|supprimer|envoyer|payer|acheter|d[ée]connexion|virement|l[öo]schen|senden|bezahlen|kaufen|abmelden|überweisen"#
-            + #"|elimina|cancella|invia|acquista|\b(paga|esci)\b"#
+        #"\b(un|re)?(delete|remove|erase|wipe|reset|discard|trash|sign ?out|log ?out|uninstall|purchase|checkout|place order|transfer|withdraw|swap|stake|approve|confirm|submit|publish|unsubscribe|cancel subscription|(pay|buy|send|sign|post|share|invite)\b)"#
+        + #"|\b(eliminar|borrar|enviar|pagar|comprar|transferir|retirar|confirmar|cerrar sesi[oó]n|excluir|publicar)"#
+        + #"|\b(supprimer|envoyer|payer|acheter|d[ée]connexion|virement)|l[öo]schen|senden|bezahlen|kaufen|abmelden|überweisen"#
+        + #"|\b(elimina|cancella|invia|acquista|(paga|esci)\b)"#
+
+    /// Endings that turn a stem into a list or a state rather than an action:
+    /// “Transfers”, “Deleted”, “Submitted”, “Withdrawals”, “Confirmations”.
+    static let inflectionPattern = #"^(e?s|e?d|[a-z]ed|als?|ations?)$"#
 
     static let sensitiveFieldPattern =
         #"pass(word|code|phrase)?|contraseña|mot de passe|kennwort|\bpin\b|\botp\b|2fa|one[- ]time|seed|recovery|secret|cvv|cvc|card number|iban|\bssn\b|private key|mnemonic"#
@@ -71,11 +125,20 @@ public enum DemoActionPolicy {
     static let dismissPattern =
         #"^(cancel|close|dismiss|not now|no thanks|got it|skip|maybe later|back|cancelar|cerrar|ahora no|annuler|fermer|abbrechen|schließen|annulla|chiudi|×|x)$"#
 
-    public static func evaluate(_ action: DemoPolicyAction, prompt: String, startHost: String?, approved: Bool)
-        -> DemoPolicyDecision
-    {
+    /// How a dialog confirms something without naming it: “Are you sure?”, “This can't be undone.”
+    static let warningPattern =
+        #"are you sure|can(no|['’])t be undone|irreversible|permanent|est[aá]s? seguro|tem certeza|[êe]tes-vous s[ûu]r|sind sie sicher|sei sicuro"#
+
+    /// `approved` answers any question; `appTrusted`, the presenter's Always
+    /// Allow for the app, answers only the questions trust covers. Denials stay
+    /// denials either way.
+    public static func evaluate(
+        _ action: DemoPolicyAction, prompt: String, startHost: String?, approved: Bool, appTrusted: Bool = false
+    ) -> DemoPolicyDecision {
         let decision = rawDecision(action, prompt: prompt, startHost: startHost)
-        if approved, case .needsApproval = decision { return .allow }
+        if case .needsApproval(let approval) = decision, approved || (appTrusted && approval.kind.isCoveredByTrust) {
+            return .allow
+        }
         return decision
     }
 
@@ -88,10 +151,22 @@ public enum DemoActionPolicy {
 
         case .click(let element):
             if element.isSecure { return .deny("BetterMeets never clicks password fields.") }
+            let riskyDialog = element.inDialog && !isHarmless(dialogText: element.dialogText)
             if let word = firstMatch(destructivePattern, in: element.texts) {
                 switch element.kind {
-                case .link, .tab, .menuItem:
-                    return .needsApproval("Open “\(display(element.label))”? It mentions “\(word)”.")
+                case .tab:
+                    // Opening a view commits nothing; a destructive control inside it is still denied.
+                    break
+                case .link:
+                    if let verb = firstVerb(in: element.texts) {
+                        return .needsApproval(
+                            DemoApproval(
+                                riskyDialog ? .riskyDialogButton : .riskyLink,
+                                "Open “\(display(element.label))”? It mentions “\(verb)”."))
+                    }
+                case .menuItem:
+                    return .needsApproval(
+                        DemoApproval(.riskyMenuItem, "Open “\(display(element.label))”? It mentions “\(word)”."))
                 default:
                     return .deny(
                         element.label.isEmpty
@@ -99,12 +174,17 @@ public enum DemoActionPolicy {
                             : "Pointing at “\(display(element.label))” instead of clicking it.")
                 }
             }
-            if element.inDialog, element.label.range(of: dismissPattern, options: [.regularExpression, .caseInsensitive]) == nil {
+            if element.inDialog,
+                element.label.range(of: dismissPattern, options: [.regularExpression, .caseInsensitive]) == nil
+            {
                 // A dialog's other buttons usually confirm whatever opened it.
-                return .needsApproval("Click “\(display(element.label))” in this dialog?")
+                return .needsApproval(
+                    DemoApproval(
+                        riskyDialog ? .riskyDialogButton : .dialogButton,
+                        "Click “\(display(element.label))” in this dialog?"))
             }
             if element.label.isEmpty, element.details.allSatisfy(\.isEmpty) {
-                return .needsApproval("Click an unlabelled control?")
+                return .needsApproval(DemoApproval(.unlabelledControl, "Click an unlabelled control?"))
             }
             return .allow
 
@@ -117,11 +197,15 @@ public enum DemoActionPolicy {
                 return .deny("BetterMeets never types into password, code, or payment fields.")
             }
             if submit, !field.isSearchField, firstMatch(searchPattern, in: [field.label] + field.details) == nil {
-                return .needsApproval("Type “\(display(text))” and press Return in “\(display(field.label))”?")
+                return .needsApproval(
+                    DemoApproval(
+                        .returnOutsideSearch,
+                        "Type “\(display(text))” and press Return in “\(display(field.label))”?"))
             }
             let typed = normalize(text)
             if typed.isEmpty || !normalize(prompt).contains(typed) {
-                return .needsApproval("Type “\(display(text))” into “\(display(field.label))”?")
+                return .needsApproval(
+                    DemoApproval(.unrequestedText, "Type “\(display(text))” into “\(display(field.label))”?"))
             }
             return .allow
 
@@ -136,9 +220,10 @@ public enum DemoActionPolicy {
                 bareHost == start || named.contains(bareHost)
                 || named.contains { bareHost.hasSuffix("." + $0) }
                 || start.map { bareHost.hasSuffix("." + $0) } == true
+            if !knownHost { return .needsApproval(DemoApproval(.unknownHost, "Open \(display(host))?")) }
             let query = url.query.map(normalize) ?? ""
-            if !knownHost || (!query.isEmpty && !normalize(prompt).contains(query)) {
-                return .needsApproval("Open \(display(host))?")
+            if !query.isEmpty, !normalize(prompt).contains(query) {
+                return .needsApproval(DemoApproval(.unrequestedQuery, "Open \(display(host))?"))
             }
             return .allow
         }
@@ -159,6 +244,12 @@ public enum DemoActionPolicy {
             .split(whereSeparator: \.isWhitespace).joined(separator: " ").lowercased()
     }
 
+    /// Splits identifiers such as “btnDelete” or “action_delete” into words, so
+    /// stems that must start a word still find them.
+    static func words(_ text: String) -> String {
+        text.replacingOccurrences(of: #"(?<=\p{Ll})(?=\p{Lu})|_"#, with: " ", options: .regularExpression)
+    }
+
     /// Host names written in the request, such as “subtis.io” or “www.youtube.com”.
     static func hosts(in prompt: String) -> Set<String> {
         let text = normalize(prompt)
@@ -176,10 +267,37 @@ public enum DemoActionPolicy {
         host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
     }
 
+    /// A dialog reads as harmless only when it has text and none of it sounds
+    /// destructive, sensitive, or like a warning.
+    private static func isHarmless(dialogText: [String]) -> Bool {
+        dialogText.contains { !$0.isEmpty }
+            && [destructivePattern, sensitiveFieldPattern, warningPattern].allSatisfy {
+                firstMatch($0, in: dialogText) == nil
+            }
+    }
+
     private static func firstMatch(_ pattern: String, in texts: [String]) -> String? {
         for text in texts where !text.isEmpty {
             if let range = text.range(of: pattern, options: [.regularExpression, .caseInsensitive]) {
                 return String(text[range]).lowercased()
+            }
+        }
+        return nil
+    }
+
+    /// The first destructive stem used as a verb, skipping plural and past forms.
+    private static func firstVerb(in texts: [String]) -> String? {
+        for text in texts where !text.isEmpty {
+            var range = text.startIndex..<text.endIndex
+            while let match = text.range(
+                of: destructivePattern, options: [.regularExpression, .caseInsensitive], range: range)
+            {
+                let ending = text[match.upperBound...].prefix(while: \.isLetter)
+                if ending.range(of: inflectionPattern, options: [.regularExpression, .caseInsensitive]) == nil {
+                    return String(text[match]).lowercased()
+                }
+                // Past the whole word, so the next search starts where a word can.
+                range = ending.endIndex..<text.endIndex
             }
         }
         return nil

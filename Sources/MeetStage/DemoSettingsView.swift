@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// The Demos pane in Settings: Claude access, presenting and pacing.
 struct DemoSettingsView: View {
@@ -41,6 +42,20 @@ struct DemoSettingsView: View {
                         .toggleStyle(.checkbox)
                     caption(
                         "Building sends your request, screenshots and control labels to Anthropic. Playing or testing sends a screenshot only when a control moved and has to be found again. It never pays, sends, deletes or enters passwords, and asks before anything unusual. Builds stop at $2."
+                    )
+                }
+            }
+
+            SettingsFormRow(title: "Always allowed") {
+                VStack(alignment: .leading, spacing: 6) {
+                    if demo.alwaysAllowedApps.isEmpty {
+                        Text("None yet. Choose Always Allow when a build asks.").foregroundStyle(.secondary)
+                    }
+                    ForEach(demo.alwaysAllowedApps, id: \.self) { bundleID in
+                        AlwaysAllowedAppRow(bundleID: bundleID) { demo.removeAlwaysAllowed(bundleID) }
+                    }
+                    caption(
+                        "Builds in these apps stop asking about ordinary steps. They still ask before opening a site your request doesn’t name, pressing Return outside a search field, or using a menu item or dialog that sounds destructive. Removing an app makes builds ask again; steps already allowed stay allowed."
                     )
                 }
             }
@@ -120,6 +135,35 @@ struct DemoSettingsView: View {
             .font(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
+    }
+}
+
+/// An app in Always allowed, by its name and icon, or its bundle ID once it's gone.
+private struct AlwaysAllowedAppRow: View {
+    let bundleID: String
+    let remove: () -> Void
+
+    var body: some View {
+        let workspace = NSWorkspace.shared
+        let url = workspace.urlForApplication(withBundleIdentifier: bundleID)
+        let name =
+            url.map { FileManager.default.displayName(atPath: $0.path) }
+            .map { $0.hasSuffix(".app") ? String($0.dropLast(4)) : $0 } ?? bundleID
+        HStack(spacing: 6) {
+            Image(nsImage: url.map { workspace.icon(forFile: $0.path) } ?? workspace.icon(for: .application))
+                .resizable()
+                .interpolation(.high)
+                .frame(width: 16, height: 16)
+                .accessibilityHidden(true)
+            Text(name)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .help(bundleID)
+            Button("Remove", action: remove)
+                .buttonStyle(.link)
+                .accessibilityLabel("Remove \(name)")
+                .help("Ask again before steps like these in \(name)")
+        }
     }
 }
 

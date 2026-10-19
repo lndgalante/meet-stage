@@ -103,8 +103,11 @@ enum DemoLocatorMatcher {
 
         let container = locator.container
         if locator.labelIsStable {
-            // R2: same role and text, scoped to the container when it still exists.
+            // R2: same role and text, scoped to the container when it still exists. A
+            // control's own label outranks the same words borrowed by another control,
+            // which demos saved before borrowing never saw.
             var matches = candidates.filter { LabelStability.matchKey($0.label) == label }
+            if matches.contains(where: { !$0.labelIsBorrowed }) { matches.removeAll(where: \.labelIsBorrowed) }
             if let container {
                 let scoped = matches.filter { snapshot.container(of: $0) == container }
                 if !scoped.isEmpty { matches = scoped }
@@ -136,7 +139,9 @@ enum DemoLocatorMatcher {
             }
         }
         // R4: anything else without a usable label (icon buttons, values) must
-        // sit almost exactly where it was recorded, and be clearly the closest.
+        // sit almost exactly where it was recorded, and be clearly the closest. A
+        // recorded label that's empty never constrains the match, so an icon button
+        // saved unlabelled is still found once it borrows a label.
         return nearestInPoints(
             scope(candidates, container, snapshot), to: locator.rect, within: positionTolerance(for: roleClass),
             in: snapshot)
@@ -203,7 +208,13 @@ enum DemoLocatorFactory {
     /// snapshot it came from. Returns nil when no unique description exists.
     static func locator(for nodeID: Int, in snapshot: AXSnapshot) -> DemoElementLocator? {
         guard let node = snapshot.node(nodeID), node.rect.isUsable else { return nil }
-        let stable = LabelStability.isStable(roleClass: node.roleClass, label: node.label)
+        if let locator = locator(for: node, named: true, in: snapshot) { return locator }
+        // A borrowed label another control owns can't find this one; its position still may.
+        return node.labelIsBorrowed ? locator(for: node, named: false, in: snapshot) : nil
+    }
+
+    private static func locator(for node: AXNode, named: Bool, in snapshot: AXSnapshot) -> DemoElementLocator? {
+        let stable = named && LabelStability.isStable(roleClass: node.roleClass, label: node.label)
         let identifier = node.identifier.flatMap { LabelStability.isStableIdentifier($0) ? $0 : nil }
         let container = snapshot.container(of: node)
         let indexed = DemoLocatorMatcher.ordersByIndex(container)
@@ -259,8 +270,10 @@ enum DemoLocatorFactory {
 enum ScreenSignatures {
     static func make(_ snapshot: AXSnapshot) -> ScreenSignature {
         let visible = DemoLocatorMatcher.ordered(snapshot.nodes.filter(\.isVisible))
+        // Borrowed labels are left out, so screens still match demos saved before borrowing.
         let selected = visible.filter { node in
-            node.isSelected && [.tab, .link, .radio, .menuItem, .button, .row].contains(node.roleClass)
+            node.isSelected && !node.labelIsBorrowed
+                && [.tab, .link, .radio, .menuItem, .button, .row].contains(node.roleClass)
                 && LabelStability.isStable(roleClass: node.roleClass, label: node.label)
         }
         let headings = visible.filter { node in
@@ -324,10 +337,25 @@ enum ScreenSignatures {
 
 /// Turns the scout's raw records into replayable steps: drops rejected and
 /// unobserved actions, retries, repeated clicks, and toggles undone with
-/// nothing shown in between, and turns scrolls into reveal hints. Scrolling a
-/// dropped step's framing did is carried to the next step on that page.
+/// nothing shown in between, and turns scrolls into reveal hints. Pruning also
+/// cuts lone clicks that showed nothing and detours that came back to the screen
+/// they left. Scrolling a dropped step's framing did is carried to the next step
+/// on that page. Records never change, so a draft compiles again without pruning.
 enum ScoutCompaction {
-    static func compact(_ records: [ScoutRecord]) -> [DemoStep] {
+    /// `cited` holds the turns Claude's finish said show a beat, which pruning never
+    /// cuts: Claude saw the screenshot, and a sort or a changed number shows there
+    /// though the screen's digest reads the same.
+    static func compact(_ records: [ScoutRecord], pruning: Bool = true, keeping cited: Set<Int> = []) -> [DemoStep] {
+        steps(from: records, kept: kept(records, pruning: pruning, keeping: cited))
+    }
+
+    /// A draft's steps, keeping the turns its finish cited.
+    static func compact(_ draft: ScoutDraft, pruning: Bool = true) -> [DemoStep] {
+        compact(draft.records, pruning: pruning, keeping: draft.citedTurns)
+    }
+
+    /// The indices of the records the demo keeps, in order.
+    static func kept(_ records: [ScoutRecord], pruning: Bool = true, keeping cited: Set<Int> = []) -> [Int] {
         var kept = records.indices.filter { index in
             let outcome = records[index].outcome
             return outcome != .rejected && outcome != .unobserved && outcome != .pending
@@ -360,6 +388,14 @@ enum ScoutCompaction {
             index += 1
         }
 
+        guard pruning else { return kept }
+        // A click that showed nothing and wasn't tried again would show nothing live either.
+        kept.removeAll { isSilentClick(records[$0]) && !cited.contains(records[$0].turn) }
+        return withoutDetours(kept, in: records, keeping: cited)
+    }
+
+    /// The steps the records at `kept` make, in order.
+    static func steps(from records: [ScoutRecord], kept: [Int]) -> [DemoStep] {
         let keptSet = Set(kept)
         var steps: [DemoStep] = []
         var pendingReveal: RevealHint?
@@ -376,6 +412,7 @@ enum ScoutCompaction {
             if var scroll = record.scroll {
                 if let pending = pendingReveal, pending.directionDown == scroll.directionDown {
                     scroll.count = (pending.count ?? 1) + (scroll.count ?? 1)
+                    scroll.route = scroll.route ?? pending.route
                 }
                 pendingReveal = scroll
                 continue
@@ -389,10 +426,71 @@ enum ScoutCompaction {
                     if debt.page == step.pre.urlKey { step.priorFraming = (step.priorFraming ?? 0) + debt.amount }
                     owed = nil
                 }
+                if step.action.isMutating {
+                    step.changedScreen =
+                        switch record.outcome {
+                        case .changed: true
+                        case .noEffect: false
+                        default: nil
+                        }
+                }
                 steps.append(step)
             }
         }
         return Array(steps.prefix(RealTimeDemo.maximumSteps))
+    }
+
+    /// Cuts every detour: steps i..<j when step j began on the screen step i did,
+    /// each of them a click on a tab, link, button or menu item that changed the
+    /// screen, with nothing highlighted, scrolled, typed, toggled or approved between.
+    /// The same screen is the same visible content and address (`ScoutRecord.screen`).
+    /// When Claude called one of those clicks a wrong turn, the same screen
+    /// signature counts too, given an address or a selected item to go by; the
+    /// verdict never cuts anything on its own.
+    private static func withoutDetours(_ kept: [Int], in records: [ScoutRecord], keeping cited: Set<Int>) -> [Int] {
+        var kept = kept
+        var start = 0
+        while start < kept.count {
+            var end: Int?
+            var wrongTurn = false
+            var index = start
+            while index < kept.count, isDetourStep(records[kept[index]], cited: cited) {
+                wrongTurn = wrongTurn || records[kept[index]].judgement?.verdict == .wrongTurn
+                index += 1
+                if index < kept.count, sameScreen(records[kept[start]], records[kept[index]], wrongTurn: wrongTurn) {
+                    end = index
+                }
+            }
+            if let end {
+                kept.removeSubrange(start..<end)
+            } else {
+                start += 1
+            }
+        }
+        return kept
+    }
+
+    /// A click a detour may be made of. One that scrolled its target into view moved
+    /// the page, which the screens around it can't vouch for, so it stays.
+    private static func isDetourStep(_ record: ScoutRecord, cited: Set<Int>) -> Bool {
+        guard record.outcome == .changed, record.steps.count == 1, !cited.contains(record.turn),
+            let step = record.steps.first, case .click(let locator) = step.action, !step.approved,
+            [.tab, .link, .button, .menuItem].contains(locator.roleClass), !locator.isToggleLike
+        else { return false }
+        return (step.framing ?? 0) == 0
+    }
+
+    private static func sameScreen(_ first: ScoutRecord, _ later: ScoutRecord, wrongTurn: Bool) -> Bool {
+        if let screen = first.screen, screen == later.screen { return true }
+        guard wrongTurn, let before = first.steps.first?.pre, let after = later.steps.first?.pre else { return false }
+        return before == after && (before.urlKey != nil || !before.selected.isEmpty)
+    }
+
+    private static func isSilentClick(_ record: ScoutRecord) -> Bool {
+        guard record.outcome == .noEffect, record.steps.count == 1, case .click = record.steps[0].action else {
+            return false
+        }
+        return true
     }
 
     private static func mutatingKey(_ record: ScoutRecord) -> String? {

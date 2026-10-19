@@ -40,7 +40,7 @@ struct DemoNoticeContent: Equatable {
                 kind: .ready, badge: "Demo ready", title: title,
                 detail: [status, steps, app].filter { !$0.isEmpty }.joined(separator: " · "),
                 bundleID: bundleID, announcement: "Demo ready: \(title), \(status.lowercased()), \(steps)")
-        case .scoutPaused(let stop) where stop != .user:
+        case .scoutPaused(let stop) where stop != .user && !stop.isAway:
             return attention("Build paused", "Your demo build needs you", stop.message)
         case .needsStart(_, .verify):
             let start = demo?.start?.description ?? "The screen where the build started"

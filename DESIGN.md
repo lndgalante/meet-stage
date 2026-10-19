@@ -202,9 +202,22 @@ and upcoming stages tertiary. Headlines count steps the same way the grid shows 
 Step 4 of 9, Paused at step 4 of 9, Test paused at step 3 of 9. The glyph carries the
 color, never the text: accent for playing, green only for Tested, orange for paused
 or needing the presenter, secondary otherwise, or a small spinner while BetterMeets
-works. The subline holds facts (“Tested · 9 steps · About 2 min · Starts on the
+works, which becomes a secondary hourglass while a step waits for a pause. The
+subline holds facts (“Tested · 9 steps · About 2 min · Starts on the
 Scheduled page”, which drops the duration and then the start when narrow and shows
 the full start description as its help tag), “Next: …” while presenting, or a reason.
+While a building or testing step waits for a pause, the subline adds “Waiting for a
+pause to bring App forward…” after the progress (“Testing step 3 of 9 · …”),
+shortening to “Waiting for a pause…”, with a help tag saying BetterMeets waits
+until the presenter stops typing and moving the pointer, then puts their window and
+pointer back. When a browser had to come forward for web steps because its
+setting was off, a ready demo's subline shows a one-time tip in place of its facts,
+below a notice or a moved step: a secondary lightbulb and “Dia had to come forward
+for some steps. Turn on Allow JavaScript from Apple Events in its Developer menu to
+keep it in the background.” (View › Developer in Chrome, Develop › Developer
+Settings in Safari), or, when BetterMeets may not control the browser, where to
+allow it in System Settings → Privacy & Security → Automation. A browser's tip
+shows once, until the next build or test run.
 Reasons and notices are primary, selectable text; when one is cut it ends in a More
 link that opens a popover with the full text. API errors add Copy Details, which
 shows Copied for 1.5 seconds.
@@ -217,13 +230,24 @@ the trailing content edge. The primary is the only large control, with a filled
 glyph and a 112-point minimum width. Forward actions (Play, Resume, Allow, Go to
 Start, Try Again) are prominent; interrupts (Pause Build, Pause Test, Pause Demo, and
 Stop) take the same slot and size, bordered. When the band is narrow, the secondaries
-fold into a split-button primary and Continue from Step N shortens to From Step N; the
-transport and the primary never drop. Builds, tests, and demos all use Pause and
+fold into a split-button primary, the last first, and Continue from Step N shortens to
+From Step N; the transport and the primary never drop. Builds, tests, and demos all use Pause and
 Resume, matching Pause Stage and Resume Stage. A paused build offers Use N Steps and
-Edit Request beside Resume Build. An approval offers Skip and Allow and circles the
-control in question. A blocked request offers Edit Request and Build Alternative, and
+Edit Request beside Resume Build. A build or test run that paused because the Mac's
+displays slept or the presenter switched to another user says so and that it goes on
+by itself (“Paused while your Mac sleeps. The build goes on once it wakes.”, “Paused
+while you’re switched to another user. The test goes on once you’re back.”), keeps
+its usual actions, and raises no notice over the presenter's app; about two seconds
+after they're back, signed in past the lock screen, it carries on. An approval offers Skip and Allow and circles the
+control in question; when trusting the app can answer the question, Always Allow in
+App follows Skip as the second secondary, so Allow stays the one primary, and it is
+the first to fold into Allow's menu when narrow. A blocked request offers Edit Request and Build Alternative, and
 the subline names the closest real alternative. A build that hit a limit offers Use N
-Steps. Going back to the start offers Stop, Pause Test, or Pause Demo, depending on
+Steps; its subline names the limit, and a build whose actions BetterMeets kept
+turning down says so rather than that nothing changed (“Stopped because Claude
+kept choosing actions BetterMeets won’t do.”), as one whose last actions changed
+nothing or went the wrong way says they got nowhere (“Stopped because the last
+few actions didn’t get the demo anywhere.”). Going back to the start offers Stop, Pause Test, or Pause Demo, depending on
 what follows. Not at the start offers Go to Start; I'm There instead when no
 automatic return exists or the page isn't exposed, and both when only switches
 differ; each preceded by Play Anyway when the return leads to playing or to ready
@@ -241,7 +265,9 @@ at the default size. Each cell is a 16-point numbered marker and the title in ca
 text. Idle markers are a faint circle with a secondary number, and titles stay primary
 so the agenda never looks disabled. While building, the step being recorded shows a
 mini spinner and “Recording…”, the outline's planned beats follow as dashed rings with
-tertiary titles, and an approval shows an orange raised hand. A test marks passed
+tertiary titles, and an approval shows an orange raised hand. The grid shows the steps
+the demo will keep, so a click that showed nothing, or a detour that came back to
+where it began with nothing shown, leaves it as the build goes on. A test marks passed
 steps with a green circle and a white checkmark and the current step with a spinner
 in an accent ring. Presenting marks done steps with an accent circle and a white
 checkmark and the current step with an accent ring and a semibold title. A step that
@@ -336,7 +362,10 @@ stores it, then Saved in Keychain with Remove); the Claude access checkbox with 
 plain-language explanation of what building sends, that playing or testing sends a
 screenshot only when a control moved and has to be found again, that it never pays,
 sends, deletes, or enters passwords, asks before anything unusual, and that builds
-stop at $2; Script language, a pop-up of Same as My Request and each language by
+stop at $2; Always allowed, listing each app chosen with Always Allow by its
+16-point icon and name (its bundle ID once the app is gone) with a Remove link, or
+“None yet. Choose Always Allow when a build asks.”, and a caption saying what builds
+there still ask about and that removing an app keeps steps already allowed; Script language, a pop-up of Same as My Request and each language by
 its own name, with a caption that it sets the demo title, step titles and lines and
 that Rewrite Lines changes an existing demo;
 Teleprompter, with Show under the camera when a demo plays and a caption to share
@@ -460,6 +489,43 @@ fades in and out over 0.3 seconds, holds still with Reduce Motion, never takes i
 and is hidden from VoiceOver. It belongs to the workspace, so Stage Only never shows
 it.
 
+While BetterMeets builds, tests, or goes back to the start, the window it drives
+carries a badge like the stage's glow: an accent capsule 22 points tall, inset 8 by
+6 points from the window's top-left corner over its window buttons, with a white
+cursor-with-motion-lines glyph, a subtle shadow, and a 1.5-point ring in Claude's
+hues that turns once every four seconds. Hovering it, even with BetterMeets in the
+background, expands it over 0.12 seconds to show “BetterMeets is building”, “is
+testing”, or “is going back to the start” in 11-point semibold SF Rounded, with a
+help tag saying the presenter can keep working in other windows; clicking it shows
+BetterMeets without the badge taking focus. The stage's arrow and click ripples are
+drawn inside the window too, while the presenter's own pointer stays theirs. Both
+sit just above the window and under the presenter's other windows, follow it as it
+moves, and hide while it is minimized, hidden, or on another Space. Escape, Up and
+Down in a list, Page Up and Page Down, and scrolling in the app's own views, and a
+field that takes its text only as a replaced selection, stay in the background, so
+they never wait for a pause; while building, a step the app showed no change for
+within about a second is tried again before Claude hears it did nothing, as a
+page's own click and then a real click, or once with the real key or wheel, and
+the panel's progress says so (“Trying a real click on Details”). It never is for
+a switch, a Save or Add, a step the presenter approved, a scroll whose bar moved,
+or a step a window opened for. A test run does the same, once, for a click that
+showed nothing within about a second (“Step 3 of 9: Trying another click on
+Details”), never for a switch, a Save, Add, Search, or Next, or a step the
+presenter approved; once the test passes, the step keeps the click that worked. When a step
+needs the app in front, the badge shows an hourglass and “Waiting for a pause”, its
+ring holds still, and BetterMeets waits until the presenter has left the keyboard
+and pointer alone for 1.5 seconds, brings the window forward for well under a
+second, then puts their app, window, and pointer back; badge and arrow step away
+meanwhile. Input from the presenter before the step commits puts things back, and
+the step tries again at the next pause; after eight tries the run pauses with
+“This step needs Dia in front for a moment. Resume when you can leave the keyboard
+and pointer alone for a second.” A pause partway through a password never counts.
+The presenter's other windows of the same app stay theirs: typing there doesn't
+pause the run, and the badge and arrow stay under them. Playing never shows the badge: the app is in
+front and the presenter presents from it. Reduce Motion stops the ring and the
+expansion animation; Increase Contrast adds a white edge. VoiceOver reads the badge
+as a button named by its label.
+
 **The Separate Pauses Rule.** Pause Demo stops the sequence while preserving the
 live app and current visual cue. Pause Stage hides the source image. Name both
 actions explicitly wherever they appear together, including the floating widget,
@@ -472,7 +538,8 @@ Play Anyway when the app isn't at the start.
 Demo effects use the existing presentation vocabulary: spotlight, magnification,
 drawn emphasis, click highlights, and displayed keystrokes. Because demos run the
 app in the background, a virtual system arrow glides to each target on the stage
-and demo clicks ripple on the stage only. Drawn emphasis uses the system accent;
+and demo clicks ripple on the stage, and, while building and testing, inside the
+driven window too. Drawn emphasis uses the system accent;
 Reduce Motion shows it, and moves the virtual cursor, immediately. Spotlight
 edges strengthen with Increase Contrast. When a presentation or test run ends, its
 last effect and the virtual cursor stay for 2 seconds, then fade out over 0.6

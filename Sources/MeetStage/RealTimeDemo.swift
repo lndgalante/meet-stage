@@ -93,6 +93,11 @@ struct DemoElementLocator: Codable, Hashable, Sendable {
     var rect: NormRect
     /// Checkbox or switch value observed after the recorded click, so replay never flips it twice.
     var toggleValueAfter: Bool?
+    /// What the target looks like and where it sits, in Claude's words when it was
+    /// recorded (`ScoutNote.target`), for finding it again once it moved or was
+    /// renamed. Untrusted data: never part of what identifies, matches, compares or
+    /// fingerprints the locator, and never read by the policy.
+    var note: String?
 
     var roleClass: AXRoleClass { AXRoleClass(role: role, subrole: subrole) }
 
@@ -105,6 +110,68 @@ struct DemoElementLocator: Codable, Hashable, Sendable {
             return "\(kind) \(visualIndex + 1)\(place)"
         }
         return kind
+    }
+}
+
+extension DemoElementLocator {
+    /// Words that name a button that toggles, such as an eye that hides balances.
+    static let toggleWords =
+        #"discreet|privacy|hide balances|show balances|mask|dark mode|light mode|theme|mute|toggle|modo discreto"#
+
+    static func namesToggle(_ label: String) -> Bool {
+        label.range(of: toggleWords, options: [.regularExpression, .caseInsensitive]) != nil
+    }
+
+    /// A checkbox or switch, or a button named like one: a second click flips it back.
+    var isToggleLike: Bool {
+        roleClass == .checkbox || toggleValueAfter != nil || Self.namesToggle(label)
+    }
+
+    /// Words on a control that saves, submits or adds something, where a second
+    /// click could do it twice. Sending, paying and deleting are never clicked at all.
+    static let commitWords =
+        #"\b(save|create|add|new|apply|ok|done|go|next|continue|finish|update|upload|import|book|order|join|accept|allow"#
+        + #"|guardar|crear|añadir|agregar|nuev[oa]|aplicar|aceptar|listo|siguiente|continuar|salvar|adicionar|próximo"#
+        + #"|enregistrer|créer|ajouter|nouveau|nouvelle|appliquer|valider|suivant|terminer|speichern|erstellen"#
+        + #"|hinzufügen|neu|übernehmen|fertig|weiter|salva|crea|aggiungi|nuov[oa]|applica|fatto|avanti|opslaan"#
+        + #"|maken|toevoegen|nieuw|toepassen|klaar|volgende)\b"#
+
+    /// The words that name this control: its recorded label, and the label and help
+    /// text of `node`, the control as the screen has it now.
+    func words(with node: AXNode?) -> [String] {
+        [label, node?.label ?? "", node?.help ?? ""].filter { !$0.isEmpty }
+    }
+
+    /// Whether clicking this control again, after a click that seemed to show nothing,
+    /// could do what the first did twice: a switch or a button named like one, or a
+    /// control whose words save, submit or add something.
+    func clickingAgainCouldRepeat(node: AXNode?) -> Bool {
+        guard !isToggleLike, node?.toggleValue == nil else { return true }
+        return words(with: node).contains { word in
+            Self.namesToggle(word)
+                || word.range(of: Self.commitWords, options: [.regularExpression, .caseInsensitive]) != nil
+        }
+    }
+
+    /// Equal when they describe the same element the same way: `note` is only a
+    /// hint about it, so it never makes two locators differ.
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.role == rhs.role && lhs.subrole == rhs.subrole && lhs.identifier == rhs.identifier
+            && lhs.label == rhs.label && lhs.labelIsStable == rhs.labelIsStable && lhs.container == rhs.container
+            && lhs.visualIndex == rhs.visualIndex && lhs.rect == rhs.rect
+            && lhs.toggleValueAfter == rhs.toggleValueAfter
+    }
+
+    func hash(into hasher: inout Hasher) {
+        hasher.combine(role)
+        hasher.combine(subrole)
+        hasher.combine(identifier)
+        hasher.combine(label)
+        hasher.combine(labelIsStable)
+        hasher.combine(container)
+        hasher.combine(visualIndex)
+        hasher.combine(rect)
+        hasher.combine(toggleValueAfter)
     }
 }
 
@@ -206,6 +273,22 @@ enum DemoAction: Codable, Hashable, Sendable {
         case .present(let beat): beat.effect.label
         }
     }
+
+    /// The action with no notes on its targets, which encodes as actions recorded
+    /// before targets had notes.
+    var withoutNotes: DemoAction {
+        func plain(_ locator: DemoElementLocator) -> DemoElementLocator {
+            var locator = locator
+            locator.note = nil
+            return locator
+        }
+        return switch self {
+        case .click(let locator): .click(plain(locator))
+        case .typeText(let field, let text, let submit): .typeText(field: plain(field), text: text, submit: submit)
+        case .present(let beat): .present(DemoBeat(effect: beat.effect, targets: beat.targets.map(plain)))
+        case .press, .navigate: self
+        }
+    }
 }
 
 struct RevealHint: Codable, Hashable, Sendable {
@@ -213,6 +296,69 @@ struct RevealHint: Codable, Hashable, Sendable {
     var directionDown: Bool
     /// How many scroll turns the scout took; nil means one.
     var count: Int?
+    /// `.realWheel` when Accessibility's scrolling moved nothing on screen and real
+    /// scrolling did. Nil otherwise, which keeps fingerprints of demos built before it.
+    var route: DemoStepRoute?
+}
+
+/// How a step's input reached the app while building, which replay starts from
+/// in the background. Accessibility comes first for every step; the others are
+/// recorded only when an earlier route performed the input and the app showed nothing.
+enum DemoStepRoute: String, Codable, Hashable, Sendable {
+    case accessibility
+    /// The page's own click, in a browser whose page scripts run.
+    case pageScript
+    /// A real mouse click.
+    case pointer
+    /// The real key.
+    case realKey
+    /// Real scroll-wheel input.
+    case realWheel
+
+    /// Whether replay may try `route` for an input recorded with this one: one that
+    /// needed the page's click skips Accessibility, and one that needed real input
+    /// skips the page's script too. Presenting, which has only Accessibility and real
+    /// input, is left with real input.
+    func allows(_ route: DemoInputRoute) -> Bool {
+        switch self {
+        case .accessibility: true
+        case .pageScript: route == .browser || route.isReal
+        case .pointer, .realKey, .realWheel: route.isReal
+        }
+    }
+
+    /// The route a click tries next when one through `used` reached the app and the
+    /// screen showed nothing: the page's own click after Accessibility's press (the
+    /// driver gives a real click where page scripts can't run), then a real click.
+    /// Nil after real input, or when nothing was clicked.
+    static func afterSilentClick(_ used: DemoInputRoute?) -> DemoStepRoute? {
+        switch used {
+        case .accessibility: .pageScript
+        case .browser: .pointer
+        default: nil
+        }
+    }
+
+    /// What a click that showed through `used` records, so replay starts there.
+    init(click used: DemoInputRoute?) {
+        self =
+            switch used {
+            case .browser: .pageScript
+            case .borrowedScreen, .foreground: .pointer
+            default: .accessibility
+            }
+    }
+
+    /// What the scout tells Claude a step needed, or nil for Accessibility.
+    var neededNote: String? {
+        switch self {
+        case .accessibility: nil
+        case .pageScript: "needed the page’s own click"
+        case .pointer: "needed a real click"
+        case .realKey: "needed the real key"
+        case .realWheel: "needed real scrolling"
+        }
+    }
 }
 
 struct DemoStep: Codable, Identifiable, Hashable, Sendable {
@@ -226,14 +372,21 @@ struct DemoStep: Codable, Identifiable, Hashable, Sendable {
     var approved = false
     /// What the presenter approved, so replay accepts only that same decision.
     var approvedReason: String?
-    /// The click needs a real pointer: the control ignored Accessibility's press.
-    var usesPointer: Bool?
+    /// The route that worked while building, which replay tries first in the
+    /// background: a control that ignored Accessibility's press, or a key
+    /// Accessibility did that the app didn't show, records the one after it.
+    var route = DemoStepRoute.accessibility
     /// How far, in window fractions, scrolling this step's targets into view moved
     /// the content up while building. Nil for steps built before targets were framed.
     var framing: Double?
     /// How far framing for actions left out of the demo moved the content up while
     /// building, after the step before this one, in window fractions.
     var priorFraming: Double?
+    /// Whether the action visibly changed the screen while building: false when it
+    /// showed nothing, nil for highlights, actions whose result went unseen, and
+    /// steps built before it was recorded. Testing clicks once more, on the next
+    /// route, when a click that did shows nothing.
+    var changedScreen: Bool?
 
     /// Presenters read aloud at about 150 words a minute.
     static let wordsPerSecond = 2.5
@@ -247,6 +400,40 @@ struct DemoStep: Codable, Identifiable, Hashable, Sendable {
         let words = script.split(whereSeparator: \.isWhitespace).count
         if words == 0 { return action.isMutating ? 0.4 : 1.6 }
         return min(20, max(1.5, speakingTime(for: script) + 0.8))
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, title, script, holdSeconds, action, pre, reveal, approved, approvedReason, route, framing
+        case priorFraming, changedScreen
+    }
+
+    /// Demos saved before routes were recorded marked a step that needed a real click with this.
+    private enum LegacyCodingKeys: String, CodingKey {
+        case usesPointer
+    }
+}
+
+extension DemoStep {
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(UUID.self, forKey: .id)
+        title = try container.decode(String.self, forKey: .title)
+        script = try container.decode(String.self, forKey: .script)
+        holdSeconds = try container.decode(Double.self, forKey: .holdSeconds)
+        action = try container.decode(DemoAction.self, forKey: .action)
+        pre = try container.decode(ScreenSignature.self, forKey: .pre)
+        reveal = try container.decodeIfPresent(RevealHint.self, forKey: .reveal)
+        approved = try container.decode(Bool.self, forKey: .approved)
+        approvedReason = try container.decodeIfPresent(String.self, forKey: .approvedReason)
+        framing = try container.decodeIfPresent(Double.self, forKey: .framing)
+        priorFraming = try container.decodeIfPresent(Double.self, forKey: .priorFraming)
+        changedScreen = try container.decodeIfPresent(Bool.self, forKey: .changedScreen)
+        if let route = try container.decodeIfPresent(DemoStepRoute.self, forKey: .route) {
+            self.route = route
+        } else {
+            let legacy = try decoder.container(keyedBy: LegacyCodingKeys.self)
+            route = try legacy.decodeIfPresent(Bool.self, forKey: .usesPointer) == true ? .pointer : .accessibility
+        }
     }
 }
 
@@ -289,6 +476,41 @@ struct ScoutRecord: Codable, Hashable, Sendable {
     var scroll: RevealHint?
     var outcome: ActOutcome
     var fact: String
+    /// What Claude said the action would do, in at most 12 words. Nil for scrolls,
+    /// highlights, rejections, and actions it said nothing about.
+    var expected: String?
+    /// How Claude judged the action from the screen that followed it. A hint: the
+    /// steps a demo keeps follow what was observed, and a wrong turn only helps
+    /// tell a detour that came back to where it began.
+    var judgement: ScoutJudgement?
+    /// The screen the turn began on (`AXSnapshot.screenKey`), for telling that a
+    /// later turn began on it again. Nil for rejections and records saved before it.
+    var screen: String?
+}
+
+/// How Claude says its last action turned out.
+enum ScoutVerdict: String, Codable, CaseIterable, Sendable {
+    /// Turn 1, or nothing to judge.
+    case none
+    case asExpected = "as_expected"
+    case partly
+    /// The screen changed, but not the way the demo needs.
+    case wrongTurn = "wrong_turn"
+    case noEffect = "no_effect"
+}
+
+/// Claude's verdict on its last action and why, in at most 15 words.
+struct ScoutJudgement: Codable, Hashable, Sendable {
+    var verdict: ScoutVerdict
+    var reason: String
+}
+
+/// The steps Claude's finish says show one beat of its outline.
+struct ScoutBeatCoverage: Codable, Hashable, Sendable {
+    /// The beat's number in the outline, from 1.
+    var beat: Int
+    /// The # numbers of the executed facts whose actions or highlights show it.
+    var steps: [Int]
 }
 
 struct ScoutDraft: Codable, Hashable, Sendable {
@@ -296,6 +518,14 @@ struct ScoutDraft: Codable, Hashable, Sendable {
     var outline: [String] = []
     var turn = 0
     var spentMicroUSD = 0
+    /// What Claude's latest finish said shows each beat; nil before one.
+    var coverage: [ScoutBeatCoverage]?
+    /// A finish was turned back once, for a beat no step shows or nothing highlighted
+    /// when the request asks to show something, so the next one is accepted.
+    var finishTurnedBack: Bool?
+
+    /// The turns the finish cited, which compaction never cuts as a detour.
+    var citedTurns: Set<Int> { Set(coverage?.flatMap(\.steps) ?? []) }
 }
 
 // MARK: - Demo
@@ -327,6 +557,10 @@ struct RealTimeDemo: Codable, Hashable, Identifiable, Sendable {
     var closingScript = ""
     /// Said before the first step. Optional so demos saved before it existed still load.
     var openingScript: String?
+    /// The build's draft as it was compiled, every record kept as the scout made it,
+    /// so the demo can be compiled again without pruning detours
+    /// (`ScoutCompaction.compact(_:pruning:)`). Nil for demos compiled before it.
+    var compiledFrom: ScoutDraft?
 
     var draft: ScoutDraft? {
         if case .draft(let draft) = status { draft } else { nil }
@@ -391,7 +625,8 @@ struct RealTimeDemo: Codable, Hashable, Identifiable, Sendable {
 enum DemoFingerprint {
     /// Identifies everything that decides whether a checked replay still holds:
     /// the start, every action that changes the app, the app version, and the
-    /// window size class. Scripts, titles, holds, and highlights are excluded.
+    /// window size class. Scripts, titles, holds, highlights, and Claude's notes on
+    /// targets are excluded.
     static func make(_ demo: RealTimeDemo, appVersion: String, sizeClass: DemoSizeClass, window: String = "") -> String
     {
         struct Payload: Encodable {
@@ -407,7 +642,7 @@ enum DemoFingerprint {
         let mutating = demo.steps.filter(\.action.isMutating)
         let payload = Payload(
             host: demo.start?.url?.host, path: demo.start?.url?.path, start: demo.start?.signature,
-            actions: mutating.map(\.action), reveals: mutating.map(\.reveal), appVersion: appVersion,
+            actions: mutating.map(\.action.withoutNotes), reveals: mutating.map(\.reveal), appVersion: appVersion,
             sizeClass: sizeClass, window: window)
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
@@ -429,6 +664,8 @@ enum DemoError: LocalizedError, Equatable {
     case policyDenied(String)
     /// The app refused the input before anything happened, so it is safe to retry.
     case inputNotDelivered(String)
+    /// A step needs the app in front, and the presenter never left the Mac alone long enough to lend it.
+    case noPause(String)
     case leftScope(String)
     case modelDeclined
     case incompleteResponse
@@ -456,6 +693,8 @@ enum DemoError: LocalizedError, Equatable {
         case .addressBarUnavailable: "Couldn’t reach the browser’s address bar."
         case .policyDenied(let reason): reason
         case .inputNotDelivered(let name): "“\(name)” didn’t respond."
+        case .noPause(let app):
+            "This step needs \(app) in front for a moment. Resume when you can leave the keyboard and pointer alone for a second."
         case .leftScope(let reason): reason
         case .modelDeclined: "Claude declined this request. Edit it and try again."
         case .incompleteResponse: "Claude’s answer was cut off. Try again."
@@ -465,6 +704,10 @@ enum DemoError: LocalizedError, Equatable {
 
     var diagnosticDetails: String? {
         if case .requestFailed(let failure) = self { failure.details } else { nil }
+    }
+
+    var isNoPause: Bool {
+        if case .noPause = self { true } else { false }
     }
 
     /// Errors raised before any input reached the app.
@@ -481,11 +724,18 @@ struct DemoRequestFailureSummary: Equatable, Sendable {
     let message: String
     let details: String
     let isRetryable: Bool
+    /// The API refused to compile the request's strict tool schemas into a grammar.
+    let isSchemaTooComplex: Bool
 
     init(_ failure: DemoRequestFailure) {
         message = failure.message
         details = failure.details
         isRetryable = [408, 429, 500, 502, 503, 504, 529].contains(failure.status)
+        isSchemaTooComplex =
+            failure.status == 400
+            && failure.reason?.range(
+                of: "grammar is too large|too complex for compilation", options: [.regularExpression, .caseInsensitive])
+                != nil
     }
 }
 

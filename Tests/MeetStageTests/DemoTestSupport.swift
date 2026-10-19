@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 @testable import MeetStage
@@ -9,6 +10,8 @@ struct FakeElement {
     var rect: NormRect
     var subrole: String?
     var placeholder: String?
+    /// Help text, like an icon button's tooltip.
+    var help: String?
     var container: String?
     var selected = false
     var toggle: Bool?
@@ -16,12 +19,18 @@ struct FakeElement {
     var isVisible = true
     /// Screen opened by clicking this element.
     var opens: String?
-    /// Ignores Accessibility's press, like a popup that closes while unfocused.
+    /// Ignores Accessibility's press and the page's own click, like a popup that closes while unfocused.
     var pointerOnly = false
+    /// Ignores only Accessibility's press; the page's own click works.
+    var ignoresPress = false
     /// Stays put while the page scrolls, like a browser's toolbar.
     var fixed = false
     /// Page content that stays put while the page scrolls, like a sticky header or a fixed banner.
     var sticky = false
+    /// The label is borrowed from help text, an image or a title element, as for an icon-only button.
+    var borrowsLabel = false
+    /// Sits in the screen's open dialog, like a sheet's Close button.
+    var inDialog = false
 }
 
 struct FakeScreen {
@@ -36,6 +45,8 @@ struct FakeScreen {
     /// How far the page is scrolled, in window fractions; element rects are at no scroll.
     var scrollY = 0.0
     var maxScrollY = 3.0
+    /// Screen a key opens, like Escape closing a dialog.
+    var keyOpens: [DemoKey: String] = [:]
 }
 
 @MainActor
@@ -61,9 +72,32 @@ final class FakeApp: DemoDriving {
     var scrollLag = 0
     /// Elements can't be followed across a scroll, like Chromium rebuilding a lazily rendered section.
     var forgetsElementsWhenScrolled = false
+    /// The browser runs page scripts, so building and testing click, key, and scroll through them.
+    var runsPageScripts = false
+    /// Keys Accessibility can stand in for here, as in an app's own views.
+    var accessibilityKeys: Set<DemoKey> = []
+    /// Accessibility can stand in for scrolling here, through a native scroll bar.
+    var accessibilityScrolls = false
+    /// Accessibility's stand-ins act but the app shows nothing, so only the real key or wheel works.
+    var ignoresStandIns = false
+    /// What Accessibility's press and stand-ins report they delivered, like a scroll bar read back.
+    var accessibilityDelivery = DemoDelivery.sent
+    /// Accessibility's stand-ins deliver nothing after committing, so the input is handed
+    /// back and the real key or wheel goes next, once this has run, as a borrowed one
+    /// waits for a pause there. Throwing stands for the run pausing meanwhile.
+    var whileHandedBack: (() throws -> Void)?
+    private(set) var lastDelivery = DemoDelivery.sent
+    /// How many more looks show a spinner, like a list still loading.
+    var busyLooks = 0
+    /// How many looks after a click still show the screen it left, like an app slow to respond.
+    var opensAfterLooks = 0
+    private var opening: (screen: String, looks: Int)?
+    /// The window's global frame, which every look measures.
+    var frame = CGRect(x: 0, y: 0, width: 1200, height: 800)
     private var scrolledAfterGeneration = 0
     private var lagging: (scrollY: Double, looks: Int)?
-    private var generation = 0
+    /// How many looks the app has given, each a new generation.
+    private(set) var generation = 0
     private var screenOfGeneration: [Int: String] = [:]
     private var lastSnapshot: AXSnapshot?
     static let windowHeight = 800.0
@@ -87,6 +121,14 @@ final class FakeApp: DemoDriving {
 
     func snapshot(_ source: DemoSource, waitForContent: Bool) async throws -> AXSnapshot {
         await Task.yield()
+        if let pending = opening {
+            if pending.looks > 0 {
+                opening = (pending.screen, pending.looks - 1)
+            } else {
+                current = pending.screen
+                opening = nil
+            }
+        }
         guard let screen = screens[current] else { throw DemoError.missingSource }
         generation += 1
         screenOfGeneration[generation] = current
@@ -114,20 +156,27 @@ final class FakeApp: DemoDriving {
             nodes.append(
                 AXNode(
                     id: id, role: element.role, subrole: element.subrole, roleClass: roleClass,
-                    label: element.label, identifier: nil, placeholder: element.placeholder, help: nil,
+                    label: element.label, identifier: nil, placeholder: element.placeholder, help: element.help,
                     rect: rect, isVisible: visible, isSelected: element.selected, isFocused: false,
                     isEnabled: true, isSecure: element.subrole == "AXSecureTextField",
                     textLength: roleClass == .field ? fieldText.count : nil, toggleValue: element.toggle,
                     containerID: element.container.flatMap { containerIDs[$0] }, isContainer: element.isContainer,
-                    inWebArea: true, url: nil, interactiveAncestorID: interactiveParents[id], viewport: viewport))
+                    inWebArea: true, url: nil, dialog: element.inDialog ? 0 : nil,
+                    interactiveAncestorID: interactiveParents[id], viewport: viewport,
+                    labelIsBorrowed: element.borrowsLabel))
         }
+        let busy = busyLooks > 0
+        if busy { busyLooks -= 1 }
         let snapshot = AXSnapshot(
-            generation: generation, windowFrame: CGRect(x: 0, y: 0, width: 1200, height: 800), nodes: nodes,
+            generation: generation, windowFrame: frame, nodes: nodes,
             webURL: screen.url.flatMap(URL.init(string:)), dialogOpen: screen.dialogOpen,
-            webContent: WebContentState(hasChildren: true, loaded: true, progress: 1, busy: false))
+            webContent: WebContentState(hasChildren: true, loaded: true, progress: 1, busy: false),
+            busyIndicators: busy ? 1 : 0)
         lastSnapshot = snapshot
         return snapshot
     }
+
+    func windowFrame(_ source: DemoSource) -> CGRect? { frame }
 
     /// Elements keep their index on a screen, so they're followed by it, from looks
     /// no more than two older, like `AccessibilityService`.
@@ -191,9 +240,13 @@ final class FakeApp: DemoDriving {
         DemoWindowScreenshot.Capture(base64JPEG: "AA==", pixelSize: CGSize(width: 10, height: 10))
     }
 
+    /// Follows the driver's routes: Accessibility, the page's script, or real input,
+    /// in the background unless presenting, from the route a step recorded.
     func perform(
-        _ input: DemoInput, on source: DemoSource, pace: DemoPace, commit: @escaping @MainActor () throws -> Void
-    ) async throws {
+        _ input: DemoInput, on source: DemoSource, pace: DemoPace, commit: @escaping @MainActor () throws -> Void,
+        uncommit: @escaping @MainActor () -> Void
+    ) async throws -> DemoInputRoute? {
+        lastDelivery = .sent
         await Task.yield()
         if let error = failNextInput {
             failNextInput = nil
@@ -201,62 +254,128 @@ final class FakeApp: DemoDriving {
         }
         try Task.checkCancellation()
         beforeInput?(input)
+        let access = runsPageScripts ? Self.pageScripts : .none
+        func routes(_ input: DemoInputRoute.Input, from recorded: DemoStepRoute) -> [DemoInputRoute] {
+            DemoInputRoute.routes(
+                for: input, background: pace != .present, inWebArea: isBrowser, browser: access, from: recorded)
+        }
         switch input {
-        case .click(let handle, _, let pointer):
+        case .click(let handle, _, let recorded):
             let element = try element(for: handle)
             try commit()
-            if element.pointerOnly, !pointer {
+            guard let route = routes(.click, from: recorded).first(where: { $0 != .selectedText }) else { return nil }
+            switch route {
+            case .accessibility where element.pointerOnly || element.ignoresPress:
                 log.append("press \(element.label) (ignored)")
-                return
+                lastDelivery = accessibilityDelivery
+                return route
+            case .browser where element.pointerOnly:
+                log.append("page click \(element.label) (ignored)")
+                return route
+            case .browser:
+                log.append("page click \(element.label)")
+            default:
+                log.append("click \(element.label)")
             }
-            log.append("click \(element.label)")
             if nextClickOpensWindow {
                 nextClickOpensWindow = false
                 openWindows += 1
-                return
+                return route
             }
             if let toggle = element.toggle,
                 let index = screens[current]?.elements.firstIndex(where: { $0.label == element.label })
             {
                 screens[current]?.elements[index].toggle = !toggle
             }
-            if let next = element.opens { current = next }
+            if let next = element.opens {
+                if opensAfterLooks > 0 { opening = (next, opensAfterLooks) } else { current = next }
+            }
+            return route
         case .type(let handle, _, let text, let submit):
             _ = try element(for: handle)
             fieldText = text
             try commit()
             log.append("type \(text)\(submit ? " ⏎" : "")")
             if submit, let next = screens[current]?.submitOpens { current = next }
-        case .press(let key):
+            return .accessibility
+        case .press(let key, let recorded):
             try commit()
-            log.append("press \(key.rawValue)")
+            let route = routes(.key(key), from: recorded).first {
+                $0 != .accessibility || accessibilityKeys.contains(key)
+            }
+            switch route {
+            case .accessibility where whileHandedBack != nil:
+                log.append("press \(key.rawValue) (accessibility, unavailable)")
+                try handBack(uncommit, then: commit)
+                log.append("press \(key.rawValue)")
+                if let next = screens[current]?.keyOpens[key] { current = next }
+                return .borrowedScreen
+            case .accessibility:
+                log.append("press \(key.rawValue) (accessibility\(ignoresStandIns ? ", ignored" : ""))")
+                lastDelivery = accessibilityDelivery
+                if ignoresStandIns { return route }
+            case .browser:
+                log.append("press \(key.rawValue) (page)")
+            default:
+                log.append("press \(key.rawValue)")
+            }
+            if let next = screens[current]?.keyOpens[key] { current = next }
+            return route
         case .navigate(let url):
             try commit()
             log.append("open \(url.absoluteString)")
             if let match = screens.first(where: { $0.value.url == url.absoluteString })?.key { current = match }
-        case .wheel(_, let down, let increments):
+            return .browser
+        case .wheel(_, let down, let increments, let recorded):
             try commit()
-            log.append("scroll \(down ? "down" : "up")")
+            let route = routes(.scroll, from: recorded).first { $0 != .accessibility || accessibilityScrolls }
+            switch route {
+            case .accessibility:
+                log.append("scroll \(down ? "down" : "up") (accessibility\(ignoresStandIns ? ", ignored" : ""))")
+                lastDelivery = accessibilityDelivery
+                if ignoresStandIns { return route }
+            case .browser:
+                log.append("scroll \(down ? "down" : "up") (page)")
+            default:
+                log.append("scroll \(down ? "down" : "up")")
+            }
             scroll(by: (down ? 160 : -160) * Double(increments))
+            return route
         case .scrollBy(_, let points):
             try commit()
             log.append("scroll by \(Int(points.rounded()))")
             scroll(by: points)
+            return .borrowedScreen
         case .scrollToVisible(let handle):
             let element = try element(for: handle)
             try commit()
             log.append("scroll into view \(element.label)")
             scrollIntoView(element)
+            return .accessibility
         }
     }
 
-    func scopeBaseline(_ source: DemoSource) -> DemoScopeBaseline { DemoScopeBaseline(windowNumbers: []) }
+    private static let pageScripts = DemoBrowserAccess(scriptable: true, automation: .granted, javaScript: .on)
+
+    /// A stand-in that committed and delivered nothing: hands the input back, waits
+    /// as a borrowed real input does, and commits again before that goes out.
+    private func handBack(_ uncommit: () -> Void, then commit: () throws -> Void) throws {
+        uncommit()
+        try whileHandedBack?()
+        try Task.checkCancellation()
+        try commit()
+    }
+
+    /// Separate windows count from 1, so a baseline holds the ones open when it was taken.
+    func scopeBaseline(_ source: DemoSource) -> DemoScopeBaseline {
+        DemoScopeBaseline(windowNumbers: Set((0..<openWindows).map { CGWindowID($0 + 1) }))
+    }
     func scopeViolation(_ source: DemoSource, since baseline: DemoScopeBaseline) -> String? {
-        openWindows > 0 ? "Example opened a new window." : nil
+        openWindows > baseline.windowNumbers.count ? "Example opened a new window." : nil
     }
     func closeWindows(_ source: DemoSource, openedSince baseline: DemoScopeBaseline) async -> Bool {
-        log.append("close \(openWindows) window")
-        openWindows = 0
+        log.append("close \(openWindows - baseline.windowNumbers.count) window")
+        openWindows = baseline.windowNumbers.count
         return true
     }
     func show(_ cue: DemoCue?) { cues.append(cue) }
@@ -264,6 +383,15 @@ final class FakeApp: DemoDriving {
     private(set) var broughtToFront = 0
     func bringToFront(_ source: DemoSource) async { broughtToFront += 1 }
     func movePointer(to point: NormalizedWindowPoint?, duration: Double) {}
+    /// Each change of how runs drive the app, nil when one ends.
+    private(set) var driveModes: [DemoDriveMode?] = []
+    func setDriveMode(_ mode: DemoDriveMode?, for source: DemoSource?) {
+        if driveModes.last.map({ $0 != mode }) ?? (mode != nil) { driveModes.append(mode) }
+    }
+    var isBorrowingScreen = false
+    var waitedForPause = Duration.zero
+    var onWaitingForPause: (@MainActor (Bool) -> Void)?
+    var onBrowserTip: (@MainActor (DemoBrowserTip) -> Void)?
 
     private func element(for handle: ElementHandle) throws -> FakeElement {
         guard handle.generation == lastSnapshot?.generation, let screen = screens[current],
@@ -285,6 +413,7 @@ final class ScriptedModel: DemoModeling, @unchecked Sendable {
     private var relocations: [[Int]?]
     private var relocated = 0
     private(set) var requests: [ScoutTurnRequest] = []
+    private(set) var relocateRequests: [RelocateRequest] = []
     private(set) var scriptRequests: [ScriptRequest] = []
     var scriptDelay = Duration.zero
 
@@ -318,10 +447,13 @@ final class ScriptedModel: DemoModeling, @unchecked Sendable {
         ]
     }
 
-    func relocate(_ request: RelocateRequest, key: String) async throws -> (ids: [Int]?, costMicroUSD: Int) {
+    func relocate(_ request: RelocateRequest, key: String) async throws
+        -> (ids: [Int]?, costMicroUSD: Int, tokens: DemoTokenUsage)
+    {
         lock.withLock {
             relocated += 1
-            return (relocations.isEmpty ? nil : relocations.removeFirst(), 0)
+            relocateRequests.append(request)
+            return (relocations.isEmpty ? nil : relocations.removeFirst(), 0, DemoTokenUsage())
         }
     }
 
@@ -331,8 +463,14 @@ final class ScriptedModel: DemoModeling, @unchecked Sendable {
     var facts: [[String]] { lock.withLock { requests.map(\.facts) } }
 }
 
-func reply(_ decision: ScoutDecision, outline: [String] = []) -> Result<ScoutReply, Error> {
-    .success(ScoutReply(decision: decision, outline: outline, costMicroUSD: 1_000))
+func reply(
+    _ decision: ScoutDecision, outline: [String] = [], expect: String = "", target: String = "",
+    previous: ScoutJudgement? = nil, coverage: [ScoutBeatCoverage]? = nil
+) -> Result<ScoutReply, Error> {
+    .success(
+        ScoutReply(
+            decision: decision, outline: outline, costMicroUSD: 1_000, expect: expect, target: target,
+            previous: previous, coverage: coverage))
 }
 
 func rect(_ x: Double, _ y: Double, _ w: Double = 0.1, _ h: Double = 0.04) -> NormRect {
@@ -378,6 +516,7 @@ func fastScoutLimits() -> DemoScout.Limits {
     var limits = DemoScout.Limits()
     limits.settleMinimum = .milliseconds(1)
     limits.settlePoll = .milliseconds(1)
+    limits.effectWindow = .milliseconds(1)
     limits.framing = .instant
     return limits
 }
